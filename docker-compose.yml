@@ -1,10 +1,7 @@
 services:
   yfs-webui:
-    image: rjyspl/yfs-webui:latest
-    container_name: yfs-webui
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: rjyspl/yfs-ui:latest
+    container_name: yfs-ui
     ports:
       - '127.0.0.1:3000:3000'
     restart: always
