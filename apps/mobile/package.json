@@ -1,0 +1,8 @@
+{
+  "name": "@yfs/mobile",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "echo \"mobile app not scaffolded yet, see README.md\" && exit 1"
+  }
+}

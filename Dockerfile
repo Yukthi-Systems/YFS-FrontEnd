@@ -3,17 +3,14 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy dependency files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy source code
+# Copy the whole workspace (npm workspaces needs every package.json to resolve)
 COPY . .
 
-# Build project
-RUN npm run build
+# Install dependencies for all workspaces
+RUN npm install
+
+# Build only the web app
+RUN npm run build -w @yfs/web
 
 
 # Stage 2: Production image
@@ -26,7 +23,7 @@ RUN npm install -g serve
 RUN apk add --no-cache wget
 
 # Copy build output
-COPY --from=builder /app/dist /app/dist
+COPY --from=builder /app/apps/web/dist /app/dist
 
 # Copy env script
 COPY env.sh /app/env.sh
