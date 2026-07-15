@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { openSsoPopupAndAuthenticate, logout as apiLogout } from "@yfs/service";
+import { openSsoPopupAndAuthenticate, openSsoLogoutPopup, logout as apiLogout } from "@yfs/service";
 
 export interface UserInfo {
   email: string;
@@ -35,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const ssoUrl = (import.meta as any).env.VITE_SSO_URL || "https://sso.your-domain.tld";
+  const ssoUrl = import.meta.env.VITE_SSO_URL || "https://sso.your-domain.tld";
 
   // Re-hydrate state from localStorage on mount
   useEffect(() => {
@@ -72,6 +72,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       localStorage.setItem("yfs_token", data.access_token);
       localStorage.setItem("yfs_user", JSON.stringify(normalizedUser));
+
+      // Clear the query params (e.g. ?logout=true) from URL on successful login
+      if (window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     } catch (err: any) {
       console.error("SSO authentication failed:", err);
       const message = err.message || "SSO Authentication failed";
@@ -85,7 +90,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setIsLoading(true);
     try {
-      await apiLogout(ssoUrl);
+      // 1. Call backend API to delete local session if any
+      await apiLogout(ssoUrl).catch(err => console.warn("Backend API logout failed", err));
+
+      // 2. Open SSO Logout popup to clear sso.your-domain.tld cookies
+      await openSsoLogoutPopup(ssoUrl).catch(err => {
+        console.warn("SSO logout popup failed or was blocked, falling back to window redirect", err);
+        // Fallback: If popup is blocked, redirect the window to logout directly
+        window.location.href = `${ssoUrl.replace(/\/$/, "")}/logout?redirect_uri=${encodeURIComponent(window.location.origin + "/login?logout=true")}`;
+      });
     } catch (err) {
       console.error("Failed to call API logout endpoints:", err);
     } finally {
@@ -95,8 +108,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem("yfs_user");
       setIsLoading(false);
       
-      // Redirect to login page with logout flag
-      window.location.search = "logout=true";
+      // Redirect to login page with logout flag if we didn't redirect the main window
+      if (!window.location.pathname.includes("/logout")) {
+        window.location.search = "logout=true";
+      }
     }
   };
 

@@ -24,6 +24,7 @@ function App() {
   const [apiResponse, setApiResponse] = useState<string>("");
   const [apiLoading, setApiLoading] = useState<boolean>(false);
   const [ssoPending, setSsoPending] = useState<boolean>(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
 
   // Check url parameters to see if user recently logged out
   const searchParams = new URLSearchParams(window.location.search);
@@ -179,7 +180,7 @@ function App() {
               <p>{user?.email}</p>
             </div>
           </div>
-          <button onClick={logout} className="btn-secondary" style={{ width: "auto" }}>
+          <button onClick={() => setIsLogoutModalOpen(true)} className="btn-secondary" style={{ width: "auto" }}>
             Logout
           </button>
         </div>
@@ -261,6 +262,34 @@ function App() {
           </p>
         </div>
       </div>
+
+      {isLogoutModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsLogoutModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Logout Confirmation</h3>
+            <p className="modal-description">
+              Are you sure you want to logout? You will need to login again to access the workspace.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="btn-outline"
+                onClick={() => setIsLogoutModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-destructive"
+                onClick={async () => {
+                  setIsLogoutModalOpen(false);
+                  await logout();
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

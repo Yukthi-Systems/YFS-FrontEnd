@@ -3,9 +3,9 @@
 // 2. React Native / Expo: process.env.EXPO_PUBLIC_API_URL
 const getBaseUrl = (): string => {
   try {
-    const meta = import.meta as any;
-    if (meta && meta.env && meta.env.VITE_API_URL) {
-      return meta.env.VITE_API_URL;
+    const url = import.meta.env.VITE_API_URL;
+    if (url) {
+      return url;
     }
   } catch {}
 

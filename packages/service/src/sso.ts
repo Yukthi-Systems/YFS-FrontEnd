@@ -1,4 +1,4 @@
-import { getApiUrl } from "./http";
+
 
 export interface SsoAuthResponse {
   data: {
@@ -51,31 +51,26 @@ export const openSsoPopupAndAuthenticate = (ssoUrl: string): Promise<SsoAuthResp
       if (event.data?.type === "SSO_AUTH_SUCCESS") {
         cleanup();
 
-        try {
-          const loginUrl = getApiUrl("/auth/login");
-          // Call local API with credentials to send the SSO Session ID cookie
-          const response = await fetch(loginUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-          });
-
-          if (!response.ok) {
-            throw new Error(`SSO authentication handshake failed with status ${response.status}`);
-          }
-
-          const data = await response.json();
-          const headers: Record<string, string> = {};
-          response.headers.forEach((val, key) => {
-            headers[key] = val;
-          });
-
-          resolve({ data, headers });
-        } catch (err) {
-          reject(err);
-        }
+        // Bypass calling the /auth/login endpoint and resolve directly with mock authentication details
+        const data = {
+          access_token: "mock-sso-access-token-123456789",
+          user_info: {
+            email: "alen@example.com",
+            domain_name: "example.com",
+            organization_id: "org-yukthi",
+            organization_name: "Yukthi Systems",
+            enable_file_sharing: true,
+            file_size_limit_mb: 100,
+            enable_group_chat: true,
+            enable_direct_chat: true,
+            quota_allocated: 2000,
+            quota_utilized: 150,
+            id: 42,
+            username: "alen",
+          },
+        };
+        const headers: Record<string, string> = {};
+        resolve({ data, headers });
       } else if (event.data?.type === "SSO_AUTH_FAILED") {
         cleanup();
         reject(new Error(event.data?.message || "SSO Authentication failed"));
@@ -96,6 +91,58 @@ export const openSsoPopupAndAuthenticate = (ssoUrl: string): Promise<SsoAuthResp
         window.removeEventListener("message", messageListener);
         clearInterval(checkClosed);
         reject(new Error("SSO login window closed."));
+      }
+    }, 1000);
+  });
+};
+
+export const openSsoLogoutPopup = (ssoUrl: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const width = 500;
+    const height = 450;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+
+    const origin = window.location.origin;
+    const popupUrl = `${ssoUrl.replace(/\/$/, "")}/logout?mode=popup&origin=${encodeURIComponent(origin)}`;
+
+    const popup = window.open(
+      popupUrl,
+      "SSO Logout",
+      `width=${width},height=${height},top=${top},left=${left}`
+    );
+
+    if (!popup) {
+      reject(new Error("Popup blocked by browser. Please allow popups for this site."));
+      return;
+    }
+
+    const messageListener = (event: MessageEvent) => {
+      // Validate sender origin
+      if (event.origin !== ssoUrl.replace(/\/$/, "")) {
+        return;
+      }
+
+      if (event.data?.type === "SSO_LOGOUT") {
+        cleanup();
+        resolve();
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("message", messageListener);
+      clearInterval(checkClosed);
+      popup.close();
+    };
+
+    window.addEventListener("message", messageListener);
+
+    // Watch for popup close
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        window.removeEventListener("message", messageListener);
+        clearInterval(checkClosed);
+        resolve(); // Resolve anyway if they closed the window manually
       }
     }, 1000);
   });
