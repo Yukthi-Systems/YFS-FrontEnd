@@ -1,3 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-border: var(--accent-border);
+  --color-border-main: var(--border);
+  --color-bg-main: var(--bg);
+  --color-text-main: var(--text);
+  --color-text-heading: var(--text-h);
+  --color-code-bg: var(--code-bg);
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
