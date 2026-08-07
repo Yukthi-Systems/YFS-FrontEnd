@@ -36,6 +36,10 @@ export function ViewerModal({
   const prevItem = index > 0 ? viewable[index - 1] : null;
   const nextItem = index >= 0 && index < viewable.length - 1 ? viewable[index + 1] : null;
 
+  // Office-suite documents (PDF/Word/Excel) get a near-fullscreen viewport instead of the
+  // narrower default box, since they're read as full pages rather than a quick preview.
+  const isOfficeDoc = item.type === "pdf" || item.type === "spreadsheet" || (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension));
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -118,8 +122,12 @@ export function ViewerModal({
           <ChevronLeft className="w-5 h-5" />
         </button>
 
-        <div className="bg-bg-main rounded-2xl p-6 w-full max-w-3xl max-h-full overflow-y-auto shadow-lg">
-          {renderContent()}
+        <div
+          className={`bg-bg-main rounded-2xl shadow-lg flex flex-col overflow-hidden ${
+            isOfficeDoc ? "w-[97%] h-[95%]" : "w-full max-w-3xl max-h-full"
+          }`}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">{renderContent()}</div>
         </div>
 
         <button
