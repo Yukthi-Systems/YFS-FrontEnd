@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -11,6 +11,21 @@ export function PdfViewer({ item }: { item: FileItem }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [failed, setFailed] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pageWidth, setPageWidth] = useState(620);
+
+  // The viewer modal is now ~97% of the viewport for PDFs, so the page should track the
+  // container's actual width rather than render at a fixed size within a much larger box.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setPageWidth(Math.max(320, Math.floor(width)));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   if (!item.blobUrl) {
     return (
@@ -31,7 +46,7 @@ export function PdfViewer({ item }: { item: FileItem }) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 w-full">
+    <div ref={containerRef} className="flex flex-col items-center gap-3 w-full">
       <Document
         file={item.blobUrl}
         onLoadSuccess={({ numPages }) => {
@@ -41,7 +56,7 @@ export function PdfViewer({ item }: { item: FileItem }) {
         onLoadError={() => setFailed(true)}
         loading={<div className="text-sm text-text-main py-16">Loading PDF…</div>}
       >
-        <Page pageNumber={pageNumber} width={620} />
+        <Page pageNumber={pageNumber} width={pageWidth} />
       </Document>
       {numPages && numPages > 1 && (
         <div className="flex items-center gap-3 bg-code-bg border border-border-main rounded-full px-3 py-1.5">

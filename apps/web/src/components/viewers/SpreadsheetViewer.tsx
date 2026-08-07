@@ -96,7 +96,7 @@ export function SpreadsheetViewer({
           <Save className="w-3.5 h-3.5" /> Save
         </button>
       </div>
-      <div className="w-full overflow-auto border border-border-main rounded-lg max-h-[60vh]">
+      <div className="w-full overflow-auto border border-border-main rounded-lg">
         <table className="border-collapse text-xs font-mono">
           <tbody>
             {rows.map((row, r) => (

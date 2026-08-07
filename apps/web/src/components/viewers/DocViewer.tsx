@@ -48,7 +48,7 @@ export function DocViewer({ item }: { item: FileItem }) {
 
   return (
     <div
-      className="w-full max-h-[70vh] overflow-y-auto text-text-heading text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+      className="w-full text-text-heading text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
