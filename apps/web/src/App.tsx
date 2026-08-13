@@ -17,6 +17,7 @@ import { useFileActions } from "./hooks/useFileActions";
 import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
+import { useFileSearch } from "./hooks/useFileSearch";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -25,6 +26,7 @@ import { Breadcrumbs } from "./components/layout/Breadcrumbs";
 import { FilterSortBar } from "./components/files/FilterSortBar";
 import { FileListTable } from "./components/files/FileListTable";
 import { FileGrid } from "./components/files/FileGrid";
+import { SearchResultsList } from "./components/files/SearchResultsList";
 import { ItemContextMenu } from "./components/files/ItemContextMenu";
 import { CanvasContextMenu } from "./components/files/CanvasContextMenu";
 import { DetailsDrawer } from "./components/files/DetailsDrawer";
@@ -65,7 +67,6 @@ function App() {
   const { enqueueFiles } = useUploadQueue();
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [searchQuery, setSearchQuery] = useState<string>("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -78,15 +79,23 @@ function App() {
   const diagnostics = useSystemDiagnostics(token);
   const menus = useContextMenuState();
   const nav = useFileNavigation();
+  const search = useFileSearch({ files, activeSidebarTab: nav.activeSidebarTab, currentFolderId: nav.currentFolderId, typeFilter });
 
+  // Normal folder browsing only — while a search is active, SearchResultsList renders
+  // instead (it owns its own combined name+content match list), so search.searchQuery is
+  // deliberately not threaded in here.
   const listItems = getFilteredSortedItems(files, {
     activeSidebarTab: nav.activeSidebarTab,
     currentFolderId: nav.currentFolderId,
-    searchQuery,
+    searchQuery: "",
     typeFilter,
     sortField,
     sortOrder,
   });
+
+  // Prev/next in the full-screen viewer should step through whatever the user was actually
+  // looking at — search results if a search is active, the current folder listing otherwise.
+  const viewerSiblings = search.isSearching ? search.results.map((r) => r.item) : listItems;
 
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
 
@@ -117,13 +126,13 @@ function App() {
   function openFolder(folderId: string) {
     nav.navigateToFolder(folderId);
     selection.clearSelection();
-    setSearchQuery("");
+    search.setSearchQuery("");
   }
 
   function goToBreadcrumb(index: number) {
     nav.navigateBackTo(index);
     selection.clearSelection();
-    setSearchQuery("");
+    search.setSearchQuery("");
   }
 
   function handleItemDoubleClick(item: FileItem) {
@@ -227,8 +236,8 @@ function App() {
       <main className="flex-1 flex flex-col overflow-hidden bg-bg-main">
         <TopBar
           isSystemView={nav.activeSidebarTab === "system"}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          searchQuery={search.searchQuery}
+          onSearchChange={search.setSearchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
         />
@@ -253,62 +262,84 @@ function App() {
               }}
               onContextMenu={menus.openCanvasContextMenu}
             >
-              <Breadcrumbs segments={nav.getBreadcrumbSegments(files)} onNavigate={goToBreadcrumb} />
-
-              <FilterSortBar
-                activeSidebarTab={nav.activeSidebarTab}
-                checkedCount={selection.checkedItemIds.length}
-                sortField={sortField}
-                onSortFieldChange={setSortField}
-                sortOrder={sortOrder}
-                onToggleSortOrder={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
-                onClearSelection={() => selection.setCheckedItemIds([])}
-                onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
-                onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
-                onBatchRestore={() => fileActions.handleRestore(selection.checkedItemIds)}
-                onBatchPermanentDelete={() => fileActions.requestPermanentDelete(selection.checkedItemIds)}
-                onBatchDownload={() => fileActions.handleBatchDownload(selection.checkedItemIds)}
-              />
-
-              {filesLoading ? (
-                viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
-              ) : listItems.length === 0 ? (
-                <EmptyState />
-              ) : viewMode === "list" ? (
-                <FileListTable
-                  items={listItems}
-                  selectedItemId={selection.selectedItemId}
-                  checkedItemIds={selection.checkedItemIds}
+              {search.isSearching ? (
+                <SearchResultsList
+                  results={search.results}
+                  files={files}
+                  isSearchingContent={search.isSearchingContent}
+                  query={search.searchQuery}
                   contextMenuId={menus.contextMenuId}
-                  dragOverFolderId={dnd.dragOverFolderId}
-                  onItemClick={selection.handleItemClick}
-                  onCheckboxToggle={selection.handleCheckboxToggle}
-                  onSelectAllToggle={selection.handleSelectAllToggle}
                   onContextMenuToggle={menus.setContextMenuId}
                   onItemContextMenu={menus.openItemContextMenu}
                   renderContextMenu={renderItemContextMenu}
-                  onDragStartItem={dnd.handleDragStartItem}
-                  onDragOverFolder={dnd.handleDragOverFolder}
-                  onDragLeaveFolder={dnd.handleDragLeaveFolder}
-                  onDropOnFolder={dnd.handleDropOnFolder}
+                  onOpenItem={(item) => {
+                    if (item.isFolder) {
+                      if (!item.isDeleted) openFolder(item.id);
+                    } else {
+                      setViewerItem(item);
+                    }
+                  }}
                 />
               ) : (
-                <FileGrid
-                  items={listItems}
-                  selectedItemId={selection.selectedItemId}
-                  checkedItemIds={selection.checkedItemIds}
-                  contextMenuId={menus.contextMenuId}
-                  dragOverFolderId={dnd.dragOverFolderId}
-                  onItemClick={selection.handleItemClick}
-                  onCheckboxToggle={selection.handleCheckboxToggle}
-                  onContextMenuToggle={menus.setContextMenuId}
-                  onItemContextMenu={menus.openItemContextMenu}
-                  renderContextMenu={renderItemContextMenu}
-                  onDragStartItem={dnd.handleDragStartItem}
-                  onDragOverFolder={dnd.handleDragOverFolder}
-                  onDragLeaveFolder={dnd.handleDragLeaveFolder}
-                  onDropOnFolder={dnd.handleDropOnFolder}
-                />
+                <>
+                  <Breadcrumbs segments={nav.getBreadcrumbSegments(files)} onNavigate={goToBreadcrumb} />
+
+                  <FilterSortBar
+                    activeSidebarTab={nav.activeSidebarTab}
+                    checkedCount={selection.checkedItemIds.length}
+                    sortField={sortField}
+                    onSortFieldChange={setSortField}
+                    sortOrder={sortOrder}
+                    onToggleSortOrder={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
+                    onClearSelection={() => selection.setCheckedItemIds([])}
+                    onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
+                    onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
+                    onBatchRestore={() => fileActions.handleRestore(selection.checkedItemIds)}
+                    onBatchPermanentDelete={() => fileActions.requestPermanentDelete(selection.checkedItemIds)}
+                    onBatchDownload={() => fileActions.handleBatchDownload(selection.checkedItemIds)}
+                  />
+
+                  {filesLoading ? (
+                    viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
+                  ) : listItems.length === 0 ? (
+                    <EmptyState />
+                  ) : viewMode === "list" ? (
+                    <FileListTable
+                      items={listItems}
+                      selectedItemId={selection.selectedItemId}
+                      checkedItemIds={selection.checkedItemIds}
+                      contextMenuId={menus.contextMenuId}
+                      dragOverFolderId={dnd.dragOverFolderId}
+                      onItemClick={selection.handleItemClick}
+                      onCheckboxToggle={selection.handleCheckboxToggle}
+                      onSelectAllToggle={selection.handleSelectAllToggle}
+                      onContextMenuToggle={menus.setContextMenuId}
+                      onItemContextMenu={menus.openItemContextMenu}
+                      renderContextMenu={renderItemContextMenu}
+                      onDragStartItem={dnd.handleDragStartItem}
+                      onDragOverFolder={dnd.handleDragOverFolder}
+                      onDragLeaveFolder={dnd.handleDragLeaveFolder}
+                      onDropOnFolder={dnd.handleDropOnFolder}
+                    />
+                  ) : (
+                    <FileGrid
+                      items={listItems}
+                      selectedItemId={selection.selectedItemId}
+                      checkedItemIds={selection.checkedItemIds}
+                      contextMenuId={menus.contextMenuId}
+                      dragOverFolderId={dnd.dragOverFolderId}
+                      onItemClick={selection.handleItemClick}
+                      onCheckboxToggle={selection.handleCheckboxToggle}
+                      onContextMenuToggle={menus.setContextMenuId}
+                      onItemContextMenu={menus.openItemContextMenu}
+                      renderContextMenu={renderItemContextMenu}
+                      onDragStartItem={dnd.handleDragStartItem}
+                      onDragOverFolder={dnd.handleDragOverFolder}
+                      onDragLeaveFolder={dnd.handleDragLeaveFolder}
+                      onDropOnFolder={dnd.handleDropOnFolder}
+                    />
+                  )}
+                </>
               )}
             </div>
           )}
@@ -415,7 +446,7 @@ function App() {
       {viewerItem && (
         <ViewerModal
           item={viewerItem}
-          siblings={listItems}
+          siblings={viewerSiblings}
           onClose={() => setViewerItem(null)}
           onNavigate={setViewerItem}
           onDownload={fileActions.handleDownload}
