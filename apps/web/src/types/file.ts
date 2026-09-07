@@ -1,3 +1,17 @@
+import type { InternalSharePermissions } from "@yfs/service";
+
+export type { InternalSharePermissions };
+
+// Synthetic parent id for folders shown in the "Shared with me" tab.
+export const SHARED_ROOT_ID = "__shared_with_me__";
+
+// A folder that appears in the "Shared with me" tab: who owns it and what I can do.
+export interface SharedInInfo {
+  ownerUserId: string;
+  ownerEmail?: string;
+  permissions: InternalSharePermissions;
+}
+
 export interface FileVersion {
   id: string;
   storageKey: string;
@@ -43,7 +57,11 @@ export interface FileItem {
   blobUrl?: string; // Local Object URL for active previews (regenerated from storageKey on load)
   storageKey?: string; // IndexedDB key for the persisted bytes; absent for seeded demo items
   versions?: FileVersion[]; // past content, newest first; does not include the current version
-  share?: ShareSettings;
+  share?: ShareSettings; // legacy client-only external link (SharedFileView demo route)
+  sharedIn?: SharedInInfo; // set on folders in the "Shared with me" tab
+  // "server" = came from YFS-Main-API (/folders/*), "local" = created client-side only
+  // (uploaded files, offline-created folders). Absent on seeded/legacy items.
+  origin?: "server" | "local" | "shared";
 }
 
 export type SidebarTab = "drive" | "projects" | "shared" | "recent" | "starred" | "trash" | "system";

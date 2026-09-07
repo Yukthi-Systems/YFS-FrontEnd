@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getJson, getApiJson } from "@yfs/service";
+import { getJson, fetchSession } from "@yfs/service";
 
 interface Example {
   message: string;
@@ -22,7 +22,8 @@ export function useSystemDiagnostics(token: string | null) {
     setApiLoading(true);
     setApiResponse("");
     try {
-      const data = await getApiJson<unknown>("/", { headers: { Authorization: `Bearer ${token}` } });
+      // GET /auth/session — validates the current access token server-side.
+      const data = await fetchSession(token);
       setApiResponse(`Success: ${JSON.stringify(data)}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to query backend API";

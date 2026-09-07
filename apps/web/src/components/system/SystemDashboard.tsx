@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "@yfs/service";
 import { slugify, formatCurrency } from "@yfs/utils";
 import type { UserInfo } from "../../context/AuthContext";
+import { getStorageQuota } from "../../utils/format";
 
 export function SystemDashboard({
   user,
@@ -17,6 +18,7 @@ export function SystemDashboard({
   apiLoading: boolean;
   onTestApi: () => void;
 }) {
+  const storage = getStorageQuota(user?.quota_allocated, user?.quota_utilized);
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6 pb-12 flex flex-col gap-6 text-left max-[768px]:px-4">
       <div className="flex flex-col gap-1.5">
@@ -35,16 +37,41 @@ export function SystemDashboard({
             <span className="text-base font-semibold text-text-heading">{user?.domain_name || "N/A"}</span>
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-xs text-text-main font-medium uppercase tracking-wider">Quota Allocation</span>
+            <span className="text-xs text-text-main font-medium uppercase tracking-wider">Storage Used</span>
             <span className="text-base font-semibold text-text-heading">
-              {user?.quota_utilized !== undefined && user?.quota_allocated !== undefined
-                ? `${user.quota_utilized} MB / ${user.quota_allocated} MB`
-                : "N/A"}
+              {user?.quota_allocated === undefined
+                ? "N/A"
+                : `${storage.usedLabel} / ${storage.totalLabel}${storage.hasQuota ? ` (${Math.round(storage.percent)}%)` : ""}`}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-text-main font-medium uppercase tracking-wider">File Sharing Status</span>
             <span className="text-base font-semibold text-text-heading">{user?.enable_file_sharing ? "Enabled ✅" : "Disabled ❌"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-code-bg p-6 rounded-2xl border border-border-main">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-text-main font-medium uppercase tracking-wider">Name</span>
+            <span className="text-base font-semibold text-text-heading">
+              {[user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.username || "N/A"}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-text-main font-medium uppercase tracking-wider">Email</span>
+            <span className="text-base font-semibold text-text-heading">{user?.email || "N/A"}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-text-main font-medium uppercase tracking-wider">Phone</span>
+            <span className="text-base font-semibold text-text-heading">{user?.phone || "N/A"}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-text-main font-medium uppercase tracking-wider">2FA Methods</span>
+            <span className="text-base font-semibold text-text-heading">
+              {user?.two_factor_methods && user.two_factor_methods.length > 0 ? user.two_factor_methods.join(", ") : "None"}
+            </span>
           </div>
         </div>
       </div>

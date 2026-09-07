@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./context/AuthContext";
 import { useFileSystem } from "./context/FileSystemContext";
 import { useToast } from "./context/ToastContext";
@@ -7,6 +7,7 @@ import "./App.css";
 
 import type { FileItem, ViewMode, SortField, SortOrder } from "./types/file";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
+import { getStorageQuota } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
 import { useSystemDiagnostics } from "./hooks/useSystemDiagnostics";
@@ -49,6 +50,9 @@ function App() {
   const {
     files,
     isLoading: filesLoading,
+    remoteError,
+    loadFolder,
+    loadSharedFolders,
     createFolder,
     renameItem,
     toggleStar,
@@ -60,8 +64,6 @@ function App() {
     copyItem,
     updateFileContent,
     restoreVersion,
-    setShareSettings,
-    clearShareSettings,
   } = useFileSystem();
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
@@ -71,6 +73,7 @@ function App() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
   const [viewerItem, setViewerItem] = useState<FileItem | null>(null);
 
   const canvasFileInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +83,19 @@ function App() {
   const menus = useContextMenuState();
   const nav = useFileNavigation();
   const search = useFileSearch({ files, activeSidebarTab: nav.activeSidebarTab, currentFolderId: nav.currentFolderId, typeFilter });
+
+  // Pull the current folder's children from YFS-Main-API whenever navigation changes.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (nav.activeSidebarTab === "shared") loadSharedFolders();
+    else loadFolder(nav.currentFolderId);
+  }, [isAuthenticated, nav.activeSidebarTab, nav.currentFolderId, loadFolder, loadSharedFolders]);
+
+  // Surface a one-time notice if the file service can't be reached.
+  useEffect(() => {
+    if (remoteError) showToast(`File service unavailable — showing cached data. (${remoteError})`, "error");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteError]);
 
   // Normal folder browsing only — while a search is active, SearchResultsList renders
   // instead (it owns its own combined name+content match list), so search.searchQuery is
@@ -112,7 +128,7 @@ function App() {
   });
 
   const versionHistory = useVersionHistory({ files, restoreVersion, showToast, closeContextMenu: menus.closeContextMenu });
-  const shareSettings = useShareSettings({ setShareSettings, clearShareSettings, showToast, closeContextMenu: menus.closeContextMenu });
+  const shareSettings = useShareSettings({ closeContextMenu: menus.closeContextMenu });
 
   const dnd = useDragAndDrop({
     checkedItemIds: selection.checkedItemIds,
@@ -173,11 +189,8 @@ function App() {
     },
   });
 
-  // --- Storage ---
-  const totalStorageAllocated = (user?.quota_allocated || 5120) * 1024 * 1024;
-  const totalStorageUtilized =
-    files.filter((f) => !f.isDeleted && !f.isFolder).reduce((sum, f) => sum + f.size, 0) + (user?.quota_utilized || 0) * 1024 * 1024;
-  const storagePercentage = Math.min((totalStorageUtilized / totalStorageAllocated) * 100, 100);
+  // --- Storage --- (from the API's account quota, not a client-side file tally)
+  const storage = getStorageQuota(user?.quota_allocated, user?.quota_utilized);
 
   if (authLoading) {
     return (
@@ -214,6 +227,12 @@ function App() {
 
   return (
     <div className="flex w-screen h-screen bg-bg-main text-text-main overflow-hidden font-sans" onClick={menus.dismissAll}>
+      {mobileNavOpen && (
+        <div
+          className="hidden max-[768px]:block fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
@@ -224,22 +243,25 @@ function App() {
         }}
         onCreateFolder={fileActions.openCreateFolderModal}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
-        storagePercentage={storagePercentage}
-        totalStorageUtilized={totalStorageUtilized}
-        totalStorageAllocated={totalStorageAllocated}
+        storagePercentage={storage.percent}
+        storageUsedLabel={storage.usedLabel}
+        storageTotalLabel={storage.totalLabel}
         user={user}
         onRequestLogout={fileActions.requestLogout}
         typeFilter={typeFilter}
         onTypeFilterChange={setTypeFilter}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
       />
 
-      <main className="flex-1 flex flex-col overflow-hidden bg-bg-main">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden bg-bg-main">
         <TopBar
           isSystemView={nav.activeSidebarTab === "system"}
           searchQuery={search.searchQuery}
           onSearchChange={search.setSearchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          onMenuClick={() => setMobileNavOpen(true)}
         />
 
         <div className="flex-1 flex overflow-hidden relative">
@@ -428,7 +450,7 @@ function App() {
           const shareItem = files.find((f) => f.id === shareSettings.shareItemId);
           if (!shareItem) return null;
           return (
-            <ShareModal item={shareItem} onClose={shareSettings.closeShareModal} onSave={shareSettings.handleSaveShare} onRevoke={shareSettings.handleRevokeShare} />
+            <ShareModal item={shareItem} onClose={shareSettings.closeShareModal} />
           );
         })()}
 

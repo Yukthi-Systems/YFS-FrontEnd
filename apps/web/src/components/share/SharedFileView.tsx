@@ -13,7 +13,8 @@ const SpreadsheetViewer = lazy(() => import("../viewers/SpreadsheetViewer").then
 const CodeEditor = lazy(() => import("../viewers/CodeEditor").then((m) => ({ default: m.CodeEditor })));
 const ViewerLoading = () => <div className="text-sm text-text-main text-center py-16">Loading…</div>;
 
-const FILES_STORAGE_KEY = "yfs_files";
+// Same cache the authenticated app writes its file tree to (see FileSystemContext).
+const FILES_STORAGE_KEY = "yfs_fs_cache";
 
 type LoadState = "loading" | "not-found" | "expired";
 

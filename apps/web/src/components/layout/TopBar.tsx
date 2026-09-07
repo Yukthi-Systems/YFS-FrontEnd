@@ -1,4 +1,4 @@
-import { Search, Grid, List } from "lucide-react";
+import { Search, Grid, List, Menu } from "lucide-react";
 import type { ViewMode } from "../../types/file";
 
 export function TopBar({
@@ -7,17 +7,27 @@ export function TopBar({
   onSearchChange,
   viewMode,
   onViewModeChange,
+  onMenuClick,
 }: {
   isSystemView: boolean;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  onMenuClick?: () => void;
 }) {
   return (
-    <header className="h-[70px] min-h-[70px] border-b border-border-main px-8 flex items-center justify-between gap-8 box-border max-[768px]:px-4">
+    <header className="h-[70px] min-h-[70px] border-b border-border-main px-8 flex items-center justify-between gap-4 md:gap-8 box-border max-[768px]:px-4">
+      <button
+        onClick={onMenuClick}
+        className="hidden max-[768px]:flex shrink-0 w-9 h-9 items-center justify-center rounded-full text-text-main hover:bg-code-bg hover:text-text-heading border-none bg-transparent cursor-pointer transition"
+        title="Menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       {!isSystemView ? (
-        <div className="relative flex-1 max-w-xl">
+        <div className="relative flex-1 min-w-0 max-w-xl">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-main pointer-events-none" />
           <input
             type="text"
@@ -28,10 +38,10 @@ export function TopBar({
           />
         </div>
       ) : (
-        <div className="font-semibold text-lg text-text-heading">System Dashboard</div>
+        <div className="font-semibold text-lg text-text-heading flex-1 min-w-0 truncate">System Dashboard</div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         {!isSystemView && (
           <>
             <button
