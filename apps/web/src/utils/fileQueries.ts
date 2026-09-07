@@ -1,4 +1,5 @@
 import type { FileItem, SidebarTab, SortField, SortOrder } from "../types/file";
+import { SHARED_ROOT_ID } from "../types/file";
 
 interface FilterSortParams {
   activeSidebarTab: SidebarTab;
@@ -18,7 +19,7 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
   } else if (activeSidebarTab === "projects") {
     result = result.filter((f) => f.parentId === "projects-folder" && !f.isDeleted);
   } else if (activeSidebarTab === "shared") {
-    result = result.filter((f) => f.parentId === "shared-folder" && !f.isDeleted);
+    result = result.filter((f) => f.parentId === SHARED_ROOT_ID && !f.isDeleted);
   } else if (activeSidebarTab === "recent") {
     result = result.filter((f) => !f.isFolder && !f.isDeleted);
   } else if (activeSidebarTab === "starred") {
@@ -91,7 +92,7 @@ export function getSearchScope(
     const ids = new Set(collectDescendantIds(files, "projects-folder"));
     result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
   } else if (activeSidebarTab === "shared") {
-    const ids = new Set(collectDescendantIds(files, "shared-folder"));
+    const ids = new Set(collectDescendantIds(files, SHARED_ROOT_ID));
     result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
   } else if (activeSidebarTab === "recent") {
     result = files.filter((f) => !f.isFolder && !f.isDeleted);

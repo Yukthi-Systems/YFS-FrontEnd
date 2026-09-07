@@ -47,6 +47,11 @@ export const categorizeFile = (file: File): { type: FileItem["type"]; extension:
   return { type: category, extension: ext };
 };
 
+// Same categorization as categorizeFile, but from a bare filename (used for file
+// listings that come back from the API without a File/blob attached).
+export const categorizeByName = (name: string): { type: FileItem["type"]; extension: string } =>
+  categorizeFile({ name, type: "" } as File);
+
 // Extensions that can be viewed/edited as plain text in the CodeEditor viewer.
 const TEXT_EXTENSIONS = new Set([
   "js", "jsx", "ts", "tsx", "json", "html", "css", "py", "go", "md", "txt", "rtf",

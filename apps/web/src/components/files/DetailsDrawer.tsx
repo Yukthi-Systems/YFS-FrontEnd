@@ -70,7 +70,7 @@ export function DetailsDrawer({
 }) {
   return (
     <aside
-      className="w-90 min-w-[360px] border-l border-border-main bg-bg-main flex flex-col h-full overflow-y-auto box-border shrink-0 max-[1024px]:absolute max-[1024px]:right-0 max-[1024px]:top-0 max-[1024px]:bottom-0 max-[1024px]:z-40 max-[1024px]:shadow-xl animate-slide-in-right"
+      className="w-90 min-w-[360px] border-l border-border-main bg-bg-main flex flex-col h-full overflow-y-auto box-border shrink-0 max-[1024px]:absolute max-[1024px]:right-0 max-[1024px]:top-0 max-[1024px]:bottom-0 max-[1024px]:z-40 max-[1024px]:shadow-xl max-[420px]:w-full max-[420px]:min-w-0 animate-slide-in-right"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="px-6 py-4.5 border-b border-border-main flex items-center justify-between">

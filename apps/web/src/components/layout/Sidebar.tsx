@@ -13,10 +13,10 @@ import {
   ChevronRight,
   ChevronDown,
   ListFilter,
+  X,
 } from "lucide-react";
 import type { SidebarTab } from "../../types/file";
 import type { UserInfo } from "../../context/AuthContext";
-import { formatBytes } from "../../utils/format";
 import { TYPE_FILTERS } from "../../utils/fileType";
 import { capitalize } from "@yfs/utils";
 
@@ -37,12 +37,14 @@ export function Sidebar({
   onCreateFolder,
   onUploadFiles,
   storagePercentage,
-  totalStorageUtilized,
-  totalStorageAllocated,
+  storageUsedLabel,
+  storageTotalLabel,
   user,
   onRequestLogout,
   typeFilter,
   onTypeFilterChange,
+  mobileOpen = false,
+  onMobileClose,
 }: {
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -51,12 +53,14 @@ export function Sidebar({
   onCreateFolder: () => void;
   onUploadFiles: (files: FileList) => void;
   storagePercentage: number;
-  totalStorageUtilized: number;
-  totalStorageAllocated: number;
+  storageUsedLabel: string;
+  storageTotalLabel: string;
   user: UserInfo | null;
   onRequestLogout: () => void;
   typeFilter: string;
   onTypeFilterChange: (value: string) => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }) {
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
@@ -91,10 +95,17 @@ export function Sidebar({
     ? user.email.substring(0, 2).toUpperCase()
     : "US";
 
+  const selectTab = (tab: SidebarTab) => {
+    onTabChange(tab);
+    onMobileClose?.();
+  };
+
   return (
     <aside
-      className={`bg-bg-main border-r border-border-main flex flex-col p-6 box-border shrink-0 transition-all duration-300 max-[768px]:w-full max-[768px]:h-auto max-[768px]:border-r-0 max-[768px]:border-b ${
+      className={`bg-bg-main border-r border-border-main flex flex-col p-6 box-border shrink-0 transition-all duration-300 ${
         collapsed ? "w-20 min-w-[80px]" : "w-70 min-w-[280px]"
+      } max-[768px]:fixed max-[768px]:inset-y-0 max-[768px]:left-0 max-[768px]:z-50 max-[768px]:w-[280px]! max-[768px]:min-w-0 max-[768px]:max-w-[85vw] max-[768px]:p-5 max-[768px]:shadow-2xl max-[768px]:transition-transform ${
+        mobileOpen ? "max-[768px]:translate-x-0" : "max-[768px]:-translate-x-full"
       }`}
     >
       <div className="flex flex-col gap-6 max-[768px]:gap-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mr-3 pr-3">
@@ -109,6 +120,13 @@ export function Sidebar({
             title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={onMobileClose}
+            className="hidden max-[768px]:flex border-none bg-transparent p-1.5 rounded-lg cursor-pointer text-text-main hover:bg-code-bg items-center justify-center transition"
+            title="Close menu"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -183,11 +201,11 @@ export function Sidebar({
         />
 
         <nav>
-          <ul className="flex flex-col gap-1 p-0 m-0 list-none max-[768px]:flex-row max-[768px]:flex-wrap">
+          <ul className="flex flex-col gap-1 p-0 m-0 list-none">
             {NAV_ITEMS.map(({ tab, label, icon: Icon }) => (
               <li
                 key={tab}
-                onClick={() => onTabChange(tab)}
+                onClick={() => selectTab(tab)}
                 className={`flex items-center rounded-xl text-text-main font-medium text-[0.95rem] cursor-pointer transition hover:bg-code-bg hover:text-text-heading ${
                   activeTab === tab ? "bg-accent-bg text-accent font-semibold" : ""
                 } ${collapsed ? "justify-center p-3" : "justify-between px-4 py-3"}`}
@@ -200,8 +218,8 @@ export function Sidebar({
               </li>
             ))}
             <li
-              onClick={() => onTabChange("system")}
-              className={`flex items-center rounded-xl text-text-main font-medium text-[0.95rem] cursor-pointer transition hover:bg-code-bg hover:text-text-heading border-t border-border-main mt-4 pt-4 max-[768px]:mt-0 max-[768px]:pt-3 ${
+              onClick={() => selectTab("system")}
+              className={`flex items-center rounded-xl text-text-main font-medium text-[0.95rem] cursor-pointer transition hover:bg-code-bg hover:text-text-heading border-t border-border-main mt-4 pt-4 ${
                 activeTab === "system" ? "bg-accent-bg text-accent font-semibold" : ""
               } ${collapsed ? "justify-center p-3" : "justify-between px-4 py-3"}`}
               title={collapsed ? "Workspace & System" : undefined}
@@ -247,7 +265,7 @@ export function Sidebar({
         </nav>
       </div>
 
-      <div className="flex flex-col gap-5 max-[768px]:hidden">
+      <div className="flex flex-col gap-5">
         {!collapsed && (
           <div className="bg-code-bg p-4 rounded-2xl border border-border-main text-xs">
             <div className="flex justify-between font-semibold text-text-heading mb-1.5">
@@ -261,7 +279,7 @@ export function Sidebar({
               ></div>
             </div>
             <span className="text-text-main text-[11px]">
-              {formatBytes(totalStorageUtilized)} of {formatBytes(totalStorageAllocated)} used
+              {storageUsedLabel} of {storageTotalLabel} used
             </span>
           </div>
         )}

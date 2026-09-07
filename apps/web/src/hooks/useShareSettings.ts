@@ -1,18 +1,9 @@
 import { useState } from "react";
-import type { FileItem, ShareSettings } from "../types/file";
-import type { ToastVariant } from "../context/ToastContext";
+import type { FileItem } from "../types/file";
 
-export function useShareSettings({
-  setShareSettings,
-  clearShareSettings,
-  showToast,
-  closeContextMenu,
-}: {
-  setShareSettings: (id: string, settings: ShareSettings) => void;
-  clearShareSettings: (id: string) => void;
-  showToast: (message: string, variant?: ToastVariant) => void;
-  closeContextMenu: () => void;
-}) {
+// Just open/close state for the ShareModal now — the modal talks to
+// YFS-Main-API's /share/internal/* endpoints itself.
+export function useShareSettings({ closeContextMenu }: { closeContextMenu: () => void }) {
   const [shareItemId, setShareItemId] = useState<string | null>(null);
 
   const openShareModal = (item: FileItem) => {
@@ -22,19 +13,5 @@ export function useShareSettings({
 
   const closeShareModal = () => setShareItemId(null);
 
-  const handleSaveShare = (settings: ShareSettings) => {
-    if (!shareItemId) return;
-    setShareSettings(shareItemId, settings);
-    showToast("Sharing settings saved", "success");
-    setShareItemId(null);
-  };
-
-  const handleRevokeShare = () => {
-    if (!shareItemId) return;
-    clearShareSettings(shareItemId);
-    showToast("Share link removed", "success");
-    setShareItemId(null);
-  };
-
-  return { shareItemId, openShareModal, closeShareModal, handleSaveShare, handleRevokeShare };
+  return { shareItemId, openShareModal, closeShareModal };
 }

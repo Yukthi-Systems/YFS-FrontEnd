@@ -55,8 +55,8 @@ export function FileListTable({
               />
             </th>
             <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Name</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Owner</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Last Modified</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[860px]:hidden">Last Modified</th>
             <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Size</th>
             <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-12"></th>
           </tr>
@@ -92,7 +92,7 @@ export function FileListTable({
                     <span className="truncate">{item.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 border-b border-border-main">
+                <td className="px-4 py-3 border-b border-border-main max-[640px]:hidden">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
                       {item.owner.name.substring(0, 1).toUpperCase()}
@@ -100,7 +100,7 @@ export function FileListTable({
                     <span className="text-xs text-text-heading font-medium">{item.owner.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 border-b border-border-main text-xs text-text-main">{formatDate(item.modifiedAt)}</td>
+                <td className="px-4 py-3 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
                 <td className="px-4 py-3 border-b border-border-main text-xs text-text-main">{formatBytes(item.size)}</td>
                 <td className="px-4 py-3 border-b border-border-main text-center relative" onClick={(e) => e.stopPropagation()}>
                   <button

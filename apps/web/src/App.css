@@ -213,10 +213,72 @@ input {
   border-radius: 20px;
   width: 90%;
   max-width: 400px;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
   padding: 1.75rem;
   box-shadow: var(--shadow);
   text-align: left;
   animation: scaleIn 0.2s ease-out;
+}
+
+.modal-content.modal-lg {
+  max-width: 560px;
+}
+
+@media (max-width: 520px) {
+  .modal-overlay {
+    align-items: flex-end;
+  }
+  .modal-content {
+    width: 100%;
+    max-width: none;
+    padding: 1.25rem;
+    border-radius: 18px 18px 0 0;
+    max-height: 88dvh;
+  }
+}
+
+/* Shared form primitives for every modal (New Folder, Rename, Share, …). */
+.dialog-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.data-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.dialog-input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+  box-shadow: 0 0 0 4px var(--accent-bg);
+}
+
+.dialog-input::placeholder {
+  color: var(--text);
+  opacity: 0.7;
+}
+
+select.dialog-input {
+  cursor: pointer;
 }
 
 .modal-title {
@@ -235,6 +297,7 @@ input {
 
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.75rem;
 }
