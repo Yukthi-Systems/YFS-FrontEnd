@@ -1,7 +1,9 @@
 import { apiRequest } from "./apiClient";
+import { PAGE_SIZE } from "./types";
 import type { FolderShareInfo, InternalSharedResource, InternalSharePermissions, PageQuery } from "./types";
 
-const DEFAULT_PAGE: PageQuery = { limit: 200, offset: 0 };
+// Keep in step with folders.ts — the UI pages through shared folders the same way.
+const DEFAULT_PAGE: PageQuery = { limit: PAGE_SIZE, offset: 0 };
 
 const pageParams = (page: Partial<PageQuery> = {}): string => {
   const { limit, offset } = { ...DEFAULT_PAGE, ...page };

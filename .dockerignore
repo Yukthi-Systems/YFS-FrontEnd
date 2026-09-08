@@ -1,0 +1,12 @@
+# Reproducible builds: bring in source only, not host state.
+**/node_modules
+**/dist
+.git
+.gitignore
+*.log
+npm-debug.log*
+
+# Vite env is baked in via Docker build args (see Dockerfile), not host .env files.
+**/.env
+**/.env.*
+!**/.env.example

@@ -57,6 +57,21 @@ const SS = {
   expiresAt: "yfs_expires_at",
 } as const;
 
+// Set once per browser session the first time auto-SSO is kicked off. It survives a
+// full-page redirect (blocked-popup fallback) so that a login that keeps failing —
+// bad API URL, CORS, expired SSO session — drops the user on the login screen instead
+// of retriggering the popup/redirect forever. Cleared only on a successful sign-in or
+// an explicit logout (NOT in clearSession, which also runs on every failed attempt).
+export const AUTO_SSO_ATTEMPTED_KEY = "yfs_sso_auto_attempted";
+
+const clearAutoSsoAttempt = () => {
+  try {
+    sessionStorage.removeItem(AUTO_SSO_ATTEMPTED_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
 // localStorage keys written by earlier builds; cleared on logout so they can't linger.
 const LEGACY_LS_KEYS = ["yfs_token", "yfs_refresh_token", "yfs_user", "yfs_user_id", "yfs_expires_at", "yfs_files"];
 
@@ -116,6 +131,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRefreshToken(nextRefresh);
     setUserId(nextUserId);
     setUser(nextUser);
+    // Signed in — a future auto-SSO attempt (e.g. after the session later expires) is
+    // allowed again.
+    clearAutoSsoAttempt();
 
     try {
       sessionStorage.setItem(SS.token, payload.access_token);
@@ -210,7 +228,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (!cancelled) persistPayload(data, data.sso_profile);
           } catch (err) {
             console.warn("SSO redirect-return login failed:", err);
-            if (!cancelled) clearSession();
+            if (!cancelled) {
+              clearSession();
+              setErrorMsg(err instanceof Error ? err.message : "SSO sign-in could not be completed");
+            }
           }
         } else if (cachedToken) {
           // Validate the cached token; refresh once on 401 before giving up.
@@ -239,7 +260,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [ssoUrl, persistPayload, refreshAccessToken, clearSession]);
 
-  const loginWithSso = async () => {
+  // Stable identity: the SSO auto-login effect depends on this, and a fresh function
+  // every render would make it re-fire (an endless popup loop) on any state change.
+  const loginWithSso = useCallback(async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -257,9 +280,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [ssoUrl, persistPayload]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setIsLoading(true);
     const currentToken = credsRef.current.token;
     try {
@@ -270,13 +293,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error("Logout request failed:", err);
     } finally {
       clearSession();
+      clearAutoSsoAttempt(); // explicit logout re-enables auto-SSO for the next visit
       setIsLoading(false);
 
       if (!window.location.pathname.includes("/logout")) {
         window.location.search = "logout=true";
       }
     }
-  };
+  }, [ssoUrl, clearSession]);
 
   const clearError = () => setErrorMsg(null);
 
