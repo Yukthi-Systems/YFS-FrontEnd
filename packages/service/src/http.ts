@@ -21,6 +21,18 @@ const getBaseUrl = (): string => {
 
 export const API_BASE_URL = getBaseUrl();
 
+// A missing API base URL is the classic broken-deploy cause: every /auth/* call then
+// hits the static host that serves the SPA, returns index.html, and the auth flow
+// retries forever. Fail loudly instead of silently making same-origin requests.
+if (!API_BASE_URL) {
+  const msg =
+    "VITE_API_URL is not set — API calls will hit the app's own origin and fail. " +
+    "Set it at build time (apps/web/.env or a Docker build arg).";
+  try {
+    if (typeof window !== "undefined") console.error(`[yfs] ${msg}`);
+  } catch {}
+}
+
 export function getApiUrl(path: string): string {
   const base = API_BASE_URL.replace(/\/$/, "");
   const relative = path.replace(/^\//, "");

@@ -1,7 +1,10 @@
 import { apiRequest } from "./apiClient";
+import { PAGE_SIZE } from "./types";
 import type { BackendResource, PageQuery } from "./types";
 
-const DEFAULT_PAGE: PageQuery = { limit: 200, offset: 0 };
+// Default page size for every list endpoint. The UI pages through with infinite
+// scroll, requesting the next `limit`-sized window as the user nears the end.
+const DEFAULT_PAGE: PageQuery = { limit: PAGE_SIZE, offset: 0 };
 
 const pageParams = (page: Partial<PageQuery> = {}): string => {
   const { limit, offset } = { ...DEFAULT_PAGE, ...page };

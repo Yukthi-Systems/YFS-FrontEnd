@@ -4,6 +4,7 @@ import { SHARED_ROOT_ID } from "../types/file";
 import type { BackendResource, InternalSharedResource } from "@yfs/service";
 import {
   HttpError,
+  PAGE_SIZE,
   listRootFolders,
   listFolderChildren,
   createFolder as apiCreateFolder,
@@ -29,16 +30,30 @@ export interface AddFileInput {
   blob: Blob;
 }
 
+// Per-folder infinite-scroll state, exposed so the UI can render a loading row and
+// know when to stop asking for more.
+export interface PaginationInfo {
+  hasMore: boolean;
+  loading: boolean;
+}
+
 interface FileSystemContextType {
   files: FileItem[];
   isLoading: boolean;
   remoteError: string | null;
-  // Fetches a folder's direct children from YFS-Main-API and merges them in.
-  // `parentId: null` = the user's root. Cached per folder unless `force` is set.
+  // Fetches a folder's first page of direct children from YFS-Main-API and merges
+  // them in. `parentId: null` = the user's root. Cached per folder unless `force` is set.
   loadFolder: (parentId: string | null, opts?: { force?: boolean }) => Promise<void>;
-  // Fetches folders shared with me (GET /share/internal/list/sharing-in) into the
-  // SHARED_ROOT_ID bucket. Cached unless `force` is set.
+  // Fetches the next page of a folder's children (infinite scroll). No-op if the
+  // last page has already been reached or a page is already in flight.
+  loadMoreFolder: (parentId: string | null) => Promise<void>;
+  // Fetches the first page of folders shared with me (GET /share/internal/list/sharing-in)
+  // into the SHARED_ROOT_ID bucket. Cached unless `force` is set.
   loadSharedFolders: (opts?: { force?: boolean }) => Promise<void>;
+  // Fetches the next page of shared-with-me folders (infinite scroll).
+  loadMoreSharedFolders: () => Promise<void>;
+  // Current infinite-scroll status for a folder listing (or the shared bucket).
+  getPagination: (parentId: string | null, shared?: boolean) => PaginationInfo;
   createFolder: (name: string, parentId: string | null) => FileItem | null;
   addFile: (input: AddFileInput) => FileItem;
   renameItem: (id: string, newName: string) => void;
@@ -143,7 +158,12 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => ({
 // Merge a fresh server listing of one folder into the current tree, preserving any
 // client-only state (stars, trash, shares, uploaded blobs) and reconciling optimistic
 // folders created offline against their now-real server ids.
-const mergeServerListing = (prev: FileItem[], parentId: string | null, incoming: FileItem[]): FileItem[] => {
+const mergeServerListing = (
+  prev: FileItem[],
+  parentId: string | null,
+  incoming: FileItem[],
+  append = false
+): FileItem[] => {
   // 1. Match optimistic local folders to their server counterparts by parent + name.
   const idRemap = new Map<string, string>();
   for (const res of incoming) {
@@ -182,6 +202,10 @@ const mergeServerListing = (prev: FileItem[], parentId: string | null, incoming:
     if (!workingIds.has(res.id)) merged.push(res);
   }
 
+  // When appending a later page we only have a slice of the folder's children, so the
+  // "vanished server-side" check below would wrongly drop every earlier page. Skip it.
+  if (append) return merged;
+
   // 3. Drop server rows that were children of this folder but have vanished server-side
   //    (deleted elsewhere) — unless they carry client-only state worth keeping.
   return merged.filter((f) => {
@@ -198,6 +222,8 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [remoteError, setRemoteError] = useState<string | null>(null);
+  // Infinite-scroll status per folder key (ROOT_KEY / folder id / SHARED_ROOT_ID).
+  const [pageInfo, setPageInfo] = useState<Record<string, PaginationInfo>>({});
 
   // Refs so async callbacks always see current values without re-creating themselves.
   const authRef = useRef({ token, userId, refreshAccessToken });
@@ -207,6 +233,19 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const ownerEmailRef = useRef(user?.email || "me@example.com");
   ownerEmailRef.current = user?.email || "me@example.com";
   const loadedFoldersRef = useRef<Set<string>>(new Set());
+  // How many rows we've pulled for each folder key and whether the server has more.
+  const pageStateRef = useRef<Map<string, { loaded: number; hasMore: boolean }>>(new Map());
+  const pageInfoRef = useRef(pageInfo);
+  pageInfoRef.current = pageInfo;
+
+  const pageKeyFor = (parentId: string | null, shared?: boolean) =>
+    shared ? SHARED_ROOT_ID : parentId ?? ROOT_KEY;
+
+  const setPageLoading = (key: string, loading: boolean, hasMore?: boolean) =>
+    setPageInfo((p) => ({
+      ...p,
+      [key]: { hasMore: hasMore ?? p[key]?.hasMore ?? true, loading },
+    }));
 
   const saveCache = (updated: FileItem[]) => {
     try {
@@ -237,11 +276,16 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, []);
 
-  const loadFolder = useCallback(
-    async (parentId: string | null, opts?: { force?: boolean }) => {
+  // One folder page fetch. `mode` picks the intent:
+  //   "initial" — first visit, skipped if the folder is already cached
+  //   "force"   — re-fetch page 1, resetting the scroll position
+  //   "append"  — pull the next page for infinite scroll
+  const fetchFolderPage = useCallback(
+    async (parentId: string | null, mode: "initial" | "force" | "append") => {
       if (!authRef.current.token) return;
       const key = parentId ?? ROOT_KEY;
-      if (!opts?.force && loadedFoldersRef.current.has(key)) return;
+
+      if (mode === "initial" && loadedFoldersRef.current.has(key)) return;
 
       // Client-only folders (created offline, not yet synced) have no server listing.
       if (parentId !== null) {
@@ -249,38 +293,79 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (folder && folder.origin !== "server") return;
       }
 
+      const state = pageStateRef.current.get(key) ?? { loaded: 0, hasMore: true };
+      if (mode === "append" && (!state.hasMore || pageInfoRef.current[key]?.loading)) return;
+
+      const offset = mode === "append" ? state.loaded : 0;
+      setPageLoading(key, true, state.hasMore);
+
       try {
         const resources = await withFreshToken((tk) =>
-          parentId === null ? listRootFolders(tk) : listFolderChildren(tk, parentId)
+          parentId === null
+            ? listRootFolders(tk, { limit: PAGE_SIZE, offset })
+            : listFolderChildren(tk, parentId, { limit: PAGE_SIZE, offset })
         );
-        if (!resources) return;
+        if (!resources) {
+          setPageLoading(key, false);
+          return;
+        }
 
+        const hasMore = resources.length === PAGE_SIZE;
+        pageStateRef.current.set(key, { loaded: offset + resources.length, hasMore });
         loadedFoldersRef.current.add(key);
         setRemoteError(null);
+
         const mapped = resources.map((r) => mapResource(r, ownerEmailRef.current));
         setFiles((prev) => {
-          const next = mergeServerListing(prev, parentId, mapped);
+          const next = mergeServerListing(prev, parentId, mapped, mode === "append");
           saveCache(next);
           return next;
         });
+        setPageLoading(key, false, hasMore);
       } catch (err) {
         console.warn("Failed to load folder from YFS-Main-API", err);
         setRemoteError(err instanceof Error ? err.message : "Could not reach the file service");
+        setPageLoading(key, false);
       }
     },
     [withFreshToken]
   );
 
-  const loadSharedFolders = useCallback(
-    async (opts?: { force?: boolean }) => {
+  const loadFolder = useCallback(
+    (parentId: string | null, opts?: { force?: boolean }) =>
+      fetchFolderPage(parentId, opts?.force ? "force" : "initial"),
+    [fetchFolderPage]
+  );
+
+  const loadMoreFolder = useCallback(
+    (parentId: string | null) => fetchFolderPage(parentId, "append"),
+    [fetchFolderPage]
+  );
+
+  // Shared-with-me folders, paged the same way. `mode` matches fetchFolderPage.
+  const fetchSharedPage = useCallback(
+    async (mode: "initial" | "force" | "append") => {
       if (!authRef.current.token) return;
-      if (!opts?.force && loadedFoldersRef.current.has(SHARED_ROOT_ID)) return;
+      const key = SHARED_ROOT_ID;
+
+      if (mode === "initial" && loadedFoldersRef.current.has(key)) return;
+
+      const state = pageStateRef.current.get(key) ?? { loaded: 0, hasMore: true };
+      if (mode === "append" && (!state.hasMore || pageInfoRef.current[key]?.loading)) return;
+
+      const offset = mode === "append" ? state.loaded : 0;
+      setPageLoading(key, true, state.hasMore);
 
       try {
-        const shared = await withFreshToken((tk) => listSharingIn(tk));
-        if (!shared) return;
+        const shared = await withFreshToken((tk) => listSharingIn(tk, { limit: PAGE_SIZE, offset }));
+        if (!shared) {
+          setPageLoading(key, false);
+          return;
+        }
 
-        loadedFoldersRef.current.add(SHARED_ROOT_ID);
+        const hasMore = shared.length === PAGE_SIZE;
+        pageStateRef.current.set(key, { loaded: offset + shared.length, hasMore });
+        loadedFoldersRef.current.add(key);
         setRemoteError(null);
 
         // Resolve each owner's email once so the list shows who shared the folder.
@@ -296,8 +381,7 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           })
         );
 
-        // Shared-in folders are read-only leaves — no client state to preserve, so
-        // just swap the whole bucket for the fresh listing.
+        // Shared-in folders are read-only leaves — no client state to preserve.
         const mapped = shared.map((s) => {
           const item = mapSharedResource(s);
           const email = ownerEmails.get(s.user_id);
@@ -308,16 +392,35 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return item;
         });
         setFiles((prev) => {
-          const next = [...prev.filter((f) => f.origin !== "shared"), ...mapped];
+          // "force"/"initial" replace the whole bucket; "append" adds the new page,
+          // skipping any id already present.
+          const kept = mode === "append" ? prev : prev.filter((f) => f.origin !== "shared");
+          const seen = new Set(kept.map((f) => f.id));
+          const next = [...kept, ...mapped.filter((m) => !seen.has(m.id))];
           saveCache(next);
           return next;
         });
+        setPageLoading(key, false, hasMore);
       } catch (err) {
         console.warn("Failed to load shared folders from YFS-Main-API", err);
         setRemoteError(err instanceof Error ? err.message : "Could not reach the file service");
+        setPageLoading(key, false);
       }
     },
     [withFreshToken]
+  );
+
+  const loadSharedFolders = useCallback(
+    (opts?: { force?: boolean }) => fetchSharedPage(opts?.force ? "force" : "initial"),
+    [fetchSharedPage]
+  );
+
+  const loadMoreSharedFolders = useCallback(() => fetchSharedPage("append"), [fetchSharedPage]);
+
+  const getPagination = useCallback(
+    (parentId: string | null, shared?: boolean): PaginationInfo =>
+      pageInfo[pageKeyFor(parentId, shared)] ?? { hasMore: false, loading: false },
+    [pageInfo]
   );
 
   // Regenerate blob: URLs (which don't survive a reload) from bytes kept in IndexedDB.
@@ -349,6 +452,8 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setFiles([]);
       setIsLoading(false);
       loadedFoldersRef.current.clear();
+      pageStateRef.current.clear();
+      setPageInfo({});
       return;
     }
 
@@ -652,7 +757,10 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isLoading,
         remoteError,
         loadFolder,
+        loadMoreFolder,
         loadSharedFolders,
+        loadMoreSharedFolders,
+        getPagination,
         createFolder,
         addFile,
         renameItem,

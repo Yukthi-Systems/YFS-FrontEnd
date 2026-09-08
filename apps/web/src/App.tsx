@@ -19,6 +19,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
+import { useInfiniteScroll } from "./hooks/useInfiniteScroll";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -52,7 +53,10 @@ function App() {
     isLoading: filesLoading,
     remoteError,
     loadFolder,
+    loadMoreFolder,
     loadSharedFolders,
+    loadMoreSharedFolders,
+    getPagination,
     createFolder,
     renameItem,
     toggleStar,
@@ -77,6 +81,7 @@ function App() {
   const [viewerItem, setViewerItem] = useState<FileItem | null>(null);
 
   const canvasFileInputRef = useRef<HTMLInputElement>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
 
   const sso = useSsoAutoLogin({ isAuthenticated, authLoading, loginWithSso, clearError });
   const diagnostics = useSystemDiagnostics(token);
@@ -90,6 +95,23 @@ function App() {
     if (nav.activeSidebarTab === "shared") loadSharedFolders();
     else loadFolder(nav.currentFolderId);
   }, [isAuthenticated, nav.activeSidebarTab, nav.currentFolderId, loadFolder, loadSharedFolders]);
+
+  // Infinite scroll — only the server-backed listings ("drive" folders and the
+  // "shared with me" bucket) page; the other tabs are client-side filters.
+  const isSharedTab = nav.activeSidebarTab === "shared";
+  const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive";
+  const pagination = getPagination(nav.currentFolderId, isSharedTab);
+  const loadMoreSentinelRef = useInfiniteScroll(
+    () => {
+      if (isSharedTab) loadMoreSharedFolders();
+      else loadMoreFolder(nav.currentFolderId);
+    },
+    {
+      hasMore: isPaginatedTab && pagination.hasMore,
+      loading: pagination.loading,
+      root: scrollContainer,
+    }
+  );
 
   // Surface a one-time notice if the file service can't be reached.
   useEffect(() => {
@@ -277,6 +299,7 @@ function App() {
             />
           ) : (
             <div
+              ref={setScrollContainer}
               className="flex-1 overflow-y-auto px-8 py-6 pb-12 flex flex-col gap-6 max-[768px]:px-4"
               onClick={() => {
                 selection.clearSelection();
@@ -360,6 +383,14 @@ function App() {
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
                       onDropOnFolder={dnd.handleDropOnFolder}
                     />
+                  )}
+
+                  {isPaginatedTab && !filesLoading && (pagination.hasMore || pagination.loading) && (
+                    <div ref={loadMoreSentinelRef} className="flex justify-center py-4">
+                      {pagination.loading && (
+                        <div className="w-5 h-5 border-2 border-border-main border-t-accent rounded-full animate-spin" />
+                      )}
+                    </div>
                   )}
                 </>
               )}
