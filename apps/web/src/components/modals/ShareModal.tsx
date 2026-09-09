@@ -45,7 +45,7 @@ const permsEqual = (a: InternalSharePermissions, b: InternalSharePermissions) =>
   PERMISSION_FIELDS.every(({ key }) => a[key] === b[key]);
 const newShareId = () => Math.random().toString(36).slice(2, 12);
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
-const splitEmails = (raw: string) =>
+const splitList = (raw: string) =>
   raw.split(",").map((s) => s.trim()).filter(Boolean);
 const sameList = (a: string[], b: string[]) => [...a].sort().join(",") === [...b].sort().join(",");
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
@@ -64,6 +64,7 @@ interface LinkDraft {
   base: ExternalShare | null; // null = not yet on the server
   perms: InternalSharePermissions;
   otpEmails: string;
+  otpPhones: string;
   expiresAt: string; // yyyy-mm-dd
   changePassword: boolean;
   password: string;
@@ -160,6 +161,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
           base: s,
           perms: permsOf(s),
           otpEmails: s.emails_for_otp.join(", "),
+          otpPhones: s.phones_for_otp.join(", "),
           expiresAt: toDateInput(s.expires_at),
           changePassword: false,
           password: "",
@@ -222,6 +224,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
         base: null,
         perms: DEFAULT_PERMS,
         otpEmails: "",
+        otpPhones: "",
         expiresAt: "",
         changePassword: false,
         password: "",
@@ -234,7 +237,8 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     if (l.removed) return true;
     return (
       !permsEqual(permsOf(l.base), l.perms) ||
-      !sameList(l.base.emails_for_otp, splitEmails(l.otpEmails)) ||
+      !sameList(l.base.emails_for_otp, splitList(l.otpEmails)) ||
+      !sameList(l.base.phones_for_otp, splitList(l.otpPhones)) ||
       toDateInput(l.base.expires_at) !== l.expiresAt ||
       l.changePassword
     );
@@ -283,7 +287,8 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
             folderTargetId: item.isFolder ? item.id : null,
             permissions: l.perms,
             rawPassword: l.password.trim() || null,
-            emailsForOtp: splitEmails(l.otpEmails),
+            emailsForOtp: splitList(l.otpEmails),
+            phonesForOtp: splitList(l.otpPhones),
             expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
           });
         } else if (l.base && !l.removed && linkDirty(l)) {
@@ -292,7 +297,8 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
             shareInfo: l.base.share_info,
             updatePassword: l.changePassword,
             rawPassword: l.changePassword ? l.password.trim() || null : null,
-            emailsForOtp: splitEmails(l.otpEmails),
+            emailsForOtp: splitList(l.otpEmails),
+            phonesForOtp: splitList(l.otpPhones),
             expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
           });
         }
@@ -625,6 +631,12 @@ function LinksTab({
                 value={l.otpEmails}
                 onChange={(e) => patchLink(l.key, { otpEmails: e.target.value })}
                 placeholder="OTP emails, comma-separated (optional)"
+                className="dialog-input"
+              />
+              <input
+                value={l.otpPhones}
+                onChange={(e) => patchLink(l.key, { otpPhones: e.target.value })}
+                placeholder="OTP phone numbers, comma-separated (optional)"
                 className="dialog-input"
               />
               <label className="flex flex-col gap-1">

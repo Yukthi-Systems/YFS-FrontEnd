@@ -74,7 +74,9 @@ export function SharedLinksList({
             <div className="text-[11px] text-text-main flex flex-wrap gap-x-2">
               <span>{permList(s)}</span>
               {s.password_hash && <span>· password</span>}
-              {s.emails_for_otp.length > 0 && <span>· OTP to {s.emails_for_otp.length}</span>}
+              {s.emails_for_otp.length + s.phones_for_otp.length > 0 && (
+                <span>· OTP to {s.emails_for_otp.length + s.phones_for_otp.length}</span>
+              )}
               {s.expires_at && <span>· expires {formatDate(s.expires_at)}</span>}
               <span>· created {formatDate(s.created_at)}</span>
             </div>
