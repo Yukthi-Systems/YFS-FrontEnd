@@ -1,7 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { FileItem, FileVersion, ShareSettings } from "../types/file";
 import { SHARED_ROOT_ID } from "../types/file";
-import type { BackendResource, InternalSharedResource } from "@yfs/service";
+import type {
+  BackendResource,
+  ExternalShare,
+  FolderTrashInfo,
+  InternalSharedResource,
+  InternalSharePermissions,
+  ResourceInfo,
+  ResourceUiInfo,
+} from "@yfs/service";
 import {
   HttpError,
   PAGE_SIZE,
@@ -11,6 +19,11 @@ import {
   editFolder as apiEditFolder,
   moveFolder as apiMoveFolder,
   listSharingIn,
+  listSharingOut,
+  listSharedFolderChildren,
+  listExternalShares,
+  deleteExternalShare,
+  updateFileInfo as apiUpdateFileInfo,
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
@@ -19,6 +32,8 @@ import { useAuth } from "./AuthContext";
 
 const STORAGE_KEY = "yfs_fs_cache";
 const ROOT_KEY = "__root__";
+// A real root folder that holds trashed items. Auto-created on first login.
+const TRASH_FOLDER_NAME = "Trash";
 
 export interface AddFileInput {
   name: string;
@@ -28,6 +43,8 @@ export interface AddFileInput {
   extension?: string;
   storageKey: string;
   blob: Blob;
+  fileId?: string; // logical files.file_id from the upload backend
+  version?: number; // file_versions.file_version this upload produced
 }
 
 // Per-folder infinite-scroll state, exposed so the UI can render a loading row and
@@ -52,13 +69,29 @@ interface FileSystemContextType {
   loadSharedFolders: (opts?: { force?: boolean }) => Promise<void>;
   // Fetches the next page of shared-with-me folders (infinite scroll).
   loadMoreSharedFolders: () => Promise<void>;
+  // Folders I've shared with other users (GET /share/internal/list/sharing-out).
+  sharedOut: FileItem[];
+  loadSharedOut: (opts?: { force?: boolean }) => Promise<void>;
+  // Public links I've created (GET /share/external/list).
+  sharedLinks: ExternalShare[];
+  loadSharedLinks: (opts?: { force?: boolean }) => Promise<void>;
+  revokeSharedLink: (shareId: string) => Promise<void>;
   // Current infinite-scroll status for a folder listing (or the shared bucket).
   getPagination: (parentId: string | null, shared?: boolean) => PaginationInfo;
   createFolder: (name: string, parentId: string | null) => FileItem | null;
+  // Creates every missing folder in `segments` under `rootParentId` server-side (skipping
+  // ones that already exist) and resolves to the real folder id of the deepest segment,
+  // or null if it couldn't be resolved. Falls back to optimistic local folders when
+  // signed out. Used by folder uploads, which need real ids before signing.
+  ensureFolderPath: (segments: string[], rootParentId: string | null) => Promise<string | null>;
+  // Id of the auto-created "Trash" root folder (null until it's been resolved/created).
+  trashFolderId: string | null;
   addFile: (input: AddFileInput) => FileItem;
   renameItem: (id: string, newName: string) => void;
   toggleStar: (id: string) => void;
   starItems: (ids: string[]) => void;
+  // Set/clear a folder's colour and/or icon (persisted in resource_info.ui).
+  setFolderStyle: (id: string, style: { color?: string | null; icon?: string | null }) => void;
   trashItems: (ids: string[]) => void;
   restoreItems: (ids: string[]) => void;
   permanentDeleteItems: (ids: string[]) => void;
@@ -92,41 +125,69 @@ const collectDescendantIds = (files: FileItem[], rootId: string): string[] => {
 const nowIso = () => new Date().toISOString();
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
 
+interface SharedSubtree {
+  rootId: string; // the folder from "Shared with me" (share endpoint's shared_folder_id)
+  ownerUserId: string;
+  ownerEmail?: string;
+  permissions: InternalSharePermissions;
+}
+
+// Walk up from `folderId` to the "Shared with me" root it belongs to (the item
+// directly under SHARED_ROOT_ID). Returns that share's id + owner + permissions so a
+// nested folder can be listed through the share endpoint, or null if it isn't shared.
+const sharedSubtreeContext = (files: FileItem[], folderId: string): SharedSubtree | null => {
+  const byId = new Map(files.map((f) => [f.id, f]));
+  let cur = byId.get(folderId);
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.parentId === SHARED_ROOT_ID) {
+      return cur.sharedIn
+        ? {
+            rootId: cur.id,
+            ownerUserId: cur.sharedIn.ownerUserId,
+            ownerEmail: cur.sharedIn.ownerEmail,
+            permissions: cur.sharedIn.permissions,
+          }
+        : null;
+    }
+    if (cur.origin !== "shared" || !cur.parentId) return null;
+    cur = byId.get(cur.parentId);
+  }
+  return null;
+};
+
 // Map a raw API resource (folder or file) into the app's FileItem shape.
 const mapResource = (r: BackendResource, ownerEmail: string): FileItem => {
-  if (r.is_resource_folder) {
-    return {
-      id: r.resource_id,
-      name: r.resource_name,
-      isFolder: true,
-      parentId: r.parent_folder_id ?? null,
-      size: r.total_resource_size ?? 0,
-      owner: { name: "me", email: ownerEmail },
-      modifiedAt: r.updated_at,
-      createdAt: r.created_at,
-      isStarred: false,
-      isDeleted: false,
-      type: "folder",
-      origin: "server",
-    };
-  }
+  const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
+  const trash = info?.trash_info ?? null;
+  const ui = info?.ui;
 
-  const { type, extension } = categorizeByName(r.resource_name);
-  return {
+  const common = {
     id: r.resource_id,
     name: r.resource_name,
-    isFolder: false,
     parentId: r.parent_folder_id ?? null,
     size: r.total_resource_size ?? 0,
     owner: { name: "me", email: ownerEmail },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    isStarred: false,
-    isDeleted: false,
-    type,
-    extension: extension || undefined,
-    origin: "server",
+    isStarred: !!ui?.starred,
+    color: ui?.color,
+    icon: ui?.icon,
+    createdBy: info?.creation_info?.user_name,
+    // trash_info in resource_info is the source of truth for "is trashed".
+    isDeleted: !!trash,
+    trashedFrom: trash ? trash.trashed_from : undefined,
+    resourceInfo: info,
+    origin: "server" as const,
   };
+
+  if (r.is_resource_folder) {
+    return { ...common, isFolder: true, type: "folder" };
+  }
+
+  const { type, extension } = categorizeByName(r.resource_name);
+  return { ...common, isFolder: false, type, extension: extension || undefined };
 };
 
 // Map a "shared with me" folder into a FileItem parked under SHARED_ROOT_ID.
@@ -164,12 +225,18 @@ const mergeServerListing = (
   incoming: FileItem[],
   append = false
 ): FileItem[] => {
-  // 1. Match optimistic local folders to their server counterparts by parent + name.
+  // 1. Match optimistic local rows (offline folders, just-uploaded files) to their
+  //    server counterparts by kind + parent + name so the temp id is swapped for the
+  //    real one instead of showing a duplicate.
   const idRemap = new Map<string, string>();
   for (const res of incoming) {
-    if (!res.isFolder) continue;
     const local = prev.find(
-      (f) => f.isFolder && f.origin !== "server" && f.parentId === res.parentId && f.name === res.name && f.id !== res.id
+      (f) =>
+        f.isFolder === res.isFolder &&
+        f.origin !== "server" &&
+        f.parentId === res.parentId &&
+        f.name === res.name &&
+        f.id !== res.id
     );
     if (local) idRemap.set(local.id, res.id);
   }
@@ -190,12 +257,18 @@ const mergeServerListing = (
     if (!res) return f;
     return {
       ...res,
-      isStarred: f.isStarred,
-      isDeleted: f.isDeleted,
+      // isStarred / color / icon now live in resource_info (carried by ...res).
+      // trash_info in resource_info (res) is authoritative; also keep a local flag
+      // set optimistically before the edit has synced.
+      isDeleted: f.isDeleted || res.isDeleted,
+      trashedFrom: f.trashedFrom ?? res.trashedFrom,
       share: f.share,
       versions: f.versions,
       blobUrl: f.blobUrl,
       storageKey: f.storageKey,
+      // The folder listing doesn't carry version/file-id yet — keep what the upload set.
+      fileId: f.fileId,
+      version: f.version,
     };
   });
   for (const res of incoming) {
@@ -224,6 +297,9 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [remoteError, setRemoteError] = useState<string | null>(null);
   // Infinite-scroll status per folder key (ROOT_KEY / folder id / SHARED_ROOT_ID).
   const [pageInfo, setPageInfo] = useState<Record<string, PaginationInfo>>({});
+  const [trashFolderId, setTrashFolderId] = useState<string | null>(null);
+  const [sharedOut, setSharedOut] = useState<FileItem[]>([]);
+  const [sharedLinks, setSharedLinks] = useState<ExternalShare[]>([]);
 
   // Refs so async callbacks always see current values without re-creating themselves.
   const authRef = useRef({ token, userId, refreshAccessToken });
@@ -232,11 +308,17 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   filesRef.current = files;
   const ownerEmailRef = useRef(user?.email || "me@example.com");
   ownerEmailRef.current = user?.email || "me@example.com";
+  const displayName = (u: typeof user) =>
+    u?.username || [u?.first_name, u?.last_name].filter(Boolean).join(" ") || u?.email || undefined;
+  const userNameRef = useRef<string | undefined>(displayName(user));
+  userNameRef.current = displayName(user);
   const loadedFoldersRef = useRef<Set<string>>(new Set());
+  // Folder keys with a listing request currently in flight (dedupes racing effects).
+  const inFlightRef = useRef<Set<string>>(new Set());
   // How many rows we've pulled for each folder key and whether the server has more.
   const pageStateRef = useRef<Map<string, { loaded: number; hasMore: boolean }>>(new Map());
-  const pageInfoRef = useRef(pageInfo);
-  pageInfoRef.current = pageInfo;
+  const trashFolderIdRef = useRef<string | null>(null);
+  trashFolderIdRef.current = trashFolderId;
 
   const pageKeyFor = (parentId: string | null, shared?: boolean) =>
     shared ? SHARED_ROOT_ID : parentId ?? ROOT_KEY;
@@ -259,6 +341,16 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFiles(updated);
     saveCache(updated);
   };
+
+  // Metadata stamped into a new folder's folder_info (echoed back as resource_info).
+  const buildCreationInfo = (parentFolderId: string | null): ResourceInfo => ({
+    creation_info: {
+      user_id: authRef.current.userId ?? undefined,
+      user_name: userNameRef.current,
+      parent_folder_id: parentFolderId,
+      created_at: nowIso(),
+    },
+  });
 
   // Runs an API call with the current token; on 401/400 refreshes once and retries.
   const withFreshToken = useCallback(async <T,>(fn: (token: string) => Promise<T>): Promise<T | undefined> => {
@@ -287,14 +379,23 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (mode === "initial" && loadedFoldersRef.current.has(key)) return;
 
+      // A folder inside a "Shared with me" folder is listed through the share endpoint
+      // as the folder's owner, not the normal listing.
+      const shared = parentId !== null ? sharedSubtreeContext(filesRef.current, parentId) : null;
+
       // Client-only folders (created offline, not yet synced) have no server listing.
-      if (parentId !== null) {
+      // Shared-subtree folders do (via the share endpoint), so don't skip those.
+      if (parentId !== null && !shared) {
         const folder = filesRef.current.find((f) => f.id === parentId);
         if (folder && folder.origin !== "server") return;
       }
 
       const state = pageStateRef.current.get(key) ?? { loaded: 0, hasMore: true };
-      if (mode === "append" && (!state.hasMore || pageInfoRef.current[key]?.loading)) return;
+      if (mode === "append" && !state.hasMore) return;
+      // Synchronous guard: two effects racing to load the same folder (e.g. the
+      // FileSystemContext boot fetch + App's nav effect) would otherwise both fire.
+      if (inFlightRef.current.has(key)) return;
+      inFlightRef.current.add(key);
 
       const offset = mode === "append" ? state.loaded : 0;
       setPageLoading(key, true, state.hasMore);
@@ -303,7 +404,9 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const resources = await withFreshToken((tk) =>
           parentId === null
             ? listRootFolders(tk, { limit: PAGE_SIZE, offset })
-            : listFolderChildren(tk, parentId, { limit: PAGE_SIZE, offset })
+            : shared
+              ? listSharedFolderChildren(tk, shared.rootId, parentId, { limit: PAGE_SIZE, offset })
+              : listFolderChildren(tk, parentId, { limit: PAGE_SIZE, offset })
         );
         if (!resources) {
           setPageLoading(key, false);
@@ -315,7 +418,23 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         loadedFoldersRef.current.add(key);
         setRemoteError(null);
 
-        const mapped = resources.map((r) => mapResource(r, ownerEmailRef.current));
+        const inTrash = parentId !== null && parentId === trashFolderIdRef.current;
+        const mapped = resources.map((r) => {
+          const item = mapResource(r, ownerEmailRef.current);
+          // Direct children of the Trash folder are, by definition, trashed — keep
+          // the flag true even for items trashed on another device.
+          if (inTrash) item.isDeleted = true;
+          if (shared) {
+            item.origin = "shared";
+            item.owner = { name: shared.ownerEmail?.split("@")[0] || "Shared", email: shared.ownerEmail || "" };
+            item.sharedIn = {
+              ownerUserId: shared.ownerUserId,
+              ownerEmail: shared.ownerEmail,
+              permissions: shared.permissions,
+            };
+          }
+          return item;
+        });
         setFiles((prev) => {
           const next = mergeServerListing(prev, parentId, mapped, mode === "append");
           saveCache(next);
@@ -326,6 +445,8 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         console.warn("Failed to load folder from YFS-Main-API", err);
         setRemoteError(err instanceof Error ? err.message : "Could not reach the file service");
         setPageLoading(key, false);
+      } finally {
+        inFlightRef.current.delete(key);
       }
     },
     [withFreshToken]
@@ -351,7 +472,9 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (mode === "initial" && loadedFoldersRef.current.has(key)) return;
 
       const state = pageStateRef.current.get(key) ?? { loaded: 0, hasMore: true };
-      if (mode === "append" && (!state.hasMore || pageInfoRef.current[key]?.loading)) return;
+      if (mode === "append" && !state.hasMore) return;
+      if (inFlightRef.current.has(key)) return;
+      inFlightRef.current.add(key);
 
       const offset = mode === "append" ? state.loaded : 0;
       setPageLoading(key, true, state.hasMore);
@@ -405,6 +528,8 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         console.warn("Failed to load shared folders from YFS-Main-API", err);
         setRemoteError(err instanceof Error ? err.message : "Could not reach the file service");
         setPageLoading(key, false);
+      } finally {
+        inFlightRef.current.delete(key);
       }
     },
     [withFreshToken]
@@ -416,6 +541,58 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   );
 
   const loadMoreSharedFolders = useCallback(() => fetchSharedPage("append"), [fetchSharedPage]);
+
+  // Folders I've shared out. One row per recipient, so dedupe by folder id.
+  const loadSharedOut = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!authRef.current.token) return;
+      if (!opts?.force && loadedFoldersRef.current.has("__shared_out__")) return;
+      try {
+        const rows = await withFreshToken((tk) => listSharingOut(tk, { limit: PAGE_SIZE, offset: 0 }));
+        if (!rows) return;
+        const byId = new Map<string, InternalSharedResource>();
+        for (const r of rows) byId.set(r.resource_id, r);
+        setSharedOut(
+          [...byId.values()].map((r) => {
+            const item = mapSharedResource(r);
+            item.parentId = null;
+            item.owner = { name: "me", email: ownerEmailRef.current };
+            return item;
+          })
+        );
+        loadedFoldersRef.current.add("__shared_out__");
+        setRemoteError(null);
+      } catch (err) {
+        console.warn("Failed to load shared-out folders", err);
+      }
+    },
+    [withFreshToken]
+  );
+
+  const loadSharedLinks = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!authRef.current.token) return;
+      if (!opts?.force && loadedFoldersRef.current.has("__shared_links__")) return;
+      try {
+        const rows = await withFreshToken((tk) => listExternalShares(tk, { limit: PAGE_SIZE, offset: 0 }));
+        if (!rows) return;
+        setSharedLinks(rows);
+        loadedFoldersRef.current.add("__shared_links__");
+        setRemoteError(null);
+      } catch (err) {
+        console.warn("Failed to load public links", err);
+      }
+    },
+    [withFreshToken]
+  );
+
+  const revokeSharedLink = useCallback(
+    async (shareId: string) => {
+      await withFreshToken((tk) => deleteExternalShare(tk, shareId));
+      setSharedLinks((prev) => prev.filter((s) => s.share_id !== shareId));
+    },
+    [withFreshToken]
+  );
 
   const getPagination = useCallback(
     (parentId: string | null, shared?: boolean): PaginationInfo =>
@@ -447,10 +624,62 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     );
   };
 
+  // Resolve the "Trash" root folder, creating it on first login if it's missing.
+  const ensureTrashFolder = useCallback(async (): Promise<string | null> => {
+    const known = filesRef.current.find(
+      (f) => f.isFolder && f.parentId === null && f.origin === "server" && f.name === TRASH_FOLDER_NAME
+    );
+    if (known) {
+      setTrashFolderId(known.id);
+      return known.id;
+    }
+
+    if (!authRef.current.token) return null;
+
+    // List root first; only create if it's genuinely absent (saves a doomed create
+    // call on every login after the first).
+    const readRoot = async () =>
+      withFreshToken((t) => listRootFolders(t, { limit: PAGE_SIZE, offset: 0 })).catch((err) => {
+        console.warn("ensureTrashFolder: could not read root listing", err);
+        return undefined;
+      });
+
+    let listing = await readRoot();
+    if (listing && !listing.some((r) => r.is_resource_folder && r.resource_name === TRASH_FOLDER_NAME)) {
+      try {
+        await withFreshToken((t) =>
+          apiCreateFolder(t, {
+            parentFolderId: null,
+            folderName: TRASH_FOLDER_NAME,
+            folderInfo: buildCreationInfo(null),
+          })
+        );
+      } catch (err) {
+        if (!(err instanceof HttpError)) console.warn("ensureTrashFolder: create failed", err);
+      }
+      listing = await readRoot();
+    }
+
+    const match = listing?.find((r) => r.is_resource_folder && r.resource_name === TRASH_FOLDER_NAME);
+    if (!match) return null;
+
+    const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmailRef.current));
+    setFiles((prev) => {
+      const next = mergeServerListing(prev, null, mapped, false);
+      saveCache(next);
+      return next;
+    });
+    setTrashFolderId(match.resource_id);
+    return match.resource_id;
+  }, [withFreshToken]);
+
   useEffect(() => {
     if (!isAuthenticated) {
       setFiles([]);
       setIsLoading(false);
+      setTrashFolderId(null);
+      setSharedOut([]);
+      setSharedLinks([]);
       loadedFoldersRef.current.clear();
       pageStateRef.current.clear();
       setPageInfo({});
@@ -474,14 +703,15 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setFiles(hydrated);
       setIsLoading(false);
 
-      // Pull the live root listing over the cached tree.
+      // Pull the live root listing over the cached tree, then make sure Trash exists.
       await loadFolder(null, { force: true });
+      if (!cancelled) await ensureTrashFolder();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, loadFolder]);
+  }, [isAuthenticated, loadFolder, ensureTrashFolder]);
 
   const getDescendantIds = (id: string) => collectDescendantIds(files, id);
 
@@ -491,6 +721,7 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const safeName = sanitizeName(name);
     if (!safeName) return null;
 
+    const creationInfo = buildCreationInfo(parentId);
     const newFolder: FileItem = {
       id: "folder-" + Date.now() + "-" + randomSuffix(),
       name: safeName,
@@ -503,6 +734,8 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isStarred: false,
       isDeleted: false,
       type: "folder",
+      resourceInfo: creationInfo,
+      createdBy: userNameRef.current,
       origin: "local",
     };
 
@@ -512,12 +745,12 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    const { token: tk, userId: uid } = authRef.current;
-    if (tk && uid) {
+    const { token: tk } = authRef.current;
+    if (tk) {
       (async () => {
         try {
           await withFreshToken((t) =>
-            apiCreateFolder(t, { userId: uid, parentFolderId: parentId, folderName: safeName })
+            apiCreateFolder(t, { parentFolderId: parentId, folderName: safeName, folderInfo: creationInfo })
           );
           await loadFolder(parentId, { force: true });
         } catch (err) {
@@ -529,10 +762,82 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return newFolder;
   };
 
+  // Resolve a folder chain to real server ids, creating missing links. See the
+  // interface doc. Returns the deepest folder id, or null on failure.
+  const ensureFolderPath = useCallback(
+    async (segments: string[], rootParentId: string | null): Promise<string | null> => {
+      let parentId = rootParentId;
+
+      for (const rawSegment of segments) {
+        const segment = sanitizeName(rawSegment);
+        if (!segment) continue;
+
+        const known = filesRef.current.find(
+          (f) => f.isFolder && !f.isDeleted && f.parentId === parentId && f.name === segment
+        );
+        if (known?.origin === "server") {
+          parentId = known.id;
+          continue;
+        }
+
+        const { token: tk } = authRef.current;
+        if (!tk) {
+          // Signed out — fall back to an optimistic local folder.
+          const local = known ?? createFolder(segment, parentId);
+          if (!local) return null;
+          parentId = local.id;
+          continue;
+        }
+
+        // Create it (a unique-name conflict just means it already exists), then read
+        // the parent's listing back to learn the real id.
+        try {
+          await withFreshToken((t) =>
+            apiCreateFolder(t, {
+              parentFolderId: parentId,
+              folderName: segment,
+              folderInfo: buildCreationInfo(parentId),
+            })
+          );
+        } catch (err) {
+          if (!(err instanceof HttpError)) console.warn("ensureFolderPath: create failed", err);
+        }
+
+        const listParentId = parentId;
+        let listing: Awaited<ReturnType<typeof listRootFolders>> | undefined;
+        try {
+          listing = await withFreshToken((t) =>
+            listParentId === null
+              ? listRootFolders(t, { limit: PAGE_SIZE, offset: 0 })
+              : listFolderChildren(t, listParentId, { limit: PAGE_SIZE, offset: 0 })
+          );
+        } catch (err) {
+          console.warn("ensureFolderPath: could not read folder listing", err);
+          return null;
+        }
+        const match = listing?.find((r) => r.is_resource_folder && r.resource_name === segment);
+        if (!match) return null;
+
+        const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmailRef.current));
+        setFiles((prev) => {
+          const next = mergeServerListing(prev, listParentId, mapped, false);
+          saveCache(next);
+          return next;
+        });
+        parentId = match.resource_id;
+      }
+
+      return parentId;
+    },
+    [withFreshToken]
+  );
+
   const addFile = (input: AddFileInput): FileItem => {
+    const safeName = sanitizeName(input.name) || "unnamed";
+
     const newItem: FileItem = {
       id: "file-" + Date.now() + "-" + randomSuffix(),
-      name: sanitizeName(input.name) || "unnamed",
+      name: safeName,
       isFolder: false,
       parentId: input.parentId,
       size: input.size,
@@ -545,11 +850,40 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       extension: input.extension,
       blobUrl: URL.createObjectURL(input.blob),
       storageKey: input.storageKey,
+      fileId: input.fileId,
+      version: input.version,
       origin: "local",
     };
 
     setFiles((prev) => {
-      const updated = [...prev, newItem];
+      // The backend keeps one row per (folder, file_name); mirror that here. If this
+      // upload bumped the version, fold the previous content into the version history
+      // instead of dropping it; otherwise it's a plain replace.
+      const existing = prev.find(
+        (f) => !f.isFolder && f.parentId === newItem.parentId && f.name === safeName
+      );
+      if (existing) {
+        newItem.isStarred = existing.isStarred;
+        newItem.isDeleted = existing.isDeleted;
+        newItem.share = existing.share;
+        if (input.version && input.version > 1 && existing.storageKey) {
+          const snapshot: FileVersion = {
+            id: "version-" + Date.now() + "-" + randomSuffix(),
+            storageKey: existing.storageKey,
+            blobUrl: existing.blobUrl,
+            size: existing.size,
+            savedAt: existing.modifiedAt,
+          };
+          newItem.versions = [snapshot, ...(existing.versions ?? [])];
+        } else {
+          newItem.versions = existing.versions;
+        }
+      }
+
+      const updated = [
+        ...prev.filter((f) => !(!f.isFolder && f.parentId === newItem.parentId && f.name === safeName)),
+        newItem,
+      ];
       saveCache(updated);
       return updated;
     });
@@ -563,30 +897,159 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const target = files.find((f) => f.id === id);
     persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
-    const { userId: uid } = authRef.current;
-    if (uid && target?.isFolder && target.origin === "server") {
-      withFreshToken((t) => apiEditFolder(t, { userId: uid, folderId: id, folderName: safeName })).catch((err) =>
-        console.warn("Folder rename did not sync to API", err)
-      );
+    const { token: tk } = authRef.current;
+    if (tk && target?.origin === "server") {
+      // edit replaces *_info wholesale — carry the existing info through.
+      if (target.isFolder) {
+        withFreshToken((t) =>
+          apiEditFolder(t, { folderId: id, folderName: safeName, folderInfo: target.resourceInfo })
+        ).catch((err) => console.warn("Folder rename did not sync to API", err));
+      } else if (target.fileId) {
+        withFreshToken((t) =>
+          apiUpdateFileInfo(t, { file_id: target.fileId!, file_name: safeName, file_info: target.resourceInfo ?? {} })
+        ).catch((err) => console.warn("File rename did not sync to API", err));
+      }
     }
   };
 
+  // Merge a UI patch (starred / color / icon) into an item's resource_info.
+  const mergeUi = (f: FileItem, patch: Partial<ResourceUiInfo>): Record<string, unknown> => {
+    const info = (f.resourceInfo ?? {}) as ResourceInfo;
+    return { ...info, ui: { ...(info.ui ?? {}), ...patch } };
+  };
+
+  // Persist a resource_info.ui change for a server folder (PATCH /folders/edit,
+  // which replaces folder_info — so send the whole merged object).
+  const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
+    const target = filesRef.current.find((f) => f.id === id);
+    if (!target?.isFolder || target.origin !== "server" || !authRef.current.token) return;
+    const folderInfo = mergeUi(target, patch);
+    withFreshToken((t) => apiEditFolder(t, { folderId: id, folderName: target.name, folderInfo })).catch((err) =>
+      console.warn("Folder appearance did not sync to API", err)
+    );
+  };
+
   const toggleStar = (id: string) => {
-    persist(files.map((f) => (f.id === id ? { ...f, isStarred: !f.isStarred } : f)));
+    const next = !files.find((f) => f.id === id)?.isStarred;
+    persist(files.map((f) => (f.id === id ? { ...f, isStarred: next, resourceInfo: mergeUi(f, { starred: next }) } : f)));
+    patchFolderUi(id, { starred: next });
   };
 
   const starItems = (ids: string[]) => {
-    persist(files.map((f) => (ids.includes(f.id) ? { ...f, isStarred: true } : f)));
+    persist(
+      files.map((f) => (ids.includes(f.id) ? { ...f, isStarred: true, resourceInfo: mergeUi(f, { starred: true }) } : f))
+    );
+    ids.forEach((id) => patchFolderUi(id, { starred: true }));
   };
 
+  // Folder colour / icon. Pass null to clear either.
+  const setFolderStyle = (id: string, style: { color?: string | null; icon?: string | null }) => {
+    const patch: Partial<ResourceUiInfo> = {};
+    if ("color" in style) patch.color = style.color ?? undefined;
+    if ("icon" in style) patch.icon = style.icon ?? undefined;
+    persist(
+      files.map((f) =>
+        f.id === id
+          ? {
+              ...f,
+              color: "color" in style ? style.color ?? undefined : f.color,
+              icon: "icon" in style ? style.icon ?? undefined : f.icon,
+              resourceInfo: mergeUi(f, patch),
+            }
+          : f
+      )
+    );
+    patchFolderUi(id, patch);
+  };
+
+  // Trashing = record where it came from in resource_info.trash_info AND move the
+  // item into the Trash folder. For server folders both are real API calls
+  // (PATCH /folders/edit then PUT /folders/move); the client mirrors them optimistically.
   const trashItems = (ids: string[]) => {
-    const allIds = new Set(ids.flatMap((id) => [id, ...getDescendantIds(id)]));
-    persist(files.map((f) => (allIds.has(f.id) ? { ...f, isDeleted: true } : f)));
+    const trashId = trashFolderIdRef.current;
+    const targets = new Set(ids);
+    const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
+    const roots = files.filter((f) => targets.has(f.id));
+    const parentNameById = new Map(files.map((f) => [f.id, f.name]));
+
+    const trashInfoFor = (f: FileItem): FolderTrashInfo => ({
+      trashed_from: f.parentId,
+      trashed_from_name: f.parentId ? parentNameById.get(f.parentId) : undefined,
+      trashed_by: authRef.current.userId ?? undefined,
+      trashed_by_name: userNameRef.current,
+      trashed_at: nowIso(),
+    });
+
+    persist(
+      files.map((f) => {
+        if (targets.has(f.id)) {
+          return {
+            ...f,
+            isDeleted: true,
+            trashedFrom: f.parentId,
+            parentId: trashId ?? f.parentId,
+            resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) },
+            modifiedAt: nowIso(),
+          };
+        }
+        if (descendantIds.has(f.id)) return { ...f, isDeleted: true };
+        return f;
+      })
+    );
+
+    if (authRef.current.token) {
+      roots
+        .filter((f) => f.isFolder && f.origin === "server")
+        .forEach((f) => {
+          const folderInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) };
+          withFreshToken(async (t) => {
+            await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
+            if (trashId) await apiMoveFolder(t, { folderId: f.id, newParentFolderId: trashId });
+          }).catch((err) => console.warn("Trash did not sync to API", err));
+        });
+    }
   };
 
   const restoreItems = (ids: string[]) => {
-    const allIds = new Set(ids.flatMap((id) => [id, ...getDescendantIds(id)]));
-    persist(files.map((f) => (allIds.has(f.id) ? { ...f, isDeleted: false } : f)));
+    const targets = new Set(ids);
+    const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
+    const roots = files.filter((f) => targets.has(f.id));
+
+    const withoutTrashInfo = (info: FileItem["resourceInfo"]): ResourceInfo => {
+      const next = { ...(info ?? {}) } as ResourceInfo;
+      next.trash_info = null;
+      return next;
+    };
+
+    persist(
+      files.map((f) => {
+        if (targets.has(f.id)) {
+          return {
+            ...f,
+            isDeleted: false,
+            trashedFrom: undefined,
+            parentId: f.trashedFrom ?? null,
+            resourceInfo: withoutTrashInfo(f.resourceInfo),
+            modifiedAt: nowIso(),
+          };
+        }
+        if (descendantIds.has(f.id)) return { ...f, isDeleted: false };
+        return f;
+      })
+    );
+
+    if (authRef.current.token) {
+      roots
+        .filter((f) => f.isFolder && f.origin === "server")
+        .forEach((f) => {
+          const folderInfo = withoutTrashInfo(f.resourceInfo);
+          const restoreTo = f.trashedFrom ?? null;
+          withFreshToken(async (t) => {
+            await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
+            await apiMoveFolder(t, { folderId: f.id, newParentFolderId: restoreTo });
+          }).catch((err) => console.warn("Restore did not sync to API", err));
+        });
+    }
   };
 
   const permanentDeleteItems = (ids: string[]) => {
@@ -617,11 +1080,11 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (moved > 0) persist(next);
 
-    const { userId: uid } = authRef.current;
-    if (uid && movedServerFolderIds.length > 0) {
+    const { token: tk } = authRef.current;
+    if (tk && movedServerFolderIds.length > 0) {
       movedServerFolderIds.forEach((folderId) => {
         withFreshToken((t) =>
-          apiMoveFolder(t, { userId: uid, folderId, newParentFolderId: newParentId })
+          apiMoveFolder(t, { folderId, newParentFolderId: newParentId })
         ).catch((err) => console.warn("Folder move did not sync to API", err));
       });
     }
@@ -760,12 +1223,20 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         loadMoreFolder,
         loadSharedFolders,
         loadMoreSharedFolders,
+        sharedOut,
+        loadSharedOut,
+        sharedLinks,
+        loadSharedLinks,
+        revokeSharedLink,
         getPagination,
         createFolder,
+        ensureFolderPath,
+        trashFolderId,
         addFile,
         renameItem,
         toggleStar,
         starItems,
+        setFolderStyle,
         trashItems,
         restoreItems,
         permanentDeleteItems,

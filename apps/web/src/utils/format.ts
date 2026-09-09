@@ -16,10 +16,10 @@ export const formatSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-// YFS-Main-API returns quota_allocated / quota_utilized in MB (from the SSO file
+// YFS-Main-API returns quota_allocated / quota_utilized in GB (from the SSO file
 // service). This is the single source of truth for the storage widget — the client
 // never sums file sizes itself (it only ever holds a partial view of the tree).
-const MB = 1024 * 1024;
+const GB = 1024 * 1024 * 1024;
 
 export interface StorageQuota {
   usedBytes: number;
@@ -31,11 +31,11 @@ export interface StorageQuota {
 }
 
 export const getStorageQuota = (
-  quotaAllocatedMb: number | undefined | null,
-  quotaUtilizedMb: number | undefined | null
+  quotaAllocatedGb: number | undefined | null,
+  quotaUtilizedGb: number | undefined | null
 ): StorageQuota => {
-  const totalBytes = Math.max(0, Number(quotaAllocatedMb) || 0) * MB;
-  const usedBytes = Math.max(0, Number(quotaUtilizedMb) || 0) * MB;
+  const totalBytes = Math.max(0, Number(quotaAllocatedGb) || 0) * GB;
+  const usedBytes = Math.max(0, Number(quotaUtilizedGb) || 0) * GB;
   const hasQuota = totalBytes > 0;
   const percent = hasQuota ? Math.min(100, Math.max(0, (usedBytes / totalBytes) * 100)) : 0;
   return {

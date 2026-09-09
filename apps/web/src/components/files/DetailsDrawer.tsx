@@ -1,7 +1,7 @@
 import { Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2 } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate } from "../../utils/format";
-import { getFileIcon } from "./FileIcon";
+import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 
 const PLACEHOLDER_SVG =
@@ -11,7 +11,7 @@ function CompactPreview({ item }: { item: FileItem }) {
   if (item.isFolder) {
     return (
       <div className="flex flex-col items-center gap-2 text-center text-text-main">
-        {getFileIcon("folder", "w-12 h-12")}
+        {getItemIcon(item, "w-12 h-12")}
         <div className="text-xs font-medium">Folder containing directory contents</div>
       </div>
     );
@@ -39,8 +39,50 @@ function CompactPreview({ item }: { item: FileItem }) {
   );
 }
 
+const KIND_LABEL: Record<FileItem["type"], string> = {
+  folder: "Folder",
+  audio: "Audio",
+  video: "Video",
+  image: "Image",
+  pdf: "PDF document",
+  spreadsheet: "Spreadsheet",
+  document: "Document",
+  code: "Code",
+  other: "File",
+};
+
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3 text-xs leading-normal">
+      <span className="text-text-main font-semibold shrink-0">{label}</span>
+      <span className="text-text-heading font-medium truncate text-right">{children}</span>
+    </div>
+  );
+}
+
+// Direct + total counts of an item's live descendants.
+function folderContents(files: FileItem[], rootId: string) {
+  const direct = files.filter((f) => f.parentId === rootId && !f.isDeleted);
+  const seen = new Set<string>();
+  const queue = [rootId];
+  let folders = 0;
+  let leaves = 0;
+  while (queue.length) {
+    const pid = queue.shift()!;
+    for (const f of files) {
+      if (f.parentId !== pid || f.isDeleted || seen.has(f.id)) continue;
+      seen.add(f.id);
+      queue.push(f.id);
+      if (f.isFolder) folders++;
+      else leaves++;
+    }
+  }
+  return { directCount: direct.length, folders, files: leaves };
+}
+
 export function DetailsDrawer({
   item,
+  files,
   pathLabel,
   onClose,
   onOpenFull,
@@ -55,6 +97,7 @@ export function DetailsDrawer({
   onRestore,
 }: {
   item: FileItem;
+  files: FileItem[];
   pathLabel: string;
   onClose: () => void;
   onOpenFull: () => void;
@@ -70,10 +113,10 @@ export function DetailsDrawer({
 }) {
   return (
     <aside
-      className="w-90 min-w-[360px] border-l border-border-main bg-bg-main flex flex-col h-full overflow-y-auto box-border shrink-0 max-[1024px]:absolute max-[1024px]:right-0 max-[1024px]:top-0 max-[1024px]:bottom-0 max-[1024px]:z-40 max-[1024px]:shadow-xl max-[420px]:w-full max-[420px]:min-w-0 animate-slide-in-right"
+      className="w-80 min-w-80 border-l border-border-main bg-bg-main flex flex-col h-full overflow-y-auto box-border shrink-0 max-[1024px]:absolute max-[1024px]:right-0 max-[1024px]:top-0 max-[1024px]:bottom-0 max-[1024px]:z-40 max-[1024px]:shadow-xl max-[360px]:w-full max-[420px]:min-w-0 animate-slide-in-right"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="px-6 py-4.5 border-b border-border-main flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border-main flex items-center justify-between">
         <h3 className="text-base font-bold text-text-heading">Details</h3>
         <button
           onClick={onClose}
@@ -83,7 +126,7 @@ export function DetailsDrawer({
         </button>
       </div>
 
-      <div className="p-6 flex flex-col gap-6 text-left">
+      <div className="p-4 flex flex-col gap-4 text-left">
         <div
           className="w-full rounded-xl bg-code-bg border border-border-main overflow-hidden flex flex-col items-center justify-center min-h-40 p-4 box-border relative cursor-pointer"
           onClick={() => !item.isFolder && onOpenFull()}
@@ -98,61 +141,81 @@ export function DetailsDrawer({
 
         <div className="flex flex-col gap-1">
           <h4 className="text-sm font-bold text-text-heading break-all leading-snug">{item.name}</h4>
-          <span className="text-xs text-text-main">
-            Type: {item.isFolder ? "Folder" : item.extension?.toUpperCase() || item.type}
-          </span>
+          <span className="text-xs text-text-main">{KIND_LABEL[item.type]}</span>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex justify-between text-xs leading-normal">
-            <span className="text-text-main font-semibold">Owner</span>
-            <span className="text-text-heading font-medium truncate max-w-[60%]">{item.owner.name}</span>
-          </div>
-          <div className="flex justify-between text-xs leading-normal">
-            <span className="text-text-main font-semibold">Location</span>
-            <span className="text-text-heading font-medium truncate max-w-[60%]" title={pathLabel}>
-              {pathLabel}
-            </span>
-          </div>
-          <div className="flex justify-between text-xs leading-normal">
-            <span className="text-text-main font-semibold">Size</span>
-            <span className="text-text-heading font-medium">{formatBytes(item.size)}</span>
-          </div>
-          <div className="flex justify-between text-xs leading-normal">
-            <span className="text-text-main font-semibold">Modified</span>
-            <span className="text-text-heading font-medium">{formatDate(item.modifiedAt)}</span>
-          </div>
-          <div className="flex justify-between text-xs leading-normal">
-            <span className="text-text-main font-semibold">Created</span>
-            <span className="text-text-heading font-medium">{formatDate(item.createdAt)}</span>
-          </div>
+        <div className="flex flex-col gap-2.5">
+          <InfoRow label="Kind">
+            {item.isFolder ? "Folder" : `${item.extension ? item.extension.toUpperCase() + " · " : ""}${KIND_LABEL[item.type]}`}
+          </InfoRow>
+
+          {item.isFolder &&
+            (() => {
+              const c = folderContents(files, item.id);
+              return (
+                <>
+                  <InfoRow label="Contains">
+                    {c.folders + c.files === 0
+                      ? "Empty"
+                      : [c.folders && `${c.folders} folder${c.folders > 1 ? "s" : ""}`, c.files && `${c.files} file${c.files > 1 ? "s" : ""}`]
+                          .filter(Boolean)
+                          .join(", ")}
+                  </InfoRow>
+                  <InfoRow label="Items here">{c.directCount}</InfoRow>
+                </>
+              );
+            })()}
+
+          {!item.isFolder && item.version != null && <InfoRow label="Version">v{item.version}</InfoRow>}
+
+          <InfoRow label="Owner">{item.owner.name || "—"}</InfoRow>
+          {item.createdBy && <InfoRow label="Created by">{item.createdBy}</InfoRow>}
+          <InfoRow label="Location">
+            <span title={pathLabel}>{pathLabel}</span>
+          </InfoRow>
+          <InfoRow label="Size">{item.size ? formatBytes(item.size) : "—"}</InfoRow>
+          <InfoRow label="Modified">{formatDate(item.modifiedAt)}</InfoRow>
+          <InfoRow label="Created">{formatDate(item.createdAt)}</InfoRow>
+
+          {item.isStarred && <InfoRow label="Starred">Yes</InfoRow>}
+          {item.isDeleted && <InfoRow label="Status">In Trash</InfoRow>}
+          {item.isFolder && item.color && (
+            <div className="flex justify-between gap-3 text-xs leading-normal">
+              <span className="text-text-main font-semibold">Colour</span>
+              <span className="w-4 h-4 rounded-full border border-border-main" style={{ backgroundColor: item.color }} />
+            </div>
+          )}
+
+          <InfoRow label="ID">
+            <span className="font-mono text-[10px]">{item.id}</span>
+          </InfoRow>
         </div>
 
         <div className="flex flex-col gap-2 mt-2">
           {!item.isFolder && (
             <button
               onClick={onOpenFull}
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-gradient-to-br from-accent to-purple-600 text-white font-semibold rounded-xl hover:shadow-md cursor-pointer transition-all"
+              className="flex items-center justify-center gap-2 w-full py-2 bg-gradient-to-br from-accent to-purple-600 text-white font-semibold rounded-xl hover:shadow-md cursor-pointer transition-all"
             >
               <Expand className="w-4 h-4" /> Open
             </button>
           )}
           <button
             onClick={onDownload}
-            className="flex items-center justify-center gap-2 w-full py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
+            className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
           >
             <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
           </button>
           <div className="flex gap-2">
             <button
               onClick={onToggleStar}
-              className="flex-1 py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} /> {item.isStarred ? "Unstar" : "Star"}
             </button>
             <button
               onClick={onRename}
-              className="flex-1 py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
+              className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
             >
               Rename
             </button>
@@ -160,7 +223,7 @@ export function DetailsDrawer({
           {!item.isFolder && (
             <button
               onClick={onVersionHistory}
-              className="w-full py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <History className="w-3.5 h-3.5" /> Version History
             </button>
@@ -169,22 +232,24 @@ export function DetailsDrawer({
             <div className="flex gap-2">
               <button
                 onClick={onMove}
-                className="flex-1 py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
               >
                 <FolderInput className="w-3.5 h-3.5" /> Move
               </button>
-              <button
-                onClick={onCopy}
-                className="flex-1 py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-              >
-                <CopyPlus className="w-3.5 h-3.5" /> Copy
-              </button>
+              {!item.isFolder && (
+                <button
+                  onClick={onCopy}
+                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+                >
+                  <CopyPlus className="w-3.5 h-3.5" /> Copy
+                </button>
+              )}
             </div>
           )}
           {!item.isDeleted && (
             <button
               onClick={onShare}
-              className="w-full py-2.5 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <Share2 className="w-3.5 h-3.5" /> Share
             </button>
@@ -192,14 +257,14 @@ export function DetailsDrawer({
           {item.isDeleted ? (
             <button
               onClick={onRestore}
-              className="w-full py-2.5 bg-transparent border border-green-500/50 text-green-600 font-semibold rounded-xl hover:bg-green-500/10 cursor-pointer transition text-xs"
+              className="w-full py-2 bg-transparent border border-green-500/50 text-green-600 font-semibold rounded-xl hover:bg-green-500/10 cursor-pointer transition text-xs"
             >
               Restore Item
             </button>
           ) : (
             <button
               onClick={onTrash}
-              className="w-full py-2.5 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              className="w-full py-2 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <Trash2 className="w-3.5 h-3.5" /> Move to Trash
             </button>

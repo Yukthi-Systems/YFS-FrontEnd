@@ -10,7 +10,6 @@ import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
 import { getStorageQuota } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
-import { useSystemDiagnostics } from "./hooks/useSystemDiagnostics";
 import { useContextMenuState } from "./hooks/useContextMenuState";
 import { useFileNavigation } from "./hooks/useFileNavigation";
 import { useFileSelection } from "./hooks/useFileSelection";
@@ -29,6 +28,7 @@ import { FilterSortBar } from "./components/files/FilterSortBar";
 import { FileListTable } from "./components/files/FileListTable";
 import { FileGrid } from "./components/files/FileGrid";
 import { SearchResultsList } from "./components/files/SearchResultsList";
+import { SharedLinksList } from "./components/files/SharedLinksList";
 import { ItemContextMenu } from "./components/files/ItemContextMenu";
 import { CanvasContextMenu } from "./components/files/CanvasContextMenu";
 import { DetailsDrawer } from "./components/files/DetailsDrawer";
@@ -44,10 +44,10 @@ import { ShareModal } from "./components/modals/ShareModal";
 import { ViewerModal } from "./components/viewers/ViewerModal";
 import { UploadDropzone } from "./components/upload/UploadDropzone";
 import { UploadTray } from "./components/upload/UploadTray";
-import { SystemDashboard } from "./components/system/SystemDashboard";
 
 function App() {
-  const { user, token, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError, sessionExpiresAt } =
+    useAuth();
   const {
     files,
     isLoading: filesLoading,
@@ -57,10 +57,17 @@ function App() {
     loadSharedFolders,
     loadMoreSharedFolders,
     getPagination,
+    trashFolderId,
+    sharedOut,
+    loadSharedOut,
+    sharedLinks,
+    loadSharedLinks,
+    revokeSharedLink,
     createFolder,
     renameItem,
     toggleStar,
     starItems,
+    setFolderStyle,
     trashItems,
     restoreItems,
     permanentDeleteItems,
@@ -75,7 +82,8 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  // Type filtering was driven from the sidebar's "File Type" menu, which has been removed.
+  const typeFilter = "all";
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
   const [viewerItem, setViewerItem] = useState<FileItem | null>(null);
@@ -84,26 +92,49 @@ function App() {
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
 
   const sso = useSsoAutoLogin({ isAuthenticated, authLoading, loginWithSso, clearError });
-  const diagnostics = useSystemDiagnostics(token);
   const menus = useContextMenuState();
   const nav = useFileNavigation();
-  const search = useFileSearch({ files, activeSidebarTab: nav.activeSidebarTab, currentFolderId: nav.currentFolderId, typeFilter });
+  const search = useFileSearch({
+    files,
+    activeSidebarTab: nav.activeSidebarTab,
+    currentFolderId: nav.currentFolderId,
+    typeFilter,
+    trashFolderId,
+  });
 
   // Pull the current folder's children from YFS-Main-API whenever navigation changes.
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (nav.activeSidebarTab === "shared") loadSharedFolders();
-    else loadFolder(nav.currentFolderId);
-  }, [isAuthenticated, nav.activeSidebarTab, nav.currentFolderId, loadFolder, loadSharedFolders]);
+    const tab = nav.activeSidebarTab;
+    // "Shared with me" root lists the shared folders; opening one lists its children
+    // through the share endpoint (handled inside loadFolder).
+    if (tab === "shared" && !nav.currentFolderId) loadSharedFolders();
+    else if (tab === "shared-out") loadSharedOut({ force: true });
+    else if (tab === "shared-links") loadSharedLinks({ force: true });
+    else if (tab === "trash") {
+      if (trashFolderId) loadFolder(trashFolderId, { force: true });
+    } else loadFolder(nav.currentFolderId);
+  }, [
+    isAuthenticated,
+    nav.activeSidebarTab,
+    nav.currentFolderId,
+    trashFolderId,
+    loadFolder,
+    loadSharedFolders,
+    loadSharedOut,
+    loadSharedLinks,
+  ]);
 
-  // Infinite scroll — only the server-backed listings ("drive" folders and the
-  // "shared with me" bucket) page; the other tabs are client-side filters.
+  // Infinite scroll — only the server-backed listings ("drive" folders, the
+  // "shared with me" bucket, and folders opened inside a share) page; the other
+  // tabs are client-side filters.
   const isSharedTab = nav.activeSidebarTab === "shared";
+  const isSharedRoot = isSharedTab && !nav.currentFolderId;
   const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive";
-  const pagination = getPagination(nav.currentFolderId, isSharedTab);
+  const pagination = getPagination(nav.currentFolderId, isSharedRoot);
   const loadMoreSentinelRef = useInfiniteScroll(
     () => {
-      if (isSharedTab) loadMoreSharedFolders();
+      if (isSharedRoot) loadMoreSharedFolders();
       else loadMoreFolder(nav.currentFolderId);
     },
     {
@@ -122,14 +153,18 @@ function App() {
   // Normal folder browsing only — while a search is active, SearchResultsList renders
   // instead (it owns its own combined name+content match list), so search.searchQuery is
   // deliberately not threaded in here.
-  const listItems = getFilteredSortedItems(files, {
-    activeSidebarTab: nav.activeSidebarTab,
-    currentFolderId: nav.currentFolderId,
-    searchQuery: "",
-    typeFilter,
-    sortField,
-    sortOrder,
-  });
+  const listItems =
+    nav.activeSidebarTab === "shared-out"
+      ? [...sharedOut].sort((a, b) => a.name.localeCompare(b.name))
+      : getFilteredSortedItems(files, {
+          activeSidebarTab: nav.activeSidebarTab,
+          currentFolderId: nav.currentFolderId,
+          searchQuery: "",
+          typeFilter,
+          sortField,
+          sortOrder,
+          trashFolderId,
+        });
 
   // Prev/next in the full-screen viewer should step through whatever the user was actually
   // looking at — search results if a search is active, the current folder listing otherwise.
@@ -174,6 +209,11 @@ function App() {
   }
 
   function handleItemDoubleClick(item: FileItem) {
+    // In "Shared by you", a row opens its sharing settings rather than navigating.
+    if (nav.activeSidebarTab === "shared-out") {
+      shareSettings.openShareModal(item);
+      return;
+    }
     if (item.isFolder) {
       if (!item.isDeleted) openFolder(item.id);
     } else {
@@ -241,6 +281,8 @@ function App() {
       onCopy={() => fileActions.openCopyModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
       onShare={() => shareSettings.openShareModal(item)}
+      onSetColor={(color) => setFolderStyle(item.id, { color })}
+      onSetIcon={(icon) => setFolderStyle(item.id, { icon })}
       onTrash={() => fileActions.requestTrash([item.id])}
       onRestore={() => fileActions.handleRestore([item.id])}
       onPermanentDelete={() => fileActions.requestPermanentDelete([item.id])}
@@ -265,49 +307,40 @@ function App() {
         }}
         onCreateFolder={fileActions.openCreateFolderModal}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
+        canUploadFiles={!!nav.currentFolderId}
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
         user={user}
         onRequestLogout={fileActions.requestLogout}
-        typeFilter={typeFilter}
-        onTypeFilterChange={setTypeFilter}
         mobileOpen={mobileNavOpen}
         onMobileClose={() => setMobileNavOpen(false)}
       />
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden bg-bg-main">
         <TopBar
-          isSystemView={nav.activeSidebarTab === "system"}
           searchQuery={search.searchQuery}
           onSearchChange={search.setSearchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           onMenuClick={() => setMobileNavOpen(true)}
+          sessionExpiresAt={sessionExpiresAt}
         />
 
         <div className="flex-1 flex overflow-hidden relative">
-        <UploadDropzone disabled={nav.activeSidebarTab === "system"} onDropFiles={(items) => enqueueFiles(items, nav.currentFolderId)}>
-          {nav.activeSidebarTab === "system" ? (
-            <SystemDashboard
-              user={user}
-              token={token}
-              exampleMessage={diagnostics.exampleMessage}
-              apiResponse={diagnostics.apiResponse}
-              apiLoading={diagnostics.apiLoading}
-              onTestApi={diagnostics.testAuthenticatedApi}
-            />
-          ) : (
-            <div
-              ref={setScrollContainer}
-              className="flex-1 overflow-y-auto px-8 py-6 pb-12 flex flex-col gap-6 max-[768px]:px-4"
+        <UploadDropzone onDropFiles={(items) => enqueueFiles(items, nav.currentFolderId)}>
+          <div
+            ref={setScrollContainer}
+              className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"
               onClick={() => {
                 selection.clearSelection();
                 menus.closeContextMenu();
               }}
               onContextMenu={menus.openCanvasContextMenu}
             >
-              {search.isSearching ? (
+              {nav.activeSidebarTab === "shared-links" ? (
+                <SharedLinksList links={sharedLinks} onRevoke={revokeSharedLink} />
+              ) : search.isSearching ? (
                 <SearchResultsList
                   results={search.results}
                   files={files}
@@ -395,12 +428,12 @@ function App() {
                 </>
               )}
             </div>
-          )}
         </UploadDropzone>
 
-        {selectedItem && nav.activeSidebarTab !== "system" && (
+        {selectedItem && (
           <DetailsDrawer
             item={selectedItem}
+            files={files}
             pathLabel={getItemPath(files, selectedItem)}
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
@@ -422,6 +455,7 @@ function App() {
         <CanvasContextMenu
           x={menus.canvasContextMenu.x}
           y={menus.canvasContextMenu.y}
+          canUploadFile={!!nav.currentFolderId}
           onCreateFolder={() => {
             fileActions.openCreateFolderModal();
             menus.setCanvasContextMenu(null);
@@ -457,6 +491,7 @@ function App() {
           mode={fileActions.moveCopyState.mode}
           sourceIds={fileActions.moveCopyState.ids}
           currentParentId={nav.currentFolderId}
+          trashFolderId={trashFolderId}
           onCancel={fileActions.closeMoveCopyModal}
           onConfirm={fileActions.handleMoveCopyConfirm}
         />

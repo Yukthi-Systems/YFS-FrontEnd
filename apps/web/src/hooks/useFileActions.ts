@@ -72,6 +72,11 @@ export function useFileActions({
       file,
       relativePath: file.webkitRelativePath || file.name,
     }));
+    const isFolderUpload = items.some((it) => it.relativePath.includes("/"));
+    if (parentId === null && !isFolderUpload) {
+      showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
+      return;
+    }
     enqueueFiles(items, parentId);
   };
 

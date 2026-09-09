@@ -43,6 +43,8 @@ interface AuthContextType {
   // Forces an access-token refresh via POST /auth/refresh. Returns the new token,
   // or null if the session could not be renewed (caller should treat as logged out).
   refreshAccessToken: () => Promise<string | null>;
+  // Epoch ms when the current access token expires (null if unknown).
+  sessionExpiresAt: number | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -107,6 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -116,8 +119,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshToken: null as string | null,
     userId: null as string | null,
     user: null as UserInfo | null,
+    expiresAt: null as number | null,
   });
-  credsRef.current = { token, refreshToken, userId, user };
+  credsRef.current = { token, refreshToken, userId, user, expiresAt: sessionExpiresAt };
 
   const ssoUrl = import.meta.env.VITE_SSO_URL || "https://sso.your-domain.tld";
 
@@ -125,12 +129,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nextUser = buildUser(payload.user_info, profile ?? payload.sso_profile, credsRef.current.user);
     const nextUserId = payload.user_info.user_id;
     const nextRefresh = payload.refresh_token ?? credsRef.current.refreshToken;
-    const expiresAt = payload.expires_in ? Date.now() + payload.expires_in * 1000 : null;
+    // /auth/refresh may omit X-Session-Expiry — keep the last known expiry then.
+    const expiresAt = payload.expires_in
+      ? Date.now() + payload.expires_in * 1000
+      : credsRef.current.expiresAt;
 
     setToken(payload.access_token);
     setRefreshToken(nextRefresh);
     setUserId(nextUserId);
     setUser(nextUser);
+    setSessionExpiresAt(expiresAt);
     // Signed in — a future auto-SSO attempt (e.g. after the session later expires) is
     // allowed again.
     clearAutoSsoAttempt();
@@ -151,6 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRefreshToken(null);
     setUserId(null);
     setUser(null);
+    setSessionExpiresAt(null);
     try {
       Object.values(SS).forEach((key) => sessionStorage.removeItem(key));
       LEGACY_LS_KEYS.forEach((key) => localStorage.removeItem(key));
@@ -160,21 +169,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
-    const { token: curToken, refreshToken: curRefresh, userId: curUserId } = credsRef.current;
-    if (!curToken || !curRefresh || !curUserId) {
-      clearSession();
-      return null;
-    }
-    try {
-      const payload = await refreshSession({ refreshToken: curRefresh, accessToken: curToken, userId: curUserId });
-      persistPayload(payload);
-      return payload.access_token;
-    } catch (err) {
-      console.warn("Session refresh failed, signing out:", err);
-      clearSession();
-      return null;
-    }
+  // Single-flight: concurrent 401s (e.g. several list calls firing at once on boot)
+  // must share ONE /auth/refresh, not each rotate the refresh token.
+  const refreshInFlight = useRef<Promise<string | null> | null>(null);
+
+  const refreshAccessToken = useCallback((): Promise<string | null> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+
+    const run = (async (): Promise<string | null> => {
+      const { token: curToken, refreshToken: curRefresh, userId: curUserId } = credsRef.current;
+      if (!curToken || !curRefresh || !curUserId) {
+        clearSession();
+        return null;
+      }
+      try {
+        const payload = await refreshSession({ refreshToken: curRefresh, accessToken: curToken, userId: curUserId });
+        persistPayload(payload);
+        return payload.access_token;
+      } catch (err) {
+        console.warn("Session refresh failed, signing out:", err);
+        clearSession();
+        return null;
+      }
+    })();
+
+    refreshInFlight.current = run;
+    run.finally(() => {
+      refreshInFlight.current = null;
+    });
+    return run;
   }, [clearSession, persistPayload]);
 
   // On load: if the SSO cookie is present, log in through it. A cached session-storage
@@ -196,11 +219,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUserId(sessionStorage.getItem(SS.userId));
           const cachedUser = JSON.parse(cachedUserJson) as UserInfo;
           setUser(cachedUser);
+          const cachedExpiry = Number(sessionStorage.getItem(SS.expiresAt)) || null;
+          setSessionExpiresAt(cachedExpiry);
           credsRef.current = {
             token: cachedToken,
             refreshToken: sessionStorage.getItem(SS.refresh),
             userId: sessionStorage.getItem(SS.userId),
             user: cachedUser,
+            expiresAt: cachedExpiry,
           };
         }
       } catch (err) {
@@ -317,6 +343,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         clearError,
         refreshAccessToken,
+        sessionExpiresAt,
       }}
     >
       {children}

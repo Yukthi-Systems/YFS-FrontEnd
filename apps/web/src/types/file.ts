@@ -51,11 +51,18 @@ export interface FileItem {
   modifiedAt: string; // ISO String
   createdAt: string; // ISO String
   isStarred: boolean;
-  isDeleted: boolean;
+  isDeleted: boolean; // true = sitting in the Trash folder
+  trashedFrom?: string | null; // parentId to restore to (only set while isDeleted)
   type: "folder" | "audio" | "video" | "image" | "pdf" | "spreadsheet" | "document" | "code" | "other";
   extension?: string;
   blobUrl?: string; // Local Object URL for active previews (regenerated from storageKey on load)
   storageKey?: string; // IndexedDB key for the persisted bytes; absent for seeded demo items
+  fileId?: string; // logical files.file_id from the upload backend (stable across versions)
+  version?: number; // current file_versions.file_version; defaults to 1 when unknown
+  resourceInfo?: Record<string, unknown>; // folders.folder_info / files.file_info (creation_info, trash_info, ui, …)
+  color?: string; // folder colour (from resource_info.ui.color)
+  icon?: string; // folder icon key (from resource_info.ui.icon)
+  createdBy?: string; // resource_info.creation_info.user_name
   versions?: FileVersion[]; // past content, newest first; does not include the current version
   share?: ShareSettings; // legacy client-only external link (SharedFileView demo route)
   sharedIn?: SharedInInfo; // set on folders in the "Shared with me" tab
@@ -64,7 +71,16 @@ export interface FileItem {
   origin?: "server" | "local" | "shared";
 }
 
-export type SidebarTab = "drive" | "projects" | "shared" | "recent" | "starred" | "trash" | "system";
+// "shared" = shared with me (in); "shared-out" = folders I've shared; "shared-links" = my public links.
+export type SidebarTab =
+  | "drive"
+  | "projects"
+  | "shared"
+  | "shared-out"
+  | "shared-links"
+  | "recent"
+  | "starred"
+  | "trash";
 export type ViewMode = "list" | "grid";
 export type SortField = "name" | "modifiedAt" | "size";
 export type SortOrder = "asc" | "desc";

@@ -9,8 +9,8 @@ export interface BackendUserInfo {
   organization_name: string;
   is_file_versioning_enabled: boolean;
   is_sharing_enabled: boolean;
-  quota_allocated: number;
-  quota_utilized: number;
+  quota_allocated: number; // GB
+  quota_utilized: number; // GB
 }
 
 // Extra identity fields the SSO service hands back to the login popup in its

@@ -44,11 +44,13 @@ export function useFileSearch({
   activeSidebarTab,
   currentFolderId,
   typeFilter,
+  trashFolderId,
 }: {
   files: FileItem[];
   activeSidebarTab: SidebarTab;
   currentFolderId: string | null;
   typeFilter: string;
+  trashFolderId?: string | null;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [contentResults, setContentResults] = useState<SearchResult[]>([]);
@@ -59,8 +61,9 @@ export function useFileSearch({
   const isSearching = trimmedQuery !== "";
 
   const scope = useMemo(
-    () => (isSearching ? getSearchScope(files, { activeSidebarTab, currentFolderId, typeFilter }) : []),
-    [files, activeSidebarTab, currentFolderId, typeFilter, isSearching]
+    () =>
+      isSearching ? getSearchScope(files, { activeSidebarTab, currentFolderId, typeFilter, trashFolderId }) : [],
+    [files, activeSidebarTab, currentFolderId, typeFilter, trashFolderId, isSearching]
   );
 
   const nameResults: SearchResult[] = useMemo(

@@ -84,6 +84,7 @@ export function MoveCopyModal({
   mode,
   sourceIds,
   currentParentId,
+  trashFolderId,
   onCancel,
   onConfirm,
 }: {
@@ -91,12 +92,16 @@ export function MoveCopyModal({
   mode: "move" | "copy";
   sourceIds: string[];
   currentParentId: string | null;
+  trashFolderId?: string | null;
   onCancel: () => void;
   onConfirm: (destinationId: string | null) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(currentParentId);
 
-  const folders = useMemo(() => files.filter((f) => f.isFolder && !f.isDeleted), [files]);
+  const folders = useMemo(
+    () => files.filter((f) => f.isFolder && !f.isDeleted && f.id !== trashFolderId),
+    [files, trashFolderId]
+  );
   const tree = useMemo(() => buildTree(folders, null), [folders]);
 
   // A folder can't be moved/copied into itself or one of its own descendants.

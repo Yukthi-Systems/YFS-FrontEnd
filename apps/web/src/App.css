@@ -79,13 +79,13 @@ input {
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 0.85rem 1.5rem;
+  padding: 0.6rem 1.1rem;
   background: linear-gradient(135deg, var(--accent) 0%, #8b2cf5 100%);
   color: #fff;
   border: none;
-  border-radius: 14px;
+  border-radius: 10px;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 4px 12px rgba(170, 59, 255, 0.25);
@@ -114,13 +114,13 @@ input {
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 0.85rem 1.5rem;
+  padding: 0.6rem 1.1rem;
   background: transparent;
   color: var(--text-h);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 10px;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -210,19 +210,19 @@ input {
 .modal-content {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 16px;
   width: 90%;
-  max-width: 400px;
+  max-width: 380px;
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
-  padding: 1.75rem;
+  padding: 1.25rem;
   box-shadow: var(--shadow);
   text-align: left;
   animation: scaleIn 0.2s ease-out;
 }
 
 .modal-content.modal-lg {
-  max-width: 560px;
+  max-width: 520px;
 }
 
 @media (max-width: 520px) {
@@ -256,12 +256,12 @@ input {
 
 .dialog-input {
   width: 100%;
-  padding: 0.6rem 0.8rem;
+  padding: 0.45rem 0.65rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--code-bg);
   color: var(--text-h);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
@@ -281,8 +281,24 @@ select.dialog-input {
   cursor: pointer;
 }
 
+/* Native date input: keep it the same height as text inputs and left-align its
+   value with the rest of the form (the built-in field is taller by default). */
+input[type="date"].dialog-input {
+  min-height: 2.1rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+input[type="date"].dialog-input::-webkit-datetime-edit {
+  padding: 0;
+}
+input[type="date"].dialog-input::-webkit-calendar-picker-indicator {
+  margin-left: auto;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
 .modal-title {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 600;
   margin: 0 0 0.5rem 0;
   color: var(--text-h);
@@ -307,7 +323,7 @@ select.dialog-input {
   color: #fff;
   border: none;
   border-radius: 10px;
-  padding: 0.6rem 1.2rem;
+  padding: 0.5rem 0.95rem;
   font-weight: 600;
   font-size: 0.95rem;
   cursor: pointer;
@@ -324,7 +340,7 @@ select.dialog-input {
   color: var(--text-h);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0.6rem 1.2rem;
+  padding: 0.5rem 0.95rem;
   font-weight: 600;
   font-size: 0.95rem;
   cursor: pointer;
