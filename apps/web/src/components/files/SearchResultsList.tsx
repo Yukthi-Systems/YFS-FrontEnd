@@ -5,7 +5,7 @@ import type { FileItem } from "../../types/file";
 import type { SearchResult, SearchSnippet } from "../../hooks/useFileSearch";
 import { getItemPath } from "../../utils/fileQueries";
 import { formatBytes, formatDate } from "../../utils/format";
-import { getFileIcon } from "./FileIcon";
+import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -72,7 +72,7 @@ export function SearchResultsList({
           }}
           className="group relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-code-bg transition"
         >
-          {getFileIcon(item.type)}
+          {getItemIcon(item)}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-text-heading truncate">{item.name}</span>

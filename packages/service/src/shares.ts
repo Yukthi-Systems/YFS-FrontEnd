@@ -1,6 +1,12 @@
 import { apiRequest } from "./apiClient";
 import { PAGE_SIZE } from "./types";
-import type { FolderShareInfo, InternalSharedResource, InternalSharePermissions, PageQuery } from "./types";
+import type {
+  BackendResource,
+  FolderShareInfo,
+  InternalSharedResource,
+  InternalSharePermissions,
+  PageQuery,
+} from "./types";
 
 // Keep in step with folders.ts — the UI pages through shared folders the same way.
 const DEFAULT_PAGE: PageQuery = { limit: PAGE_SIZE, offset: 0 };
@@ -30,6 +36,24 @@ export const listSharingOut = async (
 ): Promise<InternalSharedResource[]> => {
   const { data } = await apiRequest<InternalSharedResource[]>(
     `/share/internal/list/sharing-out${pageParams(page)}`,
+    { accessToken }
+  );
+  return data ?? [];
+};
+
+// GET /share/internal/list/under/{sharedFolderId}/{requestFolderId} — direct children
+// (folders + files) of a folder that lives inside a folder shared with me.
+// `sharedFolderId` is the top folder from listSharingIn; `requestFolderId` is the one
+// being opened (may equal `sharedFolderId` for the shared root itself). 400 if the
+// requested folder isn't under the share or I lack access.
+export const listSharedFolderChildren = async (
+  accessToken: string,
+  sharedFolderId: string,
+  requestFolderId: string,
+  page?: Partial<PageQuery>
+): Promise<BackendResource[]> => {
+  const { data } = await apiRequest<BackendResource[]>(
+    `/share/internal/list/under/${sharedFolderId}/${requestFolderId}${pageParams(page)}`,
     { accessToken }
   );
   return data ?? [];

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate } from "../../utils/format";
-import { getFileIcon } from "./FileIcon";
+import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -47,18 +47,19 @@ export function FileListTable({
       <table className="w-full border-collapse text-left">
         <thead>
           <tr>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
                 checked={items.length > 0 && items.every((item) => checkedItemIds.includes(item.id))}
                 onChange={onSelectAllToggle}
               />
             </th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Name</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[860px]:hidden">Last Modified</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Size</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-4 py-3 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-12"></th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Name</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[980px]:hidden">Created By</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[860px]:hidden">Last Modified</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Size</th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-12"></th>
           </tr>
         </thead>
         <tbody>
@@ -83,26 +84,27 @@ export function FileListTable({
                   onItemContextMenu(item, e);
                 }}
               >
-                <td className="px-4 py-3 border-b border-border-main text-center" onClick={(e) => e.stopPropagation()}>
+                <td className="px-3 py-2 border-b border-border-main text-center" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={isChecked} onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)} />
                 </td>
-                <td className="px-4 py-3 border-b border-border-main">
-                  <div className="flex items-center gap-3 font-medium text-text-heading overflow-hidden whitespace-nowrap">
-                    {getFileIcon(item.type)}
+                <td className="px-3 py-2 border-b border-border-main">
+                  <div className="flex items-center gap-2.5 text-[0.85rem] font-medium text-text-heading overflow-hidden whitespace-nowrap">
+                    {getItemIcon(item, "w-4 h-4")}
                     <span className="truncate">{item.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 border-b border-border-main max-[640px]:hidden">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
+                <td className="px-3 py-2 border-b border-border-main max-[640px]:hidden">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[9px]">
                       {item.owner.name.substring(0, 1).toUpperCase()}
                     </div>
-                    <span className="text-xs text-text-heading font-medium">{item.owner.name}</span>
+                    <span className="text-[0.8rem] text-text-heading font-medium">{item.owner.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
-                <td className="px-4 py-3 border-b border-border-main text-xs text-text-main">{formatBytes(item.size)}</td>
-                <td className="px-4 py-3 border-b border-border-main text-center relative" onClick={(e) => e.stopPropagation()}>
+                <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[980px]:hidden">{item.createdBy || "—"}</td>
+                <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
+                <td className="px-3 py-2 border-b border-border-main text-xs text-text-main">{formatBytes(item.size)}</td>
+                <td className="px-3 py-2 border-b border-border-main text-center relative" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={(e) => {
                       const opening = contextMenuId !== item.id;

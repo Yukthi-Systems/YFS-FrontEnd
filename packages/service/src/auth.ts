@@ -25,6 +25,18 @@ export const fetchSession = async (accessToken: string): Promise<BackendUserInfo
   return data;
 };
 
+// PATCH /auth/update-fcm-token — registers a push token for this session (body is a
+// bare JSON string). The web client has no push channel today, so this is only
+// called if a service worker later provides a token.
+export const updateFcmToken = async (accessToken: string, fcmToken: string): Promise<void> => {
+  await apiRequest("/auth/update-fcm-token", {
+    accessToken,
+    method: "PATCH",
+    parseJson: false,
+    body: JSON.stringify(fcmToken),
+  });
+};
+
 // POST /auth/refresh — issues a new access token for an existing refresh token.
 // Needs the SSO-Session-ID cookie too (sent automatically via credentials: "include").
 export const refreshSession = async (params: {

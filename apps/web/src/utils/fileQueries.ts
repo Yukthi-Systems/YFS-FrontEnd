@@ -8,24 +8,31 @@ interface FilterSortParams {
   typeFilter: string;
   sortField: SortField;
   sortOrder: SortOrder;
+  trashFolderId?: string | null;
 }
 
 export function getFilteredSortedItems(files: FileItem[], params: FilterSortParams): FileItem[] {
-  const { activeSidebarTab, currentFolderId, searchQuery, typeFilter, sortField, sortOrder } = params;
+  const { activeSidebarTab, currentFolderId, searchQuery, typeFilter, sortField, sortOrder, trashFolderId } = params;
   let result = [...files];
 
   if (activeSidebarTab === "drive") {
-    result = result.filter((f) => f.parentId === currentFolderId && !f.isDeleted);
+    // Hide the Trash folder itself from My Drive.
+    result = result.filter((f) => f.parentId === currentFolderId && !f.isDeleted && f.id !== trashFolderId);
   } else if (activeSidebarTab === "projects") {
     result = result.filter((f) => f.parentId === "projects-folder" && !f.isDeleted);
   } else if (activeSidebarTab === "shared") {
-    result = result.filter((f) => f.parentId === SHARED_ROOT_ID && !f.isDeleted);
+    // Root shows the folders shared with me; deeper, the opened folder's children.
+    result = result.filter((f) => f.parentId === (currentFolderId ?? SHARED_ROOT_ID) && !f.isDeleted);
   } else if (activeSidebarTab === "recent") {
     result = result.filter((f) => !f.isFolder && !f.isDeleted);
   } else if (activeSidebarTab === "starred") {
     result = result.filter((f) => f.isStarred && !f.isDeleted);
   } else if (activeSidebarTab === "trash") {
-    result = result.filter((f) => f.isDeleted);
+    // Top-level trashed items only (a trashed folder brings its subtree with it).
+    result = result.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
+  } else if (activeSidebarTab === "shared-out" || activeSidebarTab === "shared-links") {
+    // Rendered from their own context state, not the file tree.
+    result = [];
   }
 
   if (searchQuery.trim() !== "") {
@@ -80,14 +87,19 @@ export function collectDescendantIds(files: FileItem[], rootId: string | null): 
 // since the point is finding something you don't remember the exact location of.
 export function getSearchScope(
   files: FileItem[],
-  params: { activeSidebarTab: SidebarTab; currentFolderId: string | null; typeFilter: string }
+  params: {
+    activeSidebarTab: SidebarTab;
+    currentFolderId: string | null;
+    typeFilter: string;
+    trashFolderId?: string | null;
+  }
 ): FileItem[] {
-  const { activeSidebarTab, currentFolderId, typeFilter } = params;
+  const { activeSidebarTab, currentFolderId, typeFilter, trashFolderId } = params;
   let result: FileItem[];
 
   if (activeSidebarTab === "drive") {
     const ids = new Set(collectDescendantIds(files, currentFolderId));
-    result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
+    result = files.filter((f) => ids.has(f.id) && !f.isDeleted && f.id !== trashFolderId);
   } else if (activeSidebarTab === "projects") {
     const ids = new Set(collectDescendantIds(files, "projects-folder"));
     result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
@@ -99,7 +111,7 @@ export function getSearchScope(
   } else if (activeSidebarTab === "starred") {
     result = files.filter((f) => f.isStarred && !f.isDeleted);
   } else if (activeSidebarTab === "trash") {
-    result = files.filter((f) => f.isDeleted);
+    result = files.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
   } else {
     result = [];
   }

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes } from "../../utils/format";
-import { getFileIcon } from "./FileIcon";
+import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -22,7 +22,7 @@ function Thumbnail({ item }: { item: FileItem }) {
       </div>
     );
   }
-  return <div className="flex justify-center py-2">{getFileIcon(item.type, "w-9 h-9")}</div>;
+  return <div className="flex justify-center py-2">{getItemIcon(item, "w-8 h-8")}</div>;
 }
 
 export function FileGrid({
@@ -59,7 +59,7 @@ export function FileGrid({
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5" onClick={(e) => e.stopPropagation()}>
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3" onClick={(e) => e.stopPropagation()}>
       {items.map((item) => {
         const isSel = selectedItemId === item.id;
         const isChecked = checkedItemIds.includes(item.id);
@@ -77,7 +77,7 @@ export function FileGrid({
               setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
               onItemContextMenu(item, e);
             }}
-            className={`group relative bg-bg-main border border-border-main rounded-2xl p-4 cursor-pointer flex flex-col gap-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-border hover:shadow-sm ${
+            className={`group relative bg-bg-main border border-border-main rounded-xl p-3 cursor-pointer flex flex-col gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-border hover:shadow-sm ${
               isSel ? "bg-accent-bg! border-accent!" : ""
             } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
           >

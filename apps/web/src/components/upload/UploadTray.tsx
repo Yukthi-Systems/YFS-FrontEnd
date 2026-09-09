@@ -8,7 +8,8 @@ export function UploadTray() {
 
   if (tasks.length === 0) return null;
 
-  const activeCount = tasks.filter((t) => t.status === "uploading").length;
+  const isActive = (status: string) => status === "uploading" || status === "pending";
+  const activeCount = tasks.filter((t) => isActive(t.status)).length;
 
   return (
     <div className="fixed bottom-5 left-5 z-[1900] w-full max-w-sm bg-bg-main border border-border-main rounded-2xl shadow-lg overflow-hidden animate-scale-in">
@@ -35,7 +36,7 @@ export function UploadTray() {
         <div className="max-h-64 overflow-y-auto flex flex-col">
           {tasks.map((task) => (
             <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border-main last:border-b-0">
-              {task.status === "uploading" && <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />}
+              {isActive(task.status) && <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />}
               {task.status === "done" && <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />}
               {task.status === "error" && <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
 
@@ -49,10 +50,11 @@ export function UploadTray() {
                     />
                   </div>
                 )}
+                {task.status === "pending" && <div className="text-[11px] text-text-main mt-0.5">Preparing…</div>}
                 {task.status === "error" && <div className="text-[11px] text-red-500 mt-0.5">{task.error}</div>}
               </div>
 
-              {task.status !== "uploading" && (
+              {!isActive(task.status) && (
                 <button
                   onClick={() => dismissTask(task.id)}
                   className="border-none bg-transparent p-1 rounded-full text-text-main hover:bg-code-bg cursor-pointer transition shrink-0"
