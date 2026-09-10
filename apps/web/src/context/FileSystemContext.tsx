@@ -518,13 +518,20 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         loadedFoldersRef.current.add(key);
         setRemoteError(null);
 
-        // Resolve each owner's email once so the list shows who shared the folder.
-        const ownerEmails = new Map<string, string>();
+        // Resolve each owner once so the list shows who shared the folder — prefer
+        // their public_info.display_name, fall back to the email local-part.
+        const owners = new Map<string, { name: string; email: string }>();
         await Promise.all(
           [...new Set(shared.map((s) => s.user_id))].map(async (ownerId) => {
             try {
               const owner = await withFreshToken((tk) => getUserById(tk, ownerId));
-              if (owner) ownerEmails.set(ownerId, owner.email);
+              if (owner) {
+                const displayName =
+                  typeof owner.public_info?.display_name === "string"
+                    ? owner.public_info.display_name.trim()
+                    : "";
+                owners.set(ownerId, { name: displayName || owner.email.split("@")[0], email: owner.email });
+              }
             } catch {
               /* leave unresolved */
             }
@@ -534,10 +541,10 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Shared-in folders are read-only leaves — no client state to preserve.
         const mapped = shared.map((s) => {
           const item = mapSharedResource(s);
-          const email = ownerEmails.get(s.user_id);
-          if (email) {
-            item.owner = { name: email.split("@")[0], email };
-            if (item.sharedIn) item.sharedIn.ownerEmail = email;
+          const owner = owners.get(s.user_id);
+          if (owner) {
+            item.owner = { name: owner.name, email: owner.email };
+            if (item.sharedIn) item.sharedIn.ownerEmail = owner.email;
           }
           return item;
         });

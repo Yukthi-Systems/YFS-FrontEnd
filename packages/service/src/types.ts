@@ -64,7 +64,11 @@ export interface BasicUserInfo {
   user_id: string;
   email: string;
   domain_name: string;
-  ui_info: Record<string, unknown>;
+  // Per-user settings blob visible to the whole organization (name, avatar, …).
+  public_info: Record<string, unknown>;
+  // Per-user settings blob visible only to the user themselves (UI preferences).
+  // null on any user that isn't the caller (user-by-id), and {} from search.
+  private_info: Record<string, unknown> | null;
   last_seen_at: string; // RFC3339
 }
 

@@ -6,6 +6,7 @@ import { FileSystemProvider } from './context/FileSystemContext.tsx'
 import { ToastProvider } from './context/ToastContext.tsx'
 import { UploadQueueProvider } from './context/UploadQueueContext.tsx'
 import { ThemeProvider } from './context/ThemeContext.tsx'
+import { UserSettingsProvider } from './context/UserSettingsContext.tsx'
 import { SharedFileView } from './components/share/SharedFileView.tsx'
 
 // Shared-link view is a separate, unauthenticated tree — it deliberately skips
@@ -21,13 +22,15 @@ createRoot(document.getElementById('root')!).render(
         </ToastProvider>
       ) : (
         <AuthProvider>
-          <FileSystemProvider>
-            <UploadQueueProvider>
-              <ToastProvider>
-                <App />
-              </ToastProvider>
-            </UploadQueueProvider>
-          </FileSystemProvider>
+          <UserSettingsProvider>
+            <FileSystemProvider>
+              <UploadQueueProvider>
+                <ToastProvider>
+                  <App />
+                </ToastProvider>
+              </UploadQueueProvider>
+            </FileSystemProvider>
+          </UserSettingsProvider>
         </AuthProvider>
       )}
     </ThemeProvider>

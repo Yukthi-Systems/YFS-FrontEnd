@@ -3,6 +3,7 @@ import { ChevronRight, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-reac
 import { capitalize } from "@yfs/utils";
 import type { UserInfo } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useUserSettings } from "../../context/UserSettingsContext";
 import type { Theme } from "../../utils/theme";
 import { ProfileModal } from "../modals/ProfileModal";
 
@@ -28,6 +29,7 @@ export function UserMenu({
   onLogout: () => void;
 }) {
   const { theme, setTheme } = useTheme();
+  const { publicProfile } = useUserSettings();
   const [open, setOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -46,8 +48,11 @@ export function UserMenu({
     if (!open) setThemeOpen(false);
   }, [open]);
 
-  const name = capitalize(user?.username || "Guest User");
-  const initials = (user?.username || user?.email || "US").substring(0, 2).toUpperCase();
+  const name = publicProfile.display_name?.trim() || capitalize(user?.username || "Guest User");
+  const initials = (publicProfile.display_name || user?.username || user?.email || "US")
+    .substring(0, 2)
+    .toUpperCase();
+  const avatarStyle = publicProfile.avatar_color ? { background: publicProfile.avatar_color } : undefined;
   const CurrentThemeIcon = (THEME_OPTIONS.find((o) => o.value === theme) ?? THEME_OPTIONS[1]).Icon;
 
   const rowClass =
@@ -62,7 +67,10 @@ export function UserMenu({
         }`}
         title="Account"
       >
-        <span className="w-8 h-8 min-w-8 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center font-bold text-[11px]">
+        <span
+          className="w-8 h-8 min-w-8 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center font-bold text-[11px]"
+          style={avatarStyle}
+        >
           {initials}
         </span>
         {!compact && (

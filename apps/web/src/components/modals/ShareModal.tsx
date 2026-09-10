@@ -53,10 +53,17 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went
 interface PersonRow {
   userId: string;
   email: string;
+  name?: string; // public_info.display_name, when the user has set one
   base: InternalSharePermissions | null; // null = not yet on the server
   perms: InternalSharePermissions;
   removed: boolean;
 }
+
+// public_info.display_name if the user has set one, else undefined.
+const displayNameOf = (u: BasicUserInfo): string | undefined => {
+  const n = u.public_info?.display_name;
+  return typeof n === "string" && n.trim() ? n.trim() : undefined;
+};
 
 interface LinkDraft {
   key: string;
@@ -142,14 +149,18 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
       const rows = await Promise.all(
         shareInfo.map(async (s): Promise<PersonRow> => {
           let email = s.shared_with_user_id;
+          let name: string | undefined;
           try {
             const u = await getUserById(token, s.shared_with_user_id);
-            if (u) email = u.email;
+            if (u) {
+              email = u.email;
+              name = displayNameOf(u);
+            }
           } catch {
             /* fall back to id */
           }
           const perms = permsOf(s);
-          return { userId: s.shared_with_user_id, email, base: perms, perms, removed: false };
+          return { userId: s.shared_with_user_id, email, name, base: perms, perms, removed: false };
         })
       );
       setPeople(rows);
@@ -208,7 +219,10 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     setPeople((prev) => {
       const existing = prev.find((p) => p.userId === u.user_id);
       if (existing) return prev.map((p) => (p.userId === u.user_id ? { ...p, removed: false, perms: newPerms } : p));
-      return [...prev, { userId: u.user_id, email: u.email, base: null, perms: newPerms, removed: false }];
+      return [
+        ...prev,
+        { userId: u.user_id, email: u.email, name: displayNameOf(u), base: null, perms: newPerms, removed: false },
+      ];
     });
     setEmailQuery("");
     setResults([]);
@@ -476,7 +490,13 @@ function PeopleTab({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-text-heading truncate">
-                    {row.email}
+                    {row.name ? (
+                      <>
+                        {row.name} <span className="text-text-main">· {row.email}</span>
+                      </>
+                    ) : (
+                      row.email
+                    )}
                     {row.base === null && <span className="ml-1.5 text-[10px] text-accent">· new</span>}
                     {personDirty(row) && row.base !== null && !row.removed && (
                       <span className="ml-1.5 text-[10px] text-amber-500">· edited</span>
@@ -524,6 +544,7 @@ function PeopleTab({
               )}
               {results.map((u) => {
                 const already = people.some((p) => p.userId === u.user_id && !p.removed);
+                const name = displayNameOf(u);
                 return (
                   <button
                     key={u.user_id}
@@ -531,7 +552,14 @@ function PeopleTab({
                     onClick={() => onAddPerson(u)}
                     className="w-full text-left px-2.5 py-1.5 text-xs text-text-heading hover:bg-code-bg disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {u.email} {already && <span className="text-[10px] text-text-main">· already added</span>}
+                    {name ? (
+                      <>
+                        {name} <span className="text-text-main">· {u.email}</span>
+                      </>
+                    ) : (
+                      u.email
+                    )}{" "}
+                    {already && <span className="text-[10px] text-text-main">· already added</span>}
                   </button>
                 );
               })}
