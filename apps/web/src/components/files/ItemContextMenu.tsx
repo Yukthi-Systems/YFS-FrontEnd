@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Download, Star, RotateCcw, Trash2, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check } from "lucide-react";
-import type { FileItem } from "../../types/file";
+import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 
 export function ItemContextMenu({
   item,
+  permissions = null,
   onDownload,
   onToggleStar,
   onRename,
@@ -20,6 +21,9 @@ export function ItemContextMenu({
   className = "",
 }: {
   item: FileItem;
+  // The caller's permissions when `item` lives in a "Shared with me" subtree; null
+  // for the user's own items (full control).
+  permissions?: InternalSharePermissions | null;
   onDownload: () => void;
   onToggleStar: () => void;
   onRename: () => void;
@@ -41,20 +45,34 @@ export function ItemContextMenu({
   const destructiveClass =
     "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-red-500 rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-red-500/10 transition";
 
-  const canCustomize = item.isFolder && !item.isDeleted;
+  // In a shared subtree, only offer what the share grants. Own items: everything.
+  const shared = permissions !== null;
+  const allowDownload = !shared || permissions.can_download;
+  const allowEdit = !shared || permissions.can_update; // rename, colour/icon, star
+  const allowMove = !shared || (permissions.can_update && permissions.can_create);
+  const allowDelete = !shared && !item.isDeleted; // no folder-delete API for shares yet
+  const allowShare = !shared; // can't re-share someone else's folder
+
+  const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
 
   return (
     <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
-      <button onClick={onDownload} className={itemClass}>
-        <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-      </button>
-      <button onClick={onToggleStar} className={itemClass}>
-        <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} />{" "}
-        {item.isStarred ? "Unstar" : "Star"}
-      </button>
-      <button onClick={onRename} className={itemClass}>
-        <Pencil className="w-3.5 h-3.5" /> Rename
-      </button>
+      {allowDownload && (
+        <button onClick={onDownload} className={itemClass}>
+          <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
+        </button>
+      )}
+      {allowEdit && (
+        <button onClick={onToggleStar} className={itemClass}>
+          <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} />{" "}
+          {item.isStarred ? "Unstar" : "Star"}
+        </button>
+      )}
+      {allowEdit && (
+        <button onClick={onRename} className={itemClass}>
+          <Pencil className="w-3.5 h-3.5" /> Rename
+        </button>
+      )}
       {!item.isFolder && (
         <button onClick={onVersionHistory} className={itemClass}>
           <History className="w-3.5 h-3.5" /> Version History
@@ -62,17 +80,21 @@ export function ItemContextMenu({
       )}
       {!item.isDeleted && (
         <>
-          <button onClick={onMove} className={itemClass}>
-            <FolderInput className="w-3.5 h-3.5" /> Move to…
-          </button>
+          {allowMove && (
+            <button onClick={onMove} className={itemClass}>
+              <FolderInput className="w-3.5 h-3.5" /> Move to…
+            </button>
+          )}
           {!item.isFolder && (
             <button onClick={onCopy} className={itemClass}>
               <CopyPlus className="w-3.5 h-3.5" /> Copy to…
             </button>
           )}
-          <button onClick={onShare} className={itemClass}>
-            <Share2 className="w-3.5 h-3.5" /> Share
-          </button>
+          {allowShare && (
+            <button onClick={onShare} className={itemClass}>
+              <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+          )}
         </>
       )}
 
@@ -132,9 +154,11 @@ export function ItemContextMenu({
           </button>
         </>
       ) : (
-        <button onClick={onTrash} className={destructiveClass}>
-          <Trash2 className="w-3.5 h-3.5" /> Move to Trash
-        </button>
+        allowDelete && (
+          <button onClick={onTrash} className={destructiveClass}>
+            <Trash2 className="w-3.5 h-3.5" /> Move to Trash
+          </button>
+        )
       )}
     </div>
   );
