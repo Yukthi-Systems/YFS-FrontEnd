@@ -68,6 +68,7 @@ export function Sidebar({
   onCreateFolder,
   onUploadFiles,
   canUploadFiles = true,
+  canCreateHere = true,
   storagePercentage,
   storageUsedLabel,
   storageTotalLabel,
@@ -84,6 +85,8 @@ export function Sidebar({
   onUploadFiles: (files: FileList) => void;
   // Files need a folder — false at the My Drive root.
   canUploadFiles?: boolean;
+  // False inside a "Shared with me" folder the caller can't create in.
+  canCreateHere?: boolean;
   storagePercentage: number;
   storageUsedLabel: string;
   storageTotalLabel: string;
@@ -172,16 +175,18 @@ export function Sidebar({
                 collapsed ? "top-0 left-full ml-2" : "top-[calc(100%+8px)] left-0"
               }`}
             >
-              <button
-                onClick={() => {
-                  onCreateFolder();
-                  setNewMenuOpen(false);
-                }}
-                className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
-              >
-                <FolderPlus className="w-4 h-4" /> Create Folder
-              </button>
-              {canUploadFiles && (
+              {canCreateHere && (
+                <button
+                  onClick={() => {
+                    onCreateFolder();
+                    setNewMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
+                >
+                  <FolderPlus className="w-4 h-4" /> Create Folder
+                </button>
+              )}
+              {canUploadFiles && canCreateHere && (
                 <button
                   onClick={triggerFileUpload}
                   className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
@@ -189,12 +194,19 @@ export function Sidebar({
                   <FileUp className="w-4 h-4" /> Upload File
                 </button>
               )}
-              <button
-                onClick={triggerFolderUpload}
-                className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
-              >
-                <FolderUp className="w-4 h-4" /> Upload Folder
-              </button>
+              {canCreateHere && (
+                <button
+                  onClick={triggerFolderUpload}
+                  className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
+                >
+                  <FolderUp className="w-4 h-4" /> Upload Folder
+                </button>
+              )}
+              {!canCreateHere && (
+                <span className="px-3 py-2 text-[11px] text-text-main">
+                  You don't have permission to add items here.
+                </span>
+              )}
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2 } from "lucide-react";
-import type { FileItem } from "../../types/file";
+import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { formatBytes, formatDate } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
@@ -84,6 +84,7 @@ export function DetailsDrawer({
   item,
   files,
   pathLabel,
+  permissions = null,
   onClose,
   onOpenFull,
   onDownload,
@@ -99,6 +100,8 @@ export function DetailsDrawer({
   item: FileItem;
   files: FileItem[];
   pathLabel: string;
+  // Caller's permissions when `item` is in a "Shared with me" subtree; null otherwise.
+  permissions?: InternalSharePermissions | null;
   onClose: () => void;
   onOpenFull: () => void;
   onDownload: () => void;
@@ -111,6 +114,13 @@ export function DetailsDrawer({
   onTrash: () => void;
   onRestore: () => void;
 }) {
+  const shared = permissions !== null;
+  const allowDownload = !shared || permissions.can_download;
+  const allowEdit = !shared || permissions.can_update;
+  const allowMove = !shared || (permissions.can_update && permissions.can_create);
+  const allowDelete = !shared && !item.isDeleted;
+  const allowShare = !shared;
+
   return (
     <aside
       className="w-80 min-w-80 border-l border-border-main bg-bg-main flex flex-col h-full overflow-y-auto box-border shrink-0 max-[1024px]:absolute max-[1024px]:right-0 max-[1024px]:top-0 max-[1024px]:bottom-0 max-[1024px]:z-40 max-[1024px]:shadow-xl max-[360px]:w-full max-[420px]:min-w-0 animate-slide-in-right"
@@ -200,26 +210,30 @@ export function DetailsDrawer({
               <Expand className="w-4 h-4" /> Open
             </button>
           )}
-          <button
-            onClick={onDownload}
-            className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
-          >
-            <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-          </button>
-          <div className="flex gap-2">
+          {allowDownload && (
             <button
-              onClick={onToggleStar}
-              className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              onClick={onDownload}
+              className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
             >
-              <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} /> {item.isStarred ? "Unstar" : "Star"}
+              <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
             </button>
-            <button
-              onClick={onRename}
-              className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
-            >
-              Rename
-            </button>
-          </div>
+          )}
+          {allowEdit && (
+            <div className="flex gap-2">
+              <button
+                onClick={onToggleStar}
+                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              >
+                <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} /> {item.isStarred ? "Unstar" : "Star"}
+              </button>
+              <button
+                onClick={onRename}
+                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
+              >
+                Rename
+              </button>
+            </div>
+          )}
           {!item.isFolder && (
             <button
               onClick={onVersionHistory}
@@ -228,14 +242,16 @@ export function DetailsDrawer({
               <History className="w-3.5 h-3.5" /> Version History
             </button>
           )}
-          {!item.isDeleted && (
+          {!item.isDeleted && (allowMove || !item.isFolder) && (
             <div className="flex gap-2">
-              <button
-                onClick={onMove}
-                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-              >
-                <FolderInput className="w-3.5 h-3.5" /> Move
-              </button>
+              {allowMove && (
+                <button
+                  onClick={onMove}
+                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+                >
+                  <FolderInput className="w-3.5 h-3.5" /> Move
+                </button>
+              )}
               {!item.isFolder && (
                 <button
                   onClick={onCopy}
@@ -246,7 +262,7 @@ export function DetailsDrawer({
               )}
             </div>
           )}
-          {!item.isDeleted && (
+          {!item.isDeleted && allowShare && (
             <button
               onClick={onShare}
               className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
@@ -262,12 +278,14 @@ export function DetailsDrawer({
               Restore Item
             </button>
           ) : (
-            <button
-              onClick={onTrash}
-              className="w-full py-2 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Move to Trash
-            </button>
+            allowDelete && (
+              <button
+                onClick={onTrash}
+                className="w-full py-2 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Move to Trash
+              </button>
+            )
           )}
         </div>
       </div>

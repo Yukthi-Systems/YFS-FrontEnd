@@ -8,15 +8,20 @@ import { UploadQueueProvider } from './context/UploadQueueContext.tsx'
 import { ThemeProvider } from './context/ThemeContext.tsx'
 import { UserSettingsProvider } from './context/UserSettingsContext.tsx'
 import { SharedFileView } from './components/share/SharedFileView.tsx'
+import { ShareEndedView } from './components/share/ShareEndedView.tsx'
 
 // Shared-link view is a separate, unauthenticated tree — it deliberately skips
 // AuthProvider/FileSystemProvider/UploadQueueProvider since a link visitor isn't logged in.
-const isSharedRoute = window.location.pathname.startsWith('/share/')
+const path = window.location.pathname
+const isSharedRoute = path.startsWith('/share/')
+const isShareEnded = path === '/share-ended'
 
 createRoot(document.getElementById('root')!).render(
   // <StrictMode>
     <ThemeProvider>
-      {isSharedRoute ? (
+      {isShareEnded ? (
+        <ShareEndedView />
+      ) : isSharedRoute ? (
         <ToastProvider>
           <SharedFileView />
         </ToastProvider>

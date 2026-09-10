@@ -106,6 +106,9 @@ interface FileSystemContextType {
   // actually shared with the user (the shared-subtree root) — what the API's
   // shared_folder_id expects. null for the user's own folders.
   getSharedFolderId: (folderId: string | null) => string | null;
+  // The caller's permissions on the "Shared with me" subtree `itemId` belongs to,
+  // or null when it's one of the user's own items (full control).
+  getSharedPermissions: (itemId: string | null) => InternalSharePermissions | null;
 }
 
 const FileSystemContext = createContext<FileSystemContextType | null>(null);
@@ -640,6 +643,12 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     []
   );
 
+  const getSharedPermissions = useCallback(
+    (itemId: string | null): InternalSharePermissions | null =>
+      itemId !== null ? sharedSubtreeContext(filesRef.current, itemId)?.permissions ?? null : null,
+    []
+  );
+
   // Regenerate blob: URLs (which don't survive a reload) from bytes kept in IndexedDB.
   const hydrateBlobs = async (items: FileItem[]): Promise<FileItem[]> => {
     const hydrateOne = async (storageKey: string | undefined): Promise<string | undefined> => {
@@ -954,6 +963,13 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return newItem;
   };
 
+  // For an item inside a "Shared with me" subtree: the shared root id to send as
+  // shared_folder_id, plus the caller's permissions. null for the user's own items.
+  const sharedWrite = (id: string): { sharedFolderId: string; perms: InternalSharePermissions } | null => {
+    const ctx = sharedSubtreeContext(filesRef.current, id);
+    return ctx ? { sharedFolderId: ctx.rootId, perms: ctx.permissions } : null;
+  };
+
   const renameItem = (id: string, newName: string) => {
     const safeName = sanitizeName(newName);
     if (!safeName) return;
@@ -961,17 +977,24 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
     const { token: tk } = authRef.current;
-    if (tk && target?.origin === "server") {
-      // edit replaces *_info wholesale — carry the existing info through.
-      if (target.isFolder) {
-        withFreshToken((t) =>
-          apiEditFolder(t, { folderId: id, folderName: safeName, folderInfo: target.resourceInfo })
-        ).catch((err) => console.warn("Folder rename did not sync to API", err));
-      } else if (target.fileId) {
-        withFreshToken((t) =>
-          apiUpdateFileInfo(t, { file_id: target.fileId!, file_name: safeName, file_info: target.resourceInfo ?? {} })
-        ).catch((err) => console.warn("File rename did not sync to API", err));
-      }
+    if (!tk || !target) return;
+    const shared = sharedWrite(id);
+
+    // edit replaces *_info wholesale — carry the existing info through.
+    if (target.isFolder && (target.origin === "server" || target.origin === "shared")) {
+      if (shared && !shared.perms.can_update) return; // no edit permission — optimistic only
+      withFreshToken((t) =>
+        apiEditFolder(t, {
+          folderId: id,
+          folderName: safeName,
+          folderInfo: target.resourceInfo,
+          sharedFolderId: shared?.sharedFolderId ?? null,
+        })
+      ).catch((err) => console.warn("Folder rename did not sync to API", err));
+    } else if (!target.isFolder && target.origin === "server" && target.fileId) {
+      withFreshToken((t) =>
+        apiUpdateFileInfo(t, { file_id: target.fileId!, file_name: safeName, file_info: target.resourceInfo ?? {} })
+      ).catch((err) => console.warn("File rename did not sync to API", err));
     }
   };
 
@@ -981,15 +1004,24 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return { ...info, ui: { ...(info.ui ?? {}), ...patch } };
   };
 
-  // Persist a resource_info.ui change for a server folder (PATCH /folders/edit,
-  // which replaces folder_info — so send the whole merged object).
+  // Persist a resource_info.ui change for a folder (PATCH /folders/edit, which
+  // replaces folder_info — so send the whole merged object). Works for the user's
+  // own folders and for shared folders where the caller has can_update.
   const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
     const target = filesRef.current.find((f) => f.id === id);
-    if (!target?.isFolder || target.origin !== "server" || !authRef.current.token) return;
+    if (!target?.isFolder || !authRef.current.token) return;
+    if (target.origin !== "server" && target.origin !== "shared") return;
+    const shared = sharedWrite(id);
+    if (shared && !shared.perms.can_update) return;
     const folderInfo = mergeUi(target, patch);
-    withFreshToken((t) => apiEditFolder(t, { folderId: id, folderName: target.name, folderInfo })).catch((err) =>
-      console.warn("Folder appearance did not sync to API", err)
-    );
+    withFreshToken((t) =>
+      apiEditFolder(t, {
+        folderId: id,
+        folderName: target.name,
+        folderInfo,
+        sharedFolderId: shared?.sharedFolderId ?? null,
+      })
+    ).catch((err) => console.warn("Folder appearance did not sync to API", err));
   };
 
   const toggleStar = (id: string) => {
@@ -1123,7 +1155,12 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const moveItems = (ids: string[], newParentId: string | null): { moved: number; blocked: number } => {
     let moved = 0;
     let blocked = 0;
-    const movedServerFolderIds: string[] = [];
+    // Folder moves to sync server-side, with the shared_folder_id (if any) resolved
+    // BEFORE we mutate parentId below (the walk-up needs the pre-move tree).
+    const folderMoves: { id: string; sharedFolderId: string | null }[] = [];
+    // A "Shared with me" folder can only be moved to another spot in the SAME share,
+    // and only with can_update + can_create — otherwise the change stays client-only.
+    const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
     const next = files.map((f) => f);
 
     for (const id of ids) {
@@ -1135,19 +1172,35 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         continue;
       }
       if (item.parentId === newParentId) continue;
+
+      if (item.isFolder && (item.origin === "server" || item.origin === "shared")) {
+        const srcShared = sharedSubtreeContext(files, id);
+        if (srcShared) {
+          if (
+            dstShared?.rootId === srcShared.rootId &&
+            srcShared.permissions.can_update &&
+            srcShared.permissions.can_create
+          ) {
+            folderMoves.push({ id, sharedFolderId: srcShared.rootId });
+          }
+          // cross-share / no-permission move: optimistic only, no API call
+        } else if (item.origin === "server") {
+          folderMoves.push({ id, sharedFolderId: null });
+        }
+      }
+
       item.parentId = newParentId;
       item.modifiedAt = nowIso();
       moved++;
-      if (item.isFolder && item.origin === "server") movedServerFolderIds.push(id);
     }
 
     if (moved > 0) persist(next);
 
     const { token: tk } = authRef.current;
-    if (tk && movedServerFolderIds.length > 0) {
-      movedServerFolderIds.forEach((folderId) => {
+    if (tk && folderMoves.length > 0) {
+      folderMoves.forEach(({ id, sharedFolderId }) => {
         withFreshToken((t) =>
-          apiMoveFolder(t, { folderId, newParentFolderId: newParentId })
+          apiMoveFolder(t, { folderId: id, newParentFolderId: newParentId, sharedFolderId })
         ).catch((err) => console.warn("Folder move did not sync to API", err));
       });
     }
@@ -1293,6 +1346,7 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         revokeSharedLink,
         getPagination,
         getSharedFolderId,
+        getSharedPermissions,
         createFolder,
         ensureFolderPath,
         trashFolderId,

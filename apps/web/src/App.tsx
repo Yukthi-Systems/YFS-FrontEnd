@@ -58,6 +58,7 @@ function App() {
     loadSharedFolders,
     loadMoreSharedFolders,
     getPagination,
+    getSharedPermissions,
     trashFolderId,
     sharedOut,
     loadSharedOut,
@@ -103,6 +104,10 @@ function App() {
   const sso = useSsoAutoLogin({ isAuthenticated, authLoading, loginWithSso, clearError });
   const menus = useContextMenuState();
   const nav = useFileNavigation();
+
+  // In a "Shared with me" folder, adding items needs the share's can_create.
+  const currentFolderPerms = getSharedPermissions(nav.currentFolderId);
+  const canCreateHere = !currentFolderPerms || currentFolderPerms.can_create;
   const search = useFileSearch({
     files,
     activeSidebarTab: nav.activeSidebarTab,
@@ -283,6 +288,7 @@ function App() {
   const renderItemContextMenu = (item: FileItem) => (
     <ItemContextMenu
       item={item}
+      permissions={getSharedPermissions(item.id)}
       onDownload={() => fileActions.handleDownload(item)}
       onToggleStar={() => fileActions.handleToggleStar(item.id)}
       onRename={() => fileActions.openRenameModal(item)}
@@ -318,6 +324,7 @@ function App() {
         onCreateFolder={fileActions.openCreateFolderModal}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
         canUploadFiles={!!nav.currentFolderId}
+        canCreateHere={canCreateHere}
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
@@ -445,6 +452,7 @@ function App() {
             item={selectedItem}
             files={files}
             pathLabel={getItemPath(files, selectedItem)}
+            permissions={getSharedPermissions(selectedItem.id)}
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
             onDownload={() => fileActions.handleDownload(selectedItem)}
@@ -466,6 +474,7 @@ function App() {
           x={menus.canvasContextMenu.x}
           y={menus.canvasContextMenu.y}
           canUploadFile={!!nav.currentFolderId}
+          canCreateHere={canCreateHere}
           onCreateFolder={() => {
             fileActions.openCreateFolderModal();
             menus.setCanvasContextMenu(null);

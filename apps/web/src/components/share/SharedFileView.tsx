@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
-  Check,
   File as FileIcon,
   FileWarning,
-  Folder,
   FolderInput,
   FolderPlus,
+  Grid,
+  List,
   Lock,
   LogOut,
   Pencil,
   ShieldAlert,
-  X,
 } from "lucide-react";
 import {
   createPublicFolder,
@@ -26,21 +24,68 @@ import {
   type PublicSession,
   type PublicSessionInfo,
 } from "@yfs/service";
-import { formatBytes, formatDate } from "../../utils/format";
+import type { FileItem, SortField, SortOrder, ViewMode } from "../../types/file";
+import { categorizeByName } from "../../utils/fileType";
+import { useFileSelection } from "../../hooks/useFileSelection";
+import { FileListTable } from "../files/FileListTable";
+import { FileGrid } from "../files/FileGrid";
+import { Breadcrumbs, type BreadcrumbSegment } from "../layout/Breadcrumbs";
+import { ShareInfoBar } from "./ShareInfoBar";
+import { ListSkeleton, GridSkeleton } from "../common/Skeletons";
+import { EmptyState } from "../common/EmptyState";
+import { CreateFolderModal } from "../modals/CreateFolderModal";
+import { RenameModal } from "../modals/RenameModal";
 
-// Anonymous visitor page for an external share link (/share/<share_id>).
-//
-// Wired to the real public endpoints: mint a session (/public/session), pass the
-// password if the share is protected, then — for a folder share — browse its
-// contents through /share/public/folders/list/under, and (with permission)
-// create / rename / move folders inside it. File shares can't be fetched yet (no
-// public download endpoint), so they stop at the details screen.
+// Anonymous visitor page for an external folder-share link (/share/<share_id>).
+// Uses the same browse UI as the signed-in app (FileListTable / FileGrid /
+// Breadcrumbs), driven by the public endpoints and gated on the session's
+// per-visitor permissions. File shares and content preview/download have no public
+// endpoint yet, so a file target stops at the access screen.
 
-type Phase = "loading" | "not-found" | "expired" | "password" | "otp" | "granted" | "left";
+type Phase = "loading" | "not-found" | "expired" | "password" | "otp" | "granted";
 interface Crumb {
   id: string;
   name: string;
 }
+
+const SHARE_VIEW_KEY = "yfs_share_view";
+
+const noop = () => {};
+
+// BackendResource -> the FileItem shape the shared browse components expect. The
+// owner column just shows the share, and trash/versioning don't apply here.
+const mapPublicResource = (r: BackendResource): FileItem => {
+  const info = (r.resource_info ?? undefined) as { ui?: { color?: string; icon?: string } } | undefined;
+  const base = {
+    id: r.resource_id,
+    name: r.resource_name,
+    parentId: r.parent_folder_id ?? null,
+    size: r.total_resource_size ?? 0,
+    owner: { name: "Shared", email: "" },
+    modifiedAt: r.updated_at,
+    createdAt: r.created_at,
+    isStarred: false,
+    isDeleted: false,
+    color: info?.ui?.color,
+    icon: info?.ui?.icon,
+    origin: "shared" as const,
+  };
+  if (r.is_resource_folder) return { ...base, isFolder: true, type: "folder" };
+  const { type, extension } = categorizeByName(r.resource_name);
+  return { ...base, isFolder: false, type, extension };
+};
+
+const sortItems = (items: FileItem[], field: SortField, order: SortOrder): FileItem[] => {
+  const dir = order === "asc" ? 1 : -1;
+  return [...items].sort((a, b) => {
+    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1; // folders first, always
+    let cmp = 0;
+    if (field === "name") cmp = a.name.localeCompare(b.name, undefined, { numeric: true });
+    else if (field === "size") cmp = a.size - b.size;
+    else cmp = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();
+    return cmp * dir;
+  });
+};
 
 export function SharedFileView() {
   const shareId = useMemo(() => {
@@ -61,16 +106,38 @@ export function SharedFileView() {
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [newFolderName, setNewFolderName] = useState<string | null>(null);
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    try {
+      return localStorage.getItem(SHARE_VIEW_KEY) === "grid" ? "grid" : "list";
+    } catch {
+      return "list";
+    }
+  });
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const [contextMenuId, setContextMenuId] = useState<string | null>(null);
+
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
-  const [moving, setMoving] = useState<{ id: string; name: string } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const token = session?.public_session_token ?? "";
-  const currentFolderId = path.length ? path[path.length - 1].id : info?.share_folder_target_id ?? null;
+  const shareRootId = info?.share_folder_target_id ?? null;
+  const currentFolderId = path.length ? path[path.length - 1].id : shareRootId;
+  const canCreate = !!info?.can_create;
   const canEdit = !!info?.can_update;
   const canMove = !!info?.can_update && !!info?.can_create;
+
+  const setViewMode = (m: ViewMode) => {
+    setViewModeState(m);
+    try {
+      localStorage.setItem(SHARE_VIEW_KEY, m);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -126,53 +193,74 @@ export function SharedFileView() {
   }, [currentFolderId, loadFolder]);
 
   const refresh = () => currentFolderId && loadFolder(currentFolderId);
-  const fail = (err: unknown, fallback: string) =>
-    setListError(err instanceof Error ? err.message : fallback);
+  const fail = (err: unknown, fallback: string) => setListError(err instanceof Error ? err.message : fallback);
 
-  const submitNewFolder = async () => {
-    const name = (newFolderName ?? "").trim();
-    if (!token || !currentFolderId || !name) return;
-    setCreatingFolder(true);
+  const items = useMemo(() => sortItems(rows.map(mapPublicResource), sortField, sortOrder), [rows, sortField, sortOrder]);
+
+  const segments: BreadcrumbSegment[] = [
+    { id: shareRootId, name: "Shared folder" },
+    ...path.map((c) => ({ id: c.id, name: c.name })),
+  ];
+  // Breadcrumbs calls onNavigate(segmentIndex - 1); -1 is the share root.
+  const goToBreadcrumb = (index: number) => setPath((p) => (index < 0 ? [] : p.slice(0, index + 1)));
+
+  const openFolder = (item: FileItem) => setPath((p) => [...p, { id: item.id, name: item.name }]);
+
+  // Same selection behaviour as the signed-in app: single-click selects, double-click
+  // opens a folder, shift/ctrl range- and multi-select for batch actions.
+  const selection = useFileSelection({
+    listItems: items,
+    onOpenItem: (item) => {
+      if (item.isFolder) openFolder(item);
+    },
+  });
+
+  // Drop any selection when the folder changes (mirrors App's openFolder/goToBreadcrumb).
+  useEffect(() => {
+    selection.clearSelection();
+    selection.setCheckedItemIds([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFolderId]);
+
+  const submitCreateFolder = async (name: string) => {
+    if (!token || !currentFolderId || !name.trim()) return;
+    setBusy(true);
     try {
-      await createPublicFolder(token, {
-        parentFolderId: currentFolderId,
-        folderName: name,
-        shareId,
-      });
-      setNewFolderName(null);
+      await createPublicFolder(token, { parentFolderId: currentFolderId, folderName: name.trim(), shareId });
+      setCreatingFolder(false);
       await refresh();
     } catch (err) {
       fail(err, "Couldn't create the folder.");
     } finally {
-      setCreatingFolder(false);
+      setBusy(false);
     }
   };
 
-  const submitRename = async () => {
-    if (!renaming || !renaming.value.trim()) return;
-    setBusy(renaming.id);
+  const submitRename = async (name: string) => {
+    if (!renameTarget || !name.trim()) return;
+    setBusy(true);
     try {
-      await editPublicFolder(token, { folderId: renaming.id, folderName: renaming.value.trim() });
-      setRenaming(null);
+      await editPublicFolder(token, { folderId: renameTarget.id, folderName: name.trim() });
+      setRenameTarget(null);
       await refresh();
     } catch (err) {
       fail(err, "Couldn't rename the folder.");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
   const moveHere = async () => {
-    if (!moving || !currentFolderId) return;
-    setBusy(moving.id);
+    if (!moveTarget || !currentFolderId) return;
+    setBusy(true);
     try {
-      await movePublicFolder(token, { folderId: moving.id, newParentFolderId: currentFolderId });
-      setMoving(null);
+      await movePublicFolder(token, { folderId: moveTarget.id, newParentFolderId: currentFolderId });
+      setMoveTarget(null);
       await refresh();
     } catch (err) {
       fail(err, "Couldn't move the folder.");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -182,7 +270,8 @@ export function SharedFileView() {
     } catch {
       /* session already gone */
     }
-    setPhase("left");
+    // Navigate to a dedicated route so the share link is no longer in the address bar.
+    window.location.assign(`/share-ended?from=${encodeURIComponent(shareId)}`);
   };
 
   const submitPassword = async () => {
@@ -199,15 +288,48 @@ export function SharedFileView() {
     }
   };
 
-  if (phase === "loading") return <CenteredMessage title="Loading…" />;
-  if (phase === "left")
+  const renderContextMenu = (item: FileItem) => {
+    const rowClass =
+      "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-code-bg hover:text-text-heading transition w-full";
     return (
-      <CenteredMessage
-        icon={<Check className="w-10 h-10 text-accent" />}
-        title="You've left this share"
-        description="Reopen the link to access it again."
-      />
+      <div className="min-w-40 bg-bg-main border border-border-main rounded-xl p-1 shadow-lg flex flex-col gap-0.5">
+        {item.isFolder && (
+          <button className={rowClass} onClick={() => { setContextMenuId(null); openFolder(item); }}>
+            <FolderInput className="w-3.5 h-3.5" /> Open
+          </button>
+        )}
+        {item.isFolder && canEdit && (
+          <button
+            className={rowClass}
+            onClick={() => {
+              setContextMenuId(null);
+              setRenameTarget({ id: item.id, name: item.name });
+            }}
+          >
+            <Pencil className="w-3.5 h-3.5" /> Rename
+          </button>
+        )}
+        {item.isFolder && canMove && (
+          <button
+            className={rowClass}
+            onClick={() => {
+              setContextMenuId(null);
+              setMoveTarget({ id: item.id, name: item.name });
+            }}
+          >
+            <FolderInput className="w-3.5 h-3.5" /> Move…
+          </button>
+        )}
+        {!item.isFolder && (
+          <span className="px-3 py-2 text-[11px] text-text-main">No actions available yet</span>
+        )}
+      </div>
     );
+  };
+
+  // --- gate / status screens ---------------------------------------------------
+
+  if (phase === "loading") return <CenteredMessage title="Loading…" />;
   if (phase === "not-found")
     return (
       <CenteredMessage
@@ -266,9 +388,9 @@ export function SharedFileView() {
         title="Access granted"
         description="This link shares a single file. A public download isn't available yet."
       >
-        {session?.expires_at && (
-          <p className="text-xs text-text-main">Link expires {new Date(session.expires_at).toLocaleString()}</p>
-        )}
+        <div className="w-full max-w-sm mt-1">
+          <ShareInfoBar info={info} session={session} shareId={shareId} />
+        </div>
         <button onClick={exitShare} className="btn-outline mt-2 flex items-center gap-1.5" style={{ width: "auto" }}>
           <LogOut className="w-3.5 h-3.5" /> Exit
         </button>
@@ -276,190 +398,195 @@ export function SharedFileView() {
     );
   }
 
-  // granted — folder share: browse it.
+  // --- folder share: browse it, styled like the signed-in app -----------------
+
+  const viewToggleBtn = (mode: ViewMode, Icon: typeof List, label: string) => (
+    <button
+      onClick={() => setViewMode(mode)}
+      title={label}
+      className={`w-9 h-9 flex items-center justify-center rounded-full text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition ${
+        viewMode === mode ? "bg-accent-bg text-accent! border border-accent-border!" : ""
+      }`}
+    >
+      <Icon className="w-4 h-4" />
+    </button>
+  );
+
   return (
-    <div className="min-h-screen w-screen flex flex-col items-center bg-bg-main text-text-main px-4 py-10">
-      <div className="w-full max-w-3xl flex flex-col gap-4">
-        <div className="flex items-center gap-2 flex-wrap text-sm">
-          {path.length > 0 && (
+    <div
+      className="flex flex-col w-screen h-screen bg-bg-main text-text-main overflow-hidden font-sans"
+      onClick={() => {
+        setContextMenuId(null);
+        selection.clearSelection();
+      }}
+    >
+      <header className="h-14 min-h-14 border-b border-border-main px-5 flex items-center justify-between gap-3 max-[768px]:px-3">
+        <div className="flex items-center gap-2 font-bold text-text-heading">
+          <span className="text-accent">⚡</span> YFS
+          <span className="text-text-main font-medium text-sm hidden sm:inline">· Shared with you</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {canCreate && (
             <button
-              onClick={() => setPath((p) => p.slice(0, -1))}
-              className="btn-outline flex items-center gap-1 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setCreatingFolder(true);
+              }}
+              className="btn-outline flex items-center gap-1.5"
               style={{ width: "auto" }}
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back
+              <FolderPlus className="w-3.5 h-3.5" /> New folder
             </button>
           )}
-          <button onClick={() => setPath([])} className="text-text-heading font-semibold hover:underline">
-            Shared folder
-          </button>
-          {path.map((c, i) => (
-            <span key={c.id} className="flex items-center gap-2">
-              <span className="text-text-main">/</span>
-              <button
-                onClick={() => setPath((p) => p.slice(0, i + 1))}
-                className="text-text-heading hover:underline truncate max-w-[12rem]"
-              >
-                {c.name}
-              </button>
-            </span>
-          ))}
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {viewToggleBtn("list", List, "List view")}
+            {viewToggleBtn("grid", Grid, "Grid view")}
+          </div>
           <button
-            onClick={exitShare}
-            className="btn-outline ml-auto flex items-center gap-1.5 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              exitShare();
+            }}
+            className="btn-outline flex items-center gap-1.5"
             style={{ width: "auto" }}
           >
             <LogOut className="w-3.5 h-3.5" /> Exit
           </button>
         </div>
+      </header>
 
-        {moving && (
-          <div className="flex items-center gap-2 bg-accent-bg border border-accent-border rounded-xl px-3 py-2 text-xs">
-            <FolderInput className="w-3.5 h-3.5 text-accent shrink-0" />
-            <span className="flex-1 text-text-heading">
-              Moving <strong>{moving.name}</strong> — open a folder, then drop it here.
-            </span>
-            <button
-              onClick={moveHere}
-              disabled={busy === moving.id}
-              className="btn-primary"
-              style={{ width: "auto" }}
-            >
-              Move here
-            </button>
-            <button onClick={() => setMoving(null)} className="btn-outline" style={{ width: "auto" }}>
-              Cancel
-            </button>
-          </div>
-        )}
+      <div
+        className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"
+        onClick={() => {
+          setContextMenuId(null);
+          selection.clearSelection();
+        }}
+      >
+        {info && <ShareInfoBar info={info} session={session} shareId={shareId} />}
 
-        {info?.can_create && (
-          <div className="flex items-center gap-2">
-            {newFolderName === null ? (
-              <button
-                onClick={() => setNewFolderName("")}
-                className="btn-outline flex items-center gap-1.5"
-                style={{ width: "auto" }}
-              >
-                <FolderPlus className="w-3.5 h-3.5" /> New folder
+        <Breadcrumbs segments={segments} onNavigate={goToBreadcrumb} />
+
+        <div
+          className="flex items-center justify-between flex-wrap gap-3 border-b border-border-main pb-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {moveTarget ? (
+            <div className="flex items-center gap-2 bg-accent-bg border border-accent-border px-3 py-1.5 rounded-xl text-xs">
+              <FolderInput className="w-3.5 h-3.5 text-accent shrink-0" />
+              <span className="text-text-heading">
+                Moving <strong>{moveTarget.name}</strong> — open a folder, then drop it here.
+              </span>
+              <button onClick={moveHere} disabled={busy} className="btn-primary" style={{ width: "auto" }}>
+                Move here
               </button>
-            ) : (
-              <>
-                <input
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitNewFolder();
-                    if (e.key === "Escape") setNewFolderName(null);
-                  }}
-                  placeholder="Folder name"
-                  className="dialog-input flex-1 max-w-xs"
-                  autoFocus
-                />
-                <button onClick={submitNewFolder} disabled={creatingFolder} className="btn-primary" style={{ width: "auto" }}>
-                  {creatingFolder ? "Creating…" : "Create"}
-                </button>
-                <button onClick={() => setNewFolderName(null)} className="btn-outline" style={{ width: "auto" }}>
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="bg-bg-main border border-border-main rounded-2xl shadow-sm overflow-hidden">
-          {listLoading ? (
-            <div className="text-sm text-text-main text-center py-16">Loading…</div>
-          ) : listError ? (
-            <div className="text-sm text-red-500 text-center py-16">{listError}</div>
-          ) : rows.length === 0 ? (
-            <div className="text-sm text-text-main text-center py-16">This folder is empty.</div>
-          ) : (
-            <div className="flex flex-col divide-y divide-border-main">
-              {[...rows]
-                .sort((a, b) => Number(b.is_resource_folder) - Number(a.is_resource_folder))
-                .map((r) => {
-                  const isFolder = r.is_resource_folder;
-                  const isRenaming = renaming?.id === r.resource_id;
-                  return (
-                    <div
-                      key={r.resource_id}
-                      onClick={() =>
-                        isFolder && !isRenaming && setPath((p) => [...p, { id: r.resource_id, name: r.resource_name }])
-                      }
-                      className={`group flex items-center gap-3 px-4 py-2.5 ${
-                        isFolder && !isRenaming ? "cursor-pointer hover:bg-code-bg" : ""
-                      }`}
-                    >
-                      {isFolder ? (
-                        <Folder className="w-4 h-4 text-accent shrink-0" />
-                      ) : (
-                        <FileIcon className="w-4 h-4 text-text-main shrink-0" />
-                      )}
-
-                      {isRenaming ? (
-                        <div className="flex-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            value={renaming.value}
-                            onChange={(e) => setRenaming({ id: r.resource_id, value: e.target.value })}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") submitRename();
-                              if (e.key === "Escape") setRenaming(null);
-                            }}
-                            className="dialog-input flex-1"
-                            autoFocus
-                          />
-                          <button onClick={submitRename} disabled={busy === r.resource_id} className="p-1 text-accent">
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setRenaming(null)} className="p-1 text-text-main">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="text-sm text-text-heading truncate flex-1">{r.resource_name}</span>
-                          {isFolder && (canEdit || canMove) && (
-                            <div
-                              className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {canEdit && (
-                                <button
-                                  onClick={() => setRenaming({ id: r.resource_id, value: r.resource_name })}
-                                  title="Rename"
-                                  className="p-1 rounded text-text-main hover:bg-code-bg hover:text-text-heading"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {canMove && (
-                                <button
-                                  onClick={() => setMoving({ id: r.resource_id, name: r.resource_name })}
-                                  title="Move"
-                                  className="p-1 rounded text-text-main hover:bg-code-bg hover:text-text-heading"
-                                >
-                                  <FolderInput className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          <span className="text-[11px] text-text-main shrink-0">
-                            {isFolder ? "" : formatBytes(r.total_resource_size)} · {formatDate(r.updated_at)}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+              <button onClick={() => setMoveTarget(null)} className="btn-outline" style={{ width: "auto" }}>
+                Cancel
+              </button>
             </div>
+          ) : selection.checkedItemIds.length > 0 ? (
+            <div className="flex items-center gap-3 bg-accent-bg border border-accent-border px-3.5 py-1.5 rounded-xl">
+              <span className="text-xs font-semibold text-accent">
+                {selection.checkedItemIds.length} selected
+              </span>
+              <button
+                onClick={() => selection.setCheckedItemIds([])}
+                className="text-xs bg-transparent border-none text-text-heading hover:bg-black/5 dark:hover:bg-white/5 py-1 px-2 rounded font-medium cursor-pointer transition"
+              >
+                ✕ Clear
+              </button>
+            </div>
+          ) : (
+            <div />
           )}
+
+          <div className="flex gap-2">
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as SortField)}
+              className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer focus:outline-none"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="modifiedAt">Sort by Modified</option>
+              <option value="size">Sort by Size</option>
+            </select>
+            <button
+              onClick={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
+              className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
+              title="Toggle sort direction"
+            >
+              {sortOrder === "asc" ? "▲" : "▼"}
+            </button>
+          </div>
         </div>
 
-        <p className="text-[11px] text-text-main text-center">
+        {listError && <div className="text-sm text-red-500">{listError}</div>}
+
+        {listLoading ? (
+          viewMode === "list" ? (
+            <ListSkeleton />
+          ) : (
+            <GridSkeleton />
+          )
+        ) : items.length === 0 ? (
+          <EmptyState />
+        ) : viewMode === "list" ? (
+          <FileListTable
+            items={items}
+            selectedItemId={selection.selectedItemId}
+            checkedItemIds={selection.checkedItemIds}
+            contextMenuId={contextMenuId}
+            dragOverFolderId={null}
+            onItemClick={selection.handleItemClick}
+            onCheckboxToggle={selection.handleCheckboxToggle}
+            onSelectAllToggle={selection.handleSelectAllToggle}
+            onContextMenuToggle={setContextMenuId}
+            onItemContextMenu={(item, e) => {
+              e.preventDefault();
+              setContextMenuId(item.id);
+            }}
+            renderContextMenu={renderContextMenu}
+            onDragStartItem={noop}
+            onDragOverFolder={noop}
+            onDragLeaveFolder={noop}
+            onDropOnFolder={noop}
+          />
+        ) : (
+          <FileGrid
+            items={items}
+            selectedItemId={selection.selectedItemId}
+            checkedItemIds={selection.checkedItemIds}
+            contextMenuId={contextMenuId}
+            dragOverFolderId={null}
+            onItemClick={selection.handleItemClick}
+            onCheckboxToggle={selection.handleCheckboxToggle}
+            onContextMenuToggle={setContextMenuId}
+            onItemContextMenu={(item, e) => {
+              e.preventDefault();
+              setContextMenuId(item.id);
+            }}
+            renderContextMenu={renderContextMenu}
+            onDragStartItem={noop}
+            onDragOverFolder={noop}
+            onDragLeaveFolder={noop}
+            onDropOnFolder={noop}
+          />
+        )}
+
+        <p className="text-[11px] text-text-main text-center mt-2">
           Preview and download for shared content aren&apos;t available yet.
         </p>
       </div>
+
+      {creatingFolder && (
+        <CreateFolderModal onCancel={() => setCreatingFolder(false)} onCreate={submitCreateFolder} />
+      )}
+      {renameTarget && (
+        <RenameModal
+          currentName={renameTarget.name}
+          onCancel={() => setRenameTarget(null)}
+          onRename={submitRename}
+        />
+      )}
     </div>
   );
 }
