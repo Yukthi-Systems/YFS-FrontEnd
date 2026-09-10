@@ -3,9 +3,10 @@ import { useAuth } from "./context/AuthContext";
 import { useFileSystem } from "./context/FileSystemContext";
 import { useToast } from "./context/ToastContext";
 import { useUploadQueue } from "./context/UploadQueueContext";
+import { useUserSettings, ThemeSettingsBridge } from "./context/UserSettingsContext";
 import "./App.css";
 
-import type { FileItem, ViewMode, SortField, SortOrder } from "./types/file";
+import type { FileItem } from "./types/file";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
 import { getStorageQuota } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -79,12 +80,20 @@ function App() {
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [sortField, setSortField] = useState<SortField>("name");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  // View preferences are server-backed (private_info) via UserSettingsContext, so
+  // they follow the user across devices; they fall back to defaults until loaded.
+  const {
+    viewMode,
+    sortField,
+    sortOrder,
+    sidebarCollapsed,
+    setViewMode,
+    setSortField,
+    setSortOrder,
+    setSidebarCollapsed,
+  } = useUserSettings();
   // Type filtering was driven from the sidebar's "File Type" menu, which has been removed.
   const typeFilter = "all";
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
   const [viewerItem, setViewerItem] = useState<FileItem | null>(null);
 
@@ -291,6 +300,7 @@ function App() {
 
   return (
     <div className="flex w-screen h-screen bg-bg-main text-text-main overflow-hidden font-sans" onClick={menus.dismissAll}>
+      <ThemeSettingsBridge />
       {mobileNavOpen && (
         <div
           className="hidden max-[768px]:block fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
@@ -299,7 +309,7 @@ function App() {
       )}
       <Sidebar
         collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
+        onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
         activeTab={nav.activeSidebarTab}
         onTabChange={(tab) => {
           nav.switchTab(tab);
@@ -368,7 +378,7 @@ function App() {
                     sortField={sortField}
                     onSortFieldChange={setSortField}
                     sortOrder={sortOrder}
-                    onToggleSortOrder={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
+                    onToggleSortOrder={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
                     onClearSelection={() => selection.setCheckedItemIds([])}
                     onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
                     onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
