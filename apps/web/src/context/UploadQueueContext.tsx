@@ -3,7 +3,7 @@ import type { FileOperationResult } from "@yfs/service";
 import { useAuth } from "./AuthContext";
 import { useFileSystem } from "./FileSystemContext";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
-import { createUploadClient } from "../services/uploadClient";
+import { uploadClient } from "../services/uploadClient";
 import { buildFileOperations, runPool, UPLOAD_CONCURRENCY, type PlannedUpload } from "../services/uploadPlan";
 
 export interface UploadTask {
@@ -33,11 +33,9 @@ const UploadQueueContext = createContext<UploadQueueContextType | null>(null);
 const ROOT_FOLDER_ID = "";
 const toParentId = (folderId: string): string | null => (folderId === ROOT_FOLDER_ID ? null : folderId);
 
-const uploadClient = createUploadClient();
-
 export const UploadQueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, user } = useAuth();
-  const { files, ensureFolderPath, addFile, loadFolder } = useFileSystem();
+  const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId } = useFileSystem();
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const taskCounter = useRef(0);
 
@@ -85,6 +83,7 @@ export const UploadQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
         file,
         fileName: sanitizeName(file.name) || file.name,
         targetFolderId: folderId,
+        sharedFolderId: getSharedFolderId(folderId),
       });
     }
 
@@ -145,10 +144,13 @@ export const UploadQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
 
     // 5. Re-list every touched folder so server rows replace the optimistic ones.
-    //    (The TUS/GO service confirms the version to YFS-Main-API server-side.)
-    for (const folderId of new Set(live.map((x) => x.plan.targetFolderId))) {
-      loadFolder(toParentId(folderId), { force: true });
-    }
+    //    The Storage API confirms the committed version to YFS-Main-API through a
+    //    server-side callback that can land a beat after the upload response, so
+    //    re-list again shortly after to pick up the real row + its version.
+    const touched = new Set(live.map((x) => x.plan.targetFolderId));
+    const relist = () => touched.forEach((folderId) => loadFolder(toParentId(folderId), { force: true }));
+    relist();
+    setTimeout(relist, 2500);
   };
 
   const hasSubfolder = (it: FileWithRelativePath) => it.relativePath.split("/").filter(Boolean).length > 1;

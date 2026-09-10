@@ -30,11 +30,11 @@ import { formatBytes, formatDate } from "../../utils/format";
 
 // Anonymous visitor page for an external share link (/share/<share_id>).
 //
-// Wired to the real /public/* endpoints: mint a session, pass the password if the
-// share is protected, then — for a folder share — browse its contents through
-// /public/folders/list/under, and (with permission) create / rename / move
-// folders inside it. File shares can't be fetched yet (no public download
-// endpoint), so they stop at the details screen.
+// Wired to the real public endpoints: mint a session (/public/session), pass the
+// password if the share is protected, then — for a folder share — browse its
+// contents through /share/public/folders/list/under, and (with permission)
+// create / rename / move folders inside it. File shares can't be fetched yet (no
+// public download endpoint), so they stop at the details screen.
 
 type Phase = "loading" | "not-found" | "expired" | "password" | "otp" | "granted" | "left";
 interface Crumb {
@@ -134,7 +134,11 @@ export function SharedFileView() {
     if (!token || !currentFolderId || !name) return;
     setCreatingFolder(true);
     try {
-      await createPublicFolder(token, { parentFolderId: currentFolderId, folderName: name });
+      await createPublicFolder(token, {
+        parentFolderId: currentFolderId,
+        folderName: name,
+        shareId,
+      });
       setNewFolderName(null);
       await refresh();
     } catch (err) {
