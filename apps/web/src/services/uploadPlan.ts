@@ -5,7 +5,10 @@ import type { FileItem } from "../types/file";
 export interface PlannedUpload {
   file: File;
   fileName: string; // sanitized leaf name
-  targetFolderId: string; // real folders.folder_id
+  targetFolderId: string; // real folders.folder_id (the immediate parent)
+  // Set when targetFolderId is inside a "Shared with me" subtree: the id of the
+  // folder actually shared with the user (the shared-subtree root). null otherwise.
+  sharedFolderId: string | null;
 }
 
 const DEFAULT_MIME = "application/octet-stream";
@@ -34,7 +37,7 @@ export const buildFileOperations = (
     if (v > (maxVersion.get(k) ?? 0)) maxVersion.set(k, v);
   }
 
-  return uploads.map(({ file, fileName, targetFolderId }) => {
+  return uploads.map(({ file, fileName, targetFolderId, sharedFolderId }) => {
     const k = key(targetFolderId, fileName);
     const exists = maxVersion.has(k);
 
@@ -55,6 +58,7 @@ export const buildFileOperations = (
       file_version,
       expected_file_size: file.size,
       file_ops_type,
+      shared_folder_id: sharedFolderId,
     };
   });
 };

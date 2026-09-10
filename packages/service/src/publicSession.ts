@@ -8,9 +8,12 @@ import type { BackendResource, PageQuery } from "./types";
 // src/middleware/auth.rs. The session token rides in the x-public-session-id
 // header on every call after createPublicSession.
 //
-// NOTE: folder shares can now be browsed (GET /public/folders/list/under/{id}).
+// NOTE: folder shares can now be browsed (GET /share/public/folders/list/under/{id}).
 // There is still no public endpoint to download a file or fetch a single-file
 // share, so file shares can only show metadata.
+//
+// The folder endpoints live under /share/public/folders/*; the session endpoints
+// (/public/session, /public/validate/*, /public/logout) stay under /public/*.
 
 const PUBLIC_HEADER = "x-public-session-id";
 
@@ -86,30 +89,61 @@ const pageParams = (page: Partial<PageQuery> = {}): string => {
   return `?limit=${limit}&offset=${offset}`;
 };
 
-// GET /public/folders/list/under/{requestFolderId} — direct children of a folder
-// inside a shared-folder link. `requestFolderId` must be the share target or a
-// folder under it. Only valid for folder shares.
+// Anonymous-visitor stand-in for the authenticated creation_info the main app
+// stamps into folder_info. No user_id/user_name — the visitor has no account;
+// instead it records that the folder was created through a public share link.
+export interface AnonymousFolderCreationInfo {
+  anonymous: true;
+  created_via_share_id: string; // the external share the visitor came through
+  parent_folder_id: string;
+  created_at: string; // RFC3339
+}
+
+export const buildAnonymousCreationInfo = (
+  shareId: string,
+  parentFolderId: string
+): { creation_info: AnonymousFolderCreationInfo } => ({
+  creation_info: {
+    anonymous: true,
+    created_via_share_id: shareId,
+    parent_folder_id: parentFolderId,
+    created_at: new Date().toISOString(),
+  },
+});
+
+// GET /share/public/folders/list/under/{requestFolderId} — direct children of a
+// folder inside a shared-folder link. `requestFolderId` must be the share target
+// or a folder under it. Only valid for folder shares.
 export const listPublicFolderChildren = async (
   publicSessionToken: string,
   requestFolderId: string,
   page?: Partial<PageQuery>
 ): Promise<BackendResource[]> => {
   const { data } = await apiRequest<BackendResource[]>(
-    `/public/folders/list/under/${requestFolderId}${pageParams(page)}`,
+    `/share/public/folders/list/under/${requestFolderId}${pageParams(page)}`,
     { headers: { [PUBLIC_HEADER]: publicSessionToken } }
   );
   return data ?? [];
 };
 
-// POST /public/folders/create — create a folder inside a shared-folder link.
+// POST /share/public/folders/create — create a folder inside a shared-folder link.
 // `parentFolderId` must be the share target or a folder under it. The API doesn't
 // echo the folder back — re-list the parent afterwards. Gate on the session's
 // can_create in the UI; the endpoint itself doesn't check it.
+//
+// folder_info carries an anonymous creation_info (see buildAnonymousCreationInfo):
+// pass `shareId` and it's stamped in automatically, merged under any extra
+// `folderInfo` the caller supplies.
 export const createPublicFolder = async (
   publicSessionToken: string,
-  params: { parentFolderId: string; folderName: string; folderInfo?: Record<string, unknown> }
+  params: {
+    parentFolderId: string;
+    folderName: string;
+    shareId: string;
+    folderInfo?: Record<string, unknown>;
+  }
 ): Promise<void> => {
-  await apiRequest("/public/folders/create", {
+  await apiRequest("/share/public/folders/create", {
     method: "POST",
     parseJson: false,
     headers: { [PUBLIC_HEADER]: publicSessionToken },
@@ -117,18 +151,21 @@ export const createPublicFolder = async (
       parent_folder_id: params.parentFolderId,
       shared_folder_id: null,
       folder_name: params.folderName,
-      folder_info: params.folderInfo ?? {},
+      folder_info: {
+        ...buildAnonymousCreationInfo(params.shareId, params.parentFolderId),
+        ...(params.folderInfo ?? {}),
+      },
     }),
   });
 };
 
-// PATCH /public/folders/edit — rename / update a folder inside a shared-folder
-// link. Requires the session's can_update.
+// PATCH /share/public/folders/edit — rename / update a folder inside a
+// shared-folder link. Requires the session's can_update.
 export const editPublicFolder = async (
   publicSessionToken: string,
   params: { folderId: string; folderName: string; folderInfo?: Record<string, unknown> }
 ): Promise<void> => {
-  await apiRequest("/public/folders/edit", {
+  await apiRequest("/share/public/folders/edit", {
     method: "PATCH",
     parseJson: false,
     headers: { [PUBLIC_HEADER]: publicSessionToken },
@@ -141,14 +178,14 @@ export const editPublicFolder = async (
   });
 };
 
-// PUT /public/folders/move — re-parent a folder inside a shared-folder link. Both
-// the folder and the new parent must be under the share. Requires can_create AND
-// can_update.
+// PUT /share/public/folders/move — re-parent a folder inside a shared-folder link.
+// Both the folder and the new parent must be under the share. Requires can_create
+// AND can_update.
 export const movePublicFolder = async (
   publicSessionToken: string,
   params: { folderId: string; newParentFolderId: string }
 ): Promise<void> => {
-  await apiRequest("/public/folders/move", {
+  await apiRequest("/share/public/folders/move", {
     method: "PUT",
     parseJson: false,
     headers: { [PUBLIC_HEADER]: publicSessionToken },

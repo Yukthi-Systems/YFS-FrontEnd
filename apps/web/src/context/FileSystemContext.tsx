@@ -102,6 +102,10 @@ interface FileSystemContextType {
   setShareSettings: (id: string, settings: ShareSettings) => void;
   clearShareSettings: (id: string) => void;
   getDescendantIds: (id: string) => string[];
+  // If `folderId` sits inside a "Shared with me" subtree, the id of the folder
+  // actually shared with the user (the shared-subtree root) — what the API's
+  // shared_folder_id expects. null for the user's own folders.
+  getSharedFolderId: (folderId: string | null) => string | null;
 }
 
 const FileSystemContext = createContext<FileSystemContextType | null>(null);
@@ -191,7 +195,9 @@ const mapResource = (r: BackendResource, ownerEmail: string): FileItem => {
 };
 
 // Map a "shared with me" folder into a FileItem parked under SHARED_ROOT_ID.
-const mapSharedResource = (r: InternalSharedResource): FileItem => ({
+const mapSharedResource = (r: InternalSharedResource): FileItem => {
+  const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
+  return {
   id: r.resource_id,
   name: r.resource_name,
   isFolder: true,
@@ -204,6 +210,8 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => ({
   isDeleted: false,
   type: "folder",
   origin: "shared",
+  createdBy: info?.creation_info?.user_name,
+  resourceInfo: info,
   sharedIn: {
     ownerUserId: r.user_id,
     permissions: {
@@ -214,7 +222,13 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => ({
       can_delete: r.can_delete,
     },
   },
-});
+  };
+};
+
+// Grace window for a just-created optimistic folder whose server create call may
+// still be in flight. Past this, a local-only folder that a full server listing of
+// its parent didn't include is treated as orphaned (nothing ever retries these).
+const LOCAL_FOLDER_GRACE_MS = 30_000;
 
 // Merge a fresh server listing of one folder into the current tree, preserving any
 // client-only state (stars, trash, shares, uploaded blobs) and reconciling optimistic
@@ -279,14 +293,27 @@ const mergeServerListing = (
   // "vanished server-side" check below would wrongly drop every earlier page. Skip it.
   if (append) return merged;
 
-  // 3. Drop server rows that were children of this folder but have vanished server-side
-  //    (deleted elsewhere) — unless they carry client-only state worth keeping.
+  // 3. Drop rows that are direct children of this folder but aren't in the fresh
+  //    listing:
+  //    - server rows that vanished server-side (deleted elsewhere)
+  //    - orphaned optimistic folders whose create never landed — nothing retries
+  //      them and fetchFolderPage won't list their children, so a kept row is a
+  //      permanent phantom. A just-created one (within the grace window) is spared
+  //      in case its create call is still in flight.
+  //    Rows carrying client-only state worth keeping (starred / trashed / shared)
+  //    are never dropped.
   return merged.filter((f) => {
-    if (f.origin !== "server") return true;
     if (f.parentId !== parentId) return true;
     if (incomingIds.has(f.id)) return true;
     if (f.isStarred || f.isDeleted || f.share) return true;
-    return false;
+    if (f.origin === "server") return false;
+    // Optimistic folders from createFolder / ensureFolderPath carry a "folder-" id
+    // (copied or offline-authored items use other schemes and stay put).
+    if (f.origin === "local" && f.isFolder && f.id.startsWith("folder-")) {
+      const age = Date.now() - Date.parse(f.createdAt);
+      return Number.isFinite(age) && age <= LOCAL_FOLDER_GRACE_MS;
+    }
+    return true;
   });
 };
 
@@ -600,6 +627,12 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [pageInfo]
   );
 
+  const getSharedFolderId = useCallback(
+    (folderId: string | null): string | null =>
+      folderId !== null ? sharedSubtreeContext(filesRef.current, folderId)?.rootId ?? null : null,
+    []
+  );
+
   // Regenerate blob: URLs (which don't survive a reload) from bytes kept in IndexedDB.
   const hydrateBlobs = async (items: FileItem[]): Promise<FileItem[]> => {
     const hydrateOne = async (storageKey: string | undefined): Promise<string | undefined> => {
@@ -747,14 +780,37 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const { token: tk } = authRef.current;
     if (tk) {
+      // Creating inside a "Shared with me" folder: the API needs shared_folder_id to
+      // check the caller's share permissions and write as the folder's owner. It's the
+      // id of the folder actually shared with the user (the shared-subtree root), not
+      // the immediate parent — the two differ for a nested subfolder.
+      const sharedFolderId =
+        parentId !== null
+          ? sharedSubtreeContext(filesRef.current, parentId)?.rootId ?? null
+          : null;
       (async () => {
         try {
           await withFreshToken((t) =>
-            apiCreateFolder(t, { parentFolderId: parentId, folderName: safeName, folderInfo: creationInfo })
+            apiCreateFolder(t, {
+              parentFolderId: parentId,
+              folderName: safeName,
+              folderInfo: creationInfo,
+              sharedFolderId,
+            })
           );
           await loadFolder(parentId, { force: true });
         } catch (err) {
           console.warn("Folder create did not sync to API", err);
+          // Roll the optimistic row back — nothing retries local folders and
+          // fetchFolderPage won't list their children, so a kept row becomes a
+          // permanent phantom. Then re-list in case the create actually landed
+          // (e.g. a unique-name conflict) so it reappears as a real server row.
+          setFiles((prev) => {
+            const updated = prev.filter((f) => f.id !== newFolder.id);
+            saveCache(updated);
+            return updated;
+          });
+          await loadFolder(parentId, { force: true }).catch(() => {});
         }
       })();
     }
@@ -1229,6 +1285,7 @@ export const FileSystemProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         loadSharedLinks,
         revokeSharedLink,
         getPagination,
+        getSharedFolderId,
         createFolder,
         ensureFolderPath,
         trashFolderId,

@@ -7,9 +7,10 @@ import { apiRequest } from "./apiClient";
 //   PATCH /files/update        body: FileInfoEditRequest            -> 204
 //   GET  /files/info/{file_id}                                      -> FileDetails
 //
-// Request shapes mirror the Rust models (src/models/files_folders.rs) exactly.
-// The /files/operations RESPONSE is still a stub server-side — FileOperationResult
-// is the assumed shape; keep VITE_MOCK_UPLOADS on until it returns real data.
+// Request shapes mirror the Rust models (src/models/files_folders.rs). The
+// FileOperationResult shape is pinned in
+// YFS-Main-API/docs/upload-implementation-plan.md §3.2 — align the Rust handler
+// to it (it maps the Storage API's /sessions/upload response onto it).
 // ---------------------------------------------------------------------------
 
 // files_folders::FileOpsType
@@ -17,25 +18,30 @@ export type FileOpsType = "Upload" | "Download" | "Delete" | "Replace";
 
 // One row of the array POST /files/operations expects (files_folders::FileInfoRequest).
 export interface FileOperationEntry {
-  folder_id: string; // real folders.folder_id UUID
+  folder_id: string; // real folders.folder_id UUID (the immediate parent)
   file_name: string;
   file_info: Record<string, unknown>; // UI metadata (colour, icon, …); {} if none
   file_type: string; // MIME, e.g. "text/plain"
   file_version: number; // 1 for a new file/overwrite, next version for a new revision
   expected_file_size: number; // bytes
   file_ops_type: FileOpsType;
+  // When the target folder is inside a "Shared with me" subtree, the id of the
+  // folder actually shared with the user (the shared-subtree root) so the API can
+  // check the caller's share permissions and write as the owner. null otherwise.
+  shared_folder_id: string | null;
 }
 
-// Assumed row of the parallel response array. ALIGN with the Rust handler when it
-// returns a body; only this interface + the mock should need to change.
+// Row of the parallel response array, one per request entry in the same order.
+// Shape is pinned in YFS-Main-API/docs/upload-implementation-plan.md §3.2.
 export interface FileOperationResult {
   file_name: string;
   folder_id: string;
   file_id: string; // logical files.file_id (stable across versions)
   file_version: number; // authoritative version the server assigned
-  upload_url: string; // TUS creation endpoint, or a pre-signed PUT URL
+  upload_url: string; // TUS creation endpoint (base_url + /upload/tus/), or a pre-signed PUT URL
   upload_protocol: "tus" | "put";
-  file_location: string; // file_versions.file_location
+  token: string; // opaque Storage-API session token — sent as `Authorization: Bearer` to tus
+  file_location: string; // file_versions.file_location (storage key)
   expires_at: string; // RFC3339
 }
 
