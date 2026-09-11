@@ -118,6 +118,39 @@ function App() {
     trashFolderId,
   });
 
+    // A page load that starts deep inside a folder path (a refresh, or a bookmarked
+  // URL — see useFileNavigation/utils/appRoute) only has the leaf folder id; `files`
+  // doesn't yet contain its ancestors. That's merely cosmetic for a "drive" path
+  // (breadcrumb names fill in once loaded), but for a "shared with me" path it's
+  // load-bearing: fetchFolderPage's shared-context detection walks parentId links
+  // already in `files` to route the request through the share endpoint, so the
+  // ancestor chain has to be loaded in order, root-first, before the leaf. While
+  // that's in flight `restoringSharedRoute` tells the effect below to hold off on
+  // loading the leaf itself.
+  const [restoringSharedRoute, setRestoringSharedRoute] = useState(
+    () => nav.activeSidebarTab === "shared" && nav.currentPath.length > 0
+  );
+  const hydratedRouteRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated || hydratedRouteRef.current) return;
+    hydratedRouteRef.current = true;
+    const ancestorIds = nav.currentPath.slice(0, -1);
+    if (nav.activeSidebarTab === "shared" && nav.currentPath.length > 0) {
+      (async () => {
+        await loadSharedFolders();
+        for (const id of ancestorIds) await loadFolder(id);
+        setRestoringSharedRoute(false);
+      })();
+    } else if (ancestorIds.length > 0) {
+      // Best-effort breadcrumb hydration for a deep-linked drive/starred/etc path —
+      // the leaf's own content loads via the effect below regardless.
+      (async () => {
+        for (const id of ancestorIds) await loadFolder(id);
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
   // Pull the current folder's children from YFS-Main-API whenever navigation changes.
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -129,12 +162,17 @@ function App() {
     else if (tab === "shared-links") loadSharedLinks({ force: true });
     else if (tab === "trash") {
       if (trashFolderId) loadFolder(trashFolderId, { force: true });
+    } else if (restoringSharedRoute) {
+      // The hydration effect above owns loading this chain in order; it flips
+      // restoringSharedRoute to false once the ancestors are in, which re-runs this
+      // effect and falls through to the branch below for the leaf.
     } else loadFolder(nav.currentFolderId);
   }, [
     isAuthenticated,
     nav.activeSidebarTab,
     nav.currentFolderId,
     trashFolderId,
+    restoringSharedRoute,
     loadFolder,
     loadSharedFolders,
     loadSharedOut,
@@ -214,6 +252,15 @@ function App() {
   // in-progress search, since neither carries over to a different listing.
   function openFolder(folderId: string) {
     nav.navigateToFolder(folderId);
+    selection.clearSelection();
+    search.setSearchQuery("");
+  }
+
+  // Opening a folder from "Shared by link" jumps straight to My Drive regardless of
+  // whatever tab/path was active — it's one of my own folders, just reached via a
+  // link rather than by browsing there.
+  function openSharedLinkFolder(folderId: string) {
+    nav.openPath("drive", [folderId]);
     selection.clearSelection();
     search.setSearchQuery("");
   }
@@ -357,7 +404,11 @@ function App() {
               onContextMenu={menus.openCanvasContextMenu}
             >
               {nav.activeSidebarTab === "shared-links" ? (
-                <SharedLinksList links={sharedLinks} onRevoke={revokeSharedLink} />
+                <SharedLinksList 
+                  links={sharedLinks} 
+                  onRevoke={revokeSharedLink} 
+                  onOpenFolder={openSharedLinkFolder}
+                  />
               ) : search.isSearching ? (
                 <SearchResultsList
                   results={search.results}
