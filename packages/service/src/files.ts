@@ -1,49 +1,54 @@
 import { apiRequest } from "./apiClient";
 
-// ---------------------------------------------------------------------------
-// File operations against YFS-Main-API's /files scope.
+// File upload against YFS-Main-API's /files scope.
 //
-//   POST /files/operations     body: FileOperationEntry[] (1..100)  -> FileOperationResult[]
-//   PATCH /files/update        body: FileInfoEditRequest            -> 204
-//   GET  /files/info/{file_id}                                      -> FileDetails
+//   POST /files/upload   body: FileOpsRequest (one file)  -> UploadSession[] (always
+//                         exactly one element — YFS-Main-API relays the Storage API's
+//                         /sessions/upload response verbatim, which is array-shaped
+//                         because it also serves batched internal callers)
 //
-// Request shapes mirror the Rust models (src/models/files_folders.rs). The
-// FileOperationResult shape is pinned in
-// YFS-Main-API/docs/upload-implementation-plan.md §3.2 — align the Rust handler
-// to it (it maps the Storage API's /sessions/upload response onto it).
-// ---------------------------------------------------------------------------
+// This is upload-only for now — Download/Delete/Replace, batching, and shared-folder
+// targets aren't wired up server-side yet (see routes/files.rs and
+// models/files_folders.rs; shared_folder_id is accepted but unused by the handler).
+// Request/response shapes mirror the Rust (files_folders::FileOpsRequest) and Go
+// (models.UploadSession) structs — don't invent fields either side doesn't have,
+// notably there's no file_location or upload_protocol in the response.
 
-// files_folders::FileOpsType
-export type FileOpsType = "Upload" | "Download" | "Delete" | "Replace";
-
-// One row of the array POST /files/operations expects (files_folders::FileInfoRequest).
-export interface FileOperationEntry {
+export interface FileUploadRequest {
   folder_id: string; // real folders.folder_id UUID (the immediate parent)
+  file_id?: string | null; // omit for a brand-new file; required for file_version > 1
+  shared_folder_id?: string | null; // accepted but not yet acted on server-side
   file_name: string;
   file_info: Record<string, unknown>; // UI metadata (colour, icon, …); {} if none
   file_type: string; // MIME, e.g. "text/plain"
-  file_version: number; // 1 for a new file/overwrite, next version for a new revision
+  file_version: number; // 1 for a new file; otherwise must be exactly latest + 1
   expected_file_size: number; // bytes
-  file_ops_type: FileOpsType;
-  // When the target folder is inside a "Shared with me" subtree, the id of the
-  // folder actually shared with the user (the shared-subtree root) so the API can
-  // check the caller's share permissions and write as the owner. null otherwise.
-  shared_folder_id: string | null;
 }
 
-// Row of the parallel response array, one per request entry in the same order.
-// Shape is pinned in YFS-Main-API/docs/upload-implementation-plan.md §3.2.
-export interface FileOperationResult {
+// models.UploadSession (YFS-Files-Api) — one issued upload slot for exactly one file.
+export interface UploadSession {
   file_name: string;
-  folder_id: string;
-  file_id: string; // logical files.file_id (stable across versions)
-  file_version: number; // authoritative version the server assigned
-  upload_url: string; // TUS creation endpoint (base_url + /upload/tus/), or a pre-signed PUT URL
-  upload_protocol: "tus" | "put";
+  expected_file_size: number;
   token: string; // opaque Storage-API session token — sent as `Authorization: Bearer` to tus
-  file_location: string; // file_versions.file_location (storage key)
+  file_id: string; // logical files.file_id (stable across versions)
+  file_version: number;
+  folder_id: string;
+  owner_id: string;
   expires_at: string; // RFC3339
+  base_url: string; // Storage API origin — the tus endpoint is `${base_url}/upload/tus/`
 }
+
+// POST /files/upload — one file per call.
+export const requestFileUpload = async (accessToken: string, req: FileUploadRequest): Promise<UploadSession> => {
+  const { data } = await apiRequest<UploadSession[]>("/files/upload", {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  const session = data?.[0];
+  if (!session) throw new Error("Upload session response was empty");
+  return session;
+};
 
 // files_folders::FileInfoEditRequest
 export interface FileInfoEdit {
@@ -52,34 +57,9 @@ export interface FileInfoEdit {
   file_info: Record<string, unknown>;
 }
 
-// The most this endpoint accepts in one call (routes/files.rs).
-export const FILE_OPS_BATCH_SIZE = 100;
-
-const chunk = <T,>(arr: T[], size: number): T[][] => {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-};
-
-// POST /files/operations — returns one result per entry, in request order. Chunks
-// large folder uploads so no request carries more than the server's cap.
-export const fileOperations = async (
-  accessToken: string,
-  entries: FileOperationEntry[]
-): Promise<FileOperationResult[]> => {
-  const results: FileOperationResult[] = [];
-  for (const batch of chunk(entries, FILE_OPS_BATCH_SIZE)) {
-    const { data } = await apiRequest<FileOperationResult[]>("/files/operations", {
-      accessToken,
-      method: "POST",
-      body: JSON.stringify(batch),
-    });
-    results.push(...(data ?? []));
-  }
-  return results;
-};
-
-// PATCH /files/update — rename / edit a file's UI metadata (not its bytes).
+// PATCH /files/update — rename / edit a file's UI metadata (not its bytes). Not
+// currently mounted server-side (routes/files.rs has it commented out) — calling
+// this will 404 until that lands.
 export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): Promise<void> => {
   await apiRequest("/files/update", {
     accessToken,
@@ -89,8 +69,8 @@ export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): P
   });
 };
 
-// GET /files/info/{file_id} — file details + version history. Response shape is a
-// server-side stub for now.
+// GET /files/info/{file_id} — file details + version history. Not currently mounted
+// server-side either (see above).
 export const getFileInfo = async (accessToken: string, fileId: string): Promise<unknown> => {
   const { data } = await apiRequest<unknown>(`/files/info/${fileId}`, { accessToken });
   return data;
