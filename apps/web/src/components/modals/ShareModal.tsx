@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Info, Link2, Loader2, Plus, Trash2, Undo2, Users, X } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import type { BasicUserInfo, ExternalShare } from "@yfs/service";
@@ -112,33 +113,27 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
   const canShareInternally = item.isFolder && !sharingDisabled;
 
   const [tab, setTab] = useState<"people" | "links">(canShareInternally ? "people" : "links");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
   const [people, setPeople] = useState<PersonRow[]>([]);
   const [links, setLinks] = useState<LinkDraft[]>([]);
 
   // Add-people search.
   const [emailQuery, setEmailQuery] = useState("");
-  const [results, setResults] = useState<BasicUserInfo[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [debouncedEmailQuery, setDebouncedEmailQuery] = useState("");
   const [newPerms, setNewPerms] = useState<InternalSharePermissions>(DEFAULT_PERMS);
 
   const targetKey = item.isFolder ? "share_folder_target_id" : "share_file_target_id";
+  const queryClient = useQueryClient();
+  const shareQueryKey = ["shareInfo", item.id] as const;
 
-  const load = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
+  const shareQuery = useQuery({
+    queryKey: shareQueryKey,
+    queryFn: async () => {
       const [shareInfo, allLinks] = await Promise.all([
-        canShareInternally ? getFolderShareInfo(token, item.id) : Promise.resolve([]),
+        canShareInternally ? getFolderShareInfo(token!, item.id) : Promise.resolve([]),
         (async () => {
           const out: ExternalShare[] = [];
           for (let offset = 0; offset < 2000; offset += 100) {
-            const page = await listExternalShares(token, { limit: 100, offset });
+            const page = await listExternalShares(token!, { limit: 100, offset });
             out.push(...page);
             if (page.length < 100) break;
           }
@@ -151,7 +146,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
           let email = s.shared_with_user_id;
           let name: string | undefined;
           try {
-            const u = await getUserById(token, s.shared_with_user_id);
+            const u = await getUserById(token!, s.shared_with_user_id);
             if (u) {
               email = u.email;
               name = displayNameOf(u);
@@ -163,57 +158,54 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
           return { userId: s.shared_with_user_id, email, name, base: perms, perms, removed: false };
         })
       );
-      setPeople(rows);
 
-      setLinks(
-        allLinks.map((s) => ({
-          key: s.share_id,
-          shareId: s.share_id,
-          base: s,
-          perms: permsOf(s),
-          otpEmails: s.emails_for_otp.join(", "),
-          otpPhones: s.phones_for_otp.join(", "),
-          expiresAt: toDateInput(s.expires_at),
-          changePassword: false,
-          password: "",
-          removed: false,
-        }))
-      );
-    } catch (err) {
-      showToast(errMsg(err), "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [token, item.id, canShareInternally, targetKey, showToast]);
+      return { rows, links: allLinks };
+    },
+    enabled: !!token,
+  });
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (shareQuery.isError) showToast(errMsg(shareQuery.error), "error");
+  }, [shareQuery.isError, shareQuery.error, showToast]);
 
-  // Debounced same-organization user search.
+  // Reset the editable drafts to match the server truth whenever fresh data lands —
+  // on first load and again after a save (which invalidates this query).
   useEffect(() => {
-    const q = emailQuery.trim();
-    if (!token || q.length < 2) {
-      setResults([]);
-      return;
-    }
-    let active = true;
-    setSearching(true);
-    const timer = setTimeout(async () => {
-      try {
-        const found = await searchUsersByEmail(token, q);
-        if (active) setResults(found);
-      } catch {
-        if (active) setResults([]);
-      } finally {
-        if (active) setSearching(false);
-      }
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [emailQuery, token]);
+    if (!shareQuery.data) return;
+    setPeople(shareQuery.data.rows);
+    setLinks(
+      shareQuery.data.links.map((s) => ({
+        key: s.share_id,
+        shareId: s.share_id,
+        base: s,
+        perms: permsOf(s),
+        otpEmails: s.emails_for_otp.join(", "),
+        otpPhones: s.phones_for_otp.join(", "),
+        expiresAt: toDateInput(s.expires_at),
+        changePassword: false,
+        password: "",
+        removed: false,
+      }))
+    );
+  }, [shareQuery.data]);
+
+  const loading = !!token && shareQuery.isPending;
+
+  // Debounced same-organization user search: debouncing is a UI concern (kept as a
+  // plain timer), the fetch itself is a query keyed on the debounced value.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedEmailQuery(emailQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [emailQuery]);
+
+  const searchEnabled = !!token && debouncedEmailQuery.length >= 2;
+  const searchQuery = useQuery({
+    queryKey: ["userSearch", debouncedEmailQuery],
+    queryFn: () => searchUsersByEmail(token!, debouncedEmailQuery),
+    enabled: searchEnabled,
+  });
+  const results = searchEnabled ? (searchQuery.data ?? []) : [];
+  const searching = searchEnabled && searchQuery.isFetching;
 
   const addPerson = (u: BasicUserInfo) => {
     setPeople((prev) => {
@@ -225,7 +217,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
       ];
     });
     setEmailQuery("");
-    setResults([]);
+    setDebouncedEmailQuery("");
     setNewPerms(DEFAULT_PERMS);
   };
 
@@ -268,64 +260,70 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     [people, links]
   );
 
-  const save = async () => {
-    if (!token) return;
-    setSaving(true);
-    const errors: string[] = [];
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!token) return;
+      const errors: string[] = [];
 
-    for (const p of people) {
-      try {
-        if (p.base && p.removed) await deleteInternalShare(token, item.id, p.userId);
-        else if (!p.base && !p.removed)
-          await createInternalShare(token, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms });
-        else if (p.base && !p.removed && !permsEqual(p.base, p.perms))
-          await updateInternalShare(token, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms });
-      } catch (err) {
-        errors.push(`${p.email}: ${errMsg(err)}`);
-      }
-    }
-
-    for (const l of links) {
-      const id = l.shareId.trim();
-      try {
-        if (l.base && l.removed) {
-          await deleteExternalShare(token, l.shareId);
-        } else if (!l.base && !l.removed) {
-          if (id.length < 3 || id.length > 36) {
-            errors.push(`Link id "${id}" must be 3–36 characters`);
-            continue;
-          }
-          await createExternalShare(token, {
-            shareId: id,
-            fileTargetId: item.isFolder ? null : item.id,
-            folderTargetId: item.isFolder ? item.id : null,
-            permissions: l.perms,
-            rawPassword: l.password.trim() || null,
-            emailsForOtp: splitList(l.otpEmails),
-            phonesForOtp: splitList(l.otpPhones),
-            expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
-          });
-        } else if (l.base && !l.removed && linkDirty(l)) {
-          await updateExternalShare(token, l.shareId, {
-            permissions: l.perms,
-            shareInfo: l.base.share_info,
-            updatePassword: l.changePassword,
-            rawPassword: l.changePassword ? l.password.trim() || null : null,
-            emailsForOtp: splitList(l.otpEmails),
-            phonesForOtp: splitList(l.otpPhones),
-            expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
-          });
+      for (const p of people) {
+        try {
+          if (p.base && p.removed) await deleteInternalShare(token, item.id, p.userId);
+          else if (!p.base && !p.removed)
+            await createInternalShare(token, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms });
+          else if (p.base && !p.removed && !permsEqual(p.base, p.perms))
+            await updateInternalShare(token, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms });
+        } catch (err) {
+          errors.push(`${p.email}: ${errMsg(err)}`);
         }
-      } catch (err) {
-        errors.push(`Link ${id}: ${errMsg(err)}`);
       }
-    }
 
-    setSaving(false);
-    if (errors.length) showToast(errors[0], "error");
-    else showToast("Sharing updated", "success");
-    await load();
-  };
+      for (const l of links) {
+        const id = l.shareId.trim();
+        try {
+          if (l.base && l.removed) {
+            await deleteExternalShare(token, l.shareId);
+          } else if (!l.base && !l.removed) {
+            if (id.length < 3 || id.length > 36) {
+              errors.push(`Link id "${id}" must be 3–36 characters`);
+              continue;
+            }
+            await createExternalShare(token, {
+              shareId: id,
+              fileTargetId: item.isFolder ? null : item.id,
+              folderTargetId: item.isFolder ? item.id : null,
+              permissions: l.perms,
+              rawPassword: l.password.trim() || null,
+              emailsForOtp: splitList(l.otpEmails),
+              phonesForOtp: splitList(l.otpPhones),
+              expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
+            });
+          } else if (l.base && !l.removed && linkDirty(l)) {
+            await updateExternalShare(token, l.shareId, {
+              permissions: l.perms,
+              shareInfo: l.base.share_info,
+              updatePassword: l.changePassword,
+              rawPassword: l.changePassword ? l.password.trim() || null : null,
+              emailsForOtp: splitList(l.otpEmails),
+              phonesForOtp: splitList(l.otpPhones),
+              expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
+            });
+          }
+        } catch (err) {
+          errors.push(`Link ${id}: ${errMsg(err)}`);
+        }
+      }
+
+      if (errors.length) throw new Error(errors[0]);
+    },
+    // Always refresh from the server after a save attempt — some items may have
+    // succeeded even if others failed.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: shareQueryKey }),
+    onSuccess: () => showToast("Sharing updated", "success"),
+    onError: (err) => showToast(errMsg(err), "error"),
+  });
+
+  const save = () => saveMutation.mutate();
+  const saving = saveMutation.isPending;
 
   const patchLink = (key: string, patch: Partial<LinkDraft>) =>
     setLinks((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
