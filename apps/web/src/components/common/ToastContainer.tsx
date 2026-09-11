@@ -1,6 +1,6 @@
 import { CheckCircle2, Info, X, XCircle } from "lucide-react";
-import { useToast } from "../../context/ToastContext";
-import type { ToastVariant } from "../../context/ToastContext";
+import { useToast } from "../../atoms/toast";
+import type { ToastVariant } from "../../atoms/toast";
 
 const VARIANT_STYLES: Record<ToastVariant, string> = {
   success: "border-green-500/40 text-green-600 dark:text-green-400",

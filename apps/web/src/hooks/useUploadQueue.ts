@@ -1,42 +1,24 @@
-import React, { createContext, useContext, useRef, useState } from "react";
+import { useRef } from "react";
+import { useAtom } from "jotai";
 import type { FileOperationResult } from "@yfs/service";
-import { useAuth } from "./AuthContext";
-import { useFileSystem } from "./FileSystemContext";
+import { useAuth } from "./useAuth";
+import { useFileSystem } from "./useFileSystem";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
 import { uploadClient } from "../services/uploadClient";
 import { buildFileOperations, runPool, UPLOAD_CONCURRENCY, type PlannedUpload } from "../services/uploadPlan";
+import { uploadTasksAtom, type UploadTask, type FileWithRelativePath } from "../atoms/uploadQueue";
 
-export interface UploadTask {
-  id: string;
-  fileName: string;
-  progress: number;
-  status: "pending" | "uploading" | "done" | "error";
-  error?: string;
-}
-
-export interface FileWithRelativePath {
-  file: File;
-  // e.g. "SubFolder/nested/file.txt" for a folder upload, or just "file.txt" for a flat one.
-  relativePath: string;
-}
-
-interface UploadQueueContextType {
-  tasks: UploadTask[];
-  enqueueFiles: (items: FileWithRelativePath[], parentId: string | null) => void;
-  dismissTask: (id: string) => void;
-}
-
-const UploadQueueContext = createContext<UploadQueueContextType | null>(null);
+export type { UploadTask, FileWithRelativePath } from "../atoms/uploadQueue";
 
 // POST /files/operations wants a folder_id; the user's root isn't a folder row here,
 // so send "" and let the API map it to the root. TODO: confirm with the real handler.
 const ROOT_FOLDER_ID = "";
 const toParentId = (folderId: string): string | null => (folderId === ROOT_FOLDER_ID ? null : folderId);
 
-export const UploadQueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const useUploadQueue = () => {
   const { token, user } = useAuth();
   const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId } = useFileSystem();
-  const [tasks, setTasks] = useState<UploadTask[]>([]);
+  const [tasks, setTasks] = useAtom(uploadTasksAtom);
   const taskCounter = useRef(0);
 
   // Async upload runs span renders — read live context off refs.
@@ -211,13 +193,5 @@ export const UploadQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   };
 
-  return (
-    <UploadQueueContext.Provider value={{ tasks, enqueueFiles, dismissTask }}>{children}</UploadQueueContext.Provider>
-  );
-};
-
-export const useUploadQueue = () => {
-  const ctx = useContext(UploadQueueContext);
-  if (!ctx) throw new Error("useUploadQueue must be used within an UploadQueueProvider");
-  return ctx;
+  return { tasks, enqueueFiles, dismissTask };
 };

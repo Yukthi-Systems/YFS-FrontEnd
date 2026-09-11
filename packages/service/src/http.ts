@@ -51,7 +51,19 @@ export class HttpError extends Error {
 export async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
-    throw new HttpError(res.status, `GET ${url} failed with status ${res.status}`);
+    let message = "";
+    try {
+      const text = await res.text();
+      try {
+        const parsed = JSON.parse(text);
+        message = typeof parsed?.error === "string" ? parsed.error : text;
+      } catch {
+        message = text;
+      }
+    } catch {
+      /* body already consumed / unavailable */
+    }
+    throw new HttpError(res.status, message || `GET ${url} failed with status ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
