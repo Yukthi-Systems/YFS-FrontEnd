@@ -100,6 +100,7 @@ function App() {
   const [viewerItem, setViewerItem] = useState<FileItem | null>(null);
 
   const canvasFileInputRef = useRef<HTMLInputElement>(null);
+  const canvasFolderInputRef = useRef<HTMLInputElement>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
 
   const sso = useSsoAutoLogin({ isAuthenticated, authLoading, loginWithSso, clearError });
@@ -324,7 +325,6 @@ function App() {
         }}
         onCreateFolder={fileActions.openCreateFolderModal}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
-        canUploadFiles={!!nav.currentFolderId}
         canCreateHere={canCreateHere}
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
@@ -474,7 +474,6 @@ function App() {
         <CanvasContextMenu
           x={menus.canvasContextMenu.x}
           y={menus.canvasContextMenu.y}
-          canUploadFile={!!nav.currentFolderId}
           canCreateHere={canCreateHere}
           onCreateFolder={() => {
             fileActions.openCreateFolderModal();
@@ -484,11 +483,30 @@ function App() {
             canvasFileInputRef.current?.click();
             menus.setCanvasContextMenu(null);
           }}
+          onUploadFolder={() => {
+            canvasFolderInputRef.current?.click();
+            menus.setCanvasContextMenu(null);
+          }}
         />
       )}
       <input
         type="file"
         ref={canvasFileInputRef}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) fileActions.handleUploadFiles(e.target.files, nav.currentFolderId);
+          e.target.value = "";
+        }}
+        style={{ display: "none" }}
+        multiple
+      />
+      {/* webkitdirectory is non-standard and not part of React's typed input props, so it's
+          set imperatively via the ref callback rather than as a JSX attribute. */}
+      <input
+        type="file"
+        ref={(el) => {
+          canvasFolderInputRef.current = el;
+          if (el) el.setAttribute("webkitdirectory", "");
+        }}
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) fileActions.handleUploadFiles(e.target.files, nav.currentFolderId);
           e.target.value = "";

@@ -1,29 +1,36 @@
 import { useRef } from "react";
 import { useAtom } from "jotai";
-import type { FileOperationResult } from "@yfs/service";
+import { HttpError, type FileUploadRequest, type UploadSession } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
 import { uploadClient } from "../services/uploadClient";
-import { buildFileOperations, runPool, UPLOAD_CONCURRENCY, type PlannedUpload } from "../services/uploadPlan";
+import {
+  resolveUploadStep,
+  uploadBlockMessage,
+  fileTypeOf,
+  runPool,
+  UPLOAD_CONCURRENCY,
+  type PlannedUpload,
+} from "../services/uploadPlan";
 import { uploadTasksAtom, type UploadTask, type FileWithRelativePath } from "../atoms/uploadQueue";
 
 export type { UploadTask, FileWithRelativePath } from "../atoms/uploadQueue";
 
-// POST /files/operations wants a folder_id; the user's root isn't a folder row here,
+// POST /files/upload wants a folder_id; the user's root isn't a folder row here,
 // so send "" and let the API map it to the root. TODO: confirm with the real handler.
 const ROOT_FOLDER_ID = "";
 const toParentId = (folderId: string): string | null => (folderId === ROOT_FOLDER_ID ? null : folderId);
 
 export const useUploadQueue = () => {
-  const { token, user } = useAuth();
+  const { token, user, refreshAccessToken } = useAuth();
   const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId } = useFileSystem();
   const [tasks, setTasks] = useAtom(uploadTasksAtom);
   const taskCounter = useRef(0);
 
   // Async upload runs span renders — read live context off refs.
-  const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files });
-  ctxRef.current = { token, versioningEnabled: !!user?.is_file_versioning_enabled, files };
+  const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken });
+  ctxRef.current = { token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken };
 
   const updateTask = (id: string, patch: Partial<UploadTask>) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -69,39 +76,48 @@ export const useUploadQueue = () => {
       });
     }
 
-    // 2. Build the /files/operations request for the files that resolved.
     const live = planned
       .map((p, i) => (p ? { plan: p, taskId: taskIds[i] } : null))
       .filter((x): x is { plan: PlannedUpload; taskId: string } => x !== null);
     if (live.length === 0) return;
 
-    const { token: tk, versioningEnabled, files: existingFiles } = ctxRef.current;
-    const entries = buildFileOperations(
-      live.map((x) => x.plan),
-      existingFiles,
-      versioningEnabled
-    );
+    // 2. Request an upload session and push bytes for each file — one
+    //    POST /files/upload call per file (it isn't a batch endpoint), capped
+    //    concurrency.
+    await runPool(live, UPLOAD_CONCURRENCY, async ({ plan, taskId }) => {
+      const { token: tk, versioningEnabled, files: existingFiles, refreshAccessToken: refresh } = ctxRef.current;
 
-    // 3. Ask the API for an upload URL per file (chunked inside the client for big folders).
-    let targets: FileOperationResult[];
-    try {
-      targets = await uploadClient.requestUpload(tk ?? "", entries);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not get an upload URL";
-      live.forEach((x) => updateTask(x.taskId, { status: "error", error: message }));
-      return;
-    }
-
-    // 4. Push bytes, capped concurrency.
-    await runPool(live, UPLOAD_CONCURRENCY, async ({ plan, taskId }, k) => {
-      const target = targets[k];
-      if (!target) {
-        updateTask(taskId, { status: "error", error: "No upload URL returned" });
+      const resolved = resolveUploadStep(plan, existingFiles, versioningEnabled);
+      if ("blocked" in resolved) {
+        updateTask(taskId, { status: "error", error: uploadBlockMessage(resolved.blocked) });
         return;
       }
+      const { fileId, fileVersion } = resolved.step;
+
       updateTask(taskId, { status: "uploading" });
       try {
-        await uploadClient.upload(plan.file, target, (pct) => updateTask(taskId, { progress: pct }));
+        const request: FileUploadRequest = {
+          folder_id: plan.targetFolderId,
+          file_id: fileId,
+          shared_folder_id: plan.sharedFolderId,
+          file_name: plan.fileName,
+          file_info: {},
+          file_type: fileTypeOf(plan.file),
+          file_version: fileVersion,
+          expected_file_size: plan.file.size,
+        };
+
+        let session: UploadSession;
+        try {
+          session = await uploadClient.requestUpload(tk ?? "", request);
+        } catch (err) {
+          if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 400)) throw err;
+          const fresh = await refresh();
+          if (!fresh) throw err;
+          session = await uploadClient.requestUpload(fresh, request);
+        }
+
+        const { storageKey } = await uploadClient.upload(plan.file, session, (pct) => updateTask(taskId, { progress: pct }));
         const { type, extension } = categorizeFile(plan.file);
         addFile({
           name: plan.fileName,
@@ -109,10 +125,10 @@ export const useUploadQueue = () => {
           size: plan.file.size,
           type,
           extension,
-          storageKey: target.file_location,
+          storageKey,
           blob: plan.file,
-          fileId: target.file_id,
-          version: target.file_version,
+          fileId: session.file_id,
+          version: session.file_version,
         });
         updateTask(taskId, { status: "done", progress: 100 });
         // Auto-clear successes like toasts; errors stay until dismissed.
@@ -125,7 +141,7 @@ export const useUploadQueue = () => {
       }
     });
 
-    // 5. Re-list every touched folder so server rows replace the optimistic ones.
+    // 3. Re-list every touched folder so server rows replace the optimistic ones.
     //    The Storage API confirms the committed version to YFS-Main-API through a
     //    server-side callback that can land a beat after the upload response, so
     //    re-list again shortly after to pick up the real row + its version.

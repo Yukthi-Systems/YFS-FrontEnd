@@ -1,20 +1,20 @@
-import { FolderPlus, FileUp } from "lucide-react";
+import { FolderPlus, FileUp, FolderUp } from "lucide-react";
 
 export function CanvasContextMenu({
   x,
   y,
-  canUploadFile = true,
   canCreateHere = true,
   onCreateFolder,
   onUploadFile,
+  onUploadFolder,
 }: {
   x: number;
   y: number;
-  canUploadFile?: boolean;
   // False inside a "Shared with me" folder the caller can't create in.
   canCreateHere?: boolean;
   onCreateFolder: () => void;
   onUploadFile: () => void;
+  onUploadFolder: () => void;
 }) {
   return (
     <div
@@ -30,14 +30,18 @@ export function CanvasContextMenu({
           >
             <FolderPlus className="w-4 h-4" /> Create Folder
           </button>
-          {canUploadFile && (
-            <button
-              onClick={onUploadFile}
-              className="flex items-center gap-3 px-3.5 py-2.5 border-none bg-transparent text-text-main rounded-lg text-sm font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
-            >
-              <FileUp className="w-4 h-4" /> Upload File
-            </button>
-          )}
+          <button
+            onClick={onUploadFile}
+            className="flex items-center gap-3 px-3.5 py-2.5 border-none bg-transparent text-text-main rounded-lg text-sm font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
+          >
+            <FileUp className="w-4 h-4" /> Upload File
+          </button>
+          <button
+            onClick={onUploadFolder}
+            className="flex items-center gap-3 px-3.5 py-2.5 border-none bg-transparent text-text-main rounded-lg text-sm font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
+          >
+            <FolderUp className="w-4 h-4" /> Upload Folder
+          </button>
         </>
       ) : (
         <span className="px-3.5 py-2.5 text-xs text-text-main">
