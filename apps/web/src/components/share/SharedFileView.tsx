@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   File as FileIcon,
   FileWarning,
@@ -22,7 +23,6 @@ import {
   validatePublicSessionPassword,
   type BackendResource,
   type PublicSession,
-  type PublicSessionInfo,
 } from "@yfs/service";
 import type { FileItem, SortField, SortOrder, ViewMode } from "../../types/file";
 import { categorizeByName } from "../../utils/fileType";
@@ -93,18 +93,40 @@ export function SharedFileView() {
     return match ? decodeURIComponent(match[1]) : "";
   }, []);
 
+  const queryClient = useQueryClient();
+
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<PublicSession | null>(null);
-  const [info, setInfo] = useState<PublicSessionInfo | null>(null);
 
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
 
   const [path, setPath] = useState<Crumb[]>([]);
-  const [rows, setRows] = useState<BackendResource[]>([]);
-  const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+
+  // createPublicSession mints a new anonymous session server-side (not an idempotent
+  // read), so it's a mutation fired once per shareId rather than a query — a query
+  // could otherwise silently re-fire (refetch-on-focus etc.) and mint duplicate
+  // sessions.
+  const sessionMutation = useMutation({ mutationFn: () => createPublicSession(shareId) });
+  useEffect(() => {
+    sessionMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareId]);
+
+  useEffect(() => {
+    if (sessionMutation.isPending || sessionMutation.isIdle) return;
+    if (sessionMutation.isError) {
+      const msg = sessionMutation.error instanceof Error ? sessionMutation.error.message.toLowerCase() : "";
+      setPhase(msg.includes("expired") ? "expired" : "not-found");
+      return;
+    }
+    const s = sessionMutation.data;
+    setSession(s);
+    if (s.is_password_protected) setPhase("password");
+    else if (s.is_email_otp_protected || s.is_phone_otp_protected) setPhase("otp");
+    else setPhase("granted");
+  }, [sessionMutation.isPending, sessionMutation.isIdle, sessionMutation.isError, sessionMutation.error, sessionMutation.data]);
 
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     try {
@@ -121,14 +143,6 @@ export function SharedFileView() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const token = session?.public_session_token ?? "";
-  const shareRootId = info?.share_folder_target_id ?? null;
-  const currentFolderId = path.length ? path[path.length - 1].id : shareRootId;
-  const canCreate = !!info?.can_create;
-  const canEdit = !!info?.can_update;
-  const canMove = !!info?.can_update && !!info?.can_create;
 
   const setViewMode = (m: ViewMode) => {
     setViewModeState(m);
@@ -139,61 +153,70 @@ export function SharedFileView() {
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const s = await createPublicSession(shareId);
-        if (cancelled) return;
-        setSession(s);
-        if (s.is_password_protected) setPhase("password");
-        else if (s.is_email_otp_protected || s.is_phone_otp_protected) setPhase("otp");
-        else setPhase("granted");
-      } catch (err) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message.toLowerCase() : "";
-        setPhase(msg.includes("expired") ? "expired" : "not-found");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shareId]);
+  const token = session?.public_session_token ?? "";
 
+  const infoQuery = useQuery({
+    queryKey: ["publicSessionInfo", token],
+    queryFn: () => getPublicSession(token),
+    enabled: phase === "granted" && !!token,
+  });
   useEffect(() => {
-    if (phase !== "granted" || !token) return;
-    let cancelled = false;
-    getPublicSession(token)
-      .then((i) => !cancelled && setInfo(i))
-      .catch(() => !cancelled && setListError("Couldn't load share details."));
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, token]);
+    if (infoQuery.isError) setListError("Couldn't load share details.");
+  }, [infoQuery.isError]);
+  const info = infoQuery.data ?? null;
 
-  const loadFolder = useCallback(
-    async (folderId: string) => {
-      if (!token) return;
-      setListLoading(true);
+  const shareRootId = info?.share_folder_target_id ?? null;
+  const currentFolderId = path.length ? path[path.length - 1].id : shareRootId;
+  const canCreate = !!info?.can_create;
+  const canEdit = !!info?.can_update;
+  const canMove = !!info?.can_update && !!info?.can_create;
+
+  const folderQueryKey = ["publicFolder", token, currentFolderId] as const;
+  const folderQuery = useQuery({
+    queryKey: folderQueryKey,
+    queryFn: () => listPublicFolderChildren(token, currentFolderId!),
+    enabled: !!token && !!currentFolderId,
+  });
+  useEffect(() => {
+    if (folderQuery.isError) {
+      setListError(folderQuery.error instanceof Error ? folderQuery.error.message : "Couldn't load this folder.");
+    } else if (folderQuery.isSuccess) {
       setListError(null);
-      try {
-        setRows(await listPublicFolderChildren(token, folderId));
-      } catch (err) {
-        setListError(err instanceof Error ? err.message : "Couldn't load this folder.");
-        setRows([]);
-      } finally {
-        setListLoading(false);
-      }
-    },
-    [token]
-  );
+    }
+  }, [folderQuery.isError, folderQuery.error, folderQuery.isSuccess]);
+  const rows = folderQuery.data ?? [];
+  const listLoading = folderQuery.isPending && !!token && !!currentFolderId;
 
-  useEffect(() => {
-    if (currentFolderId) loadFolder(currentFolderId);
-  }, [currentFolderId, loadFolder]);
-
-  const refresh = () => currentFolderId && loadFolder(currentFolderId);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: folderQueryKey });
   const fail = (err: unknown, fallback: string) => setListError(err instanceof Error ? err.message : fallback);
+
+  const createFolderMutation = useMutation({
+    mutationFn: (name: string) =>
+      createPublicFolder(token, { parentFolderId: currentFolderId!, folderName: name.trim(), shareId }),
+    onSuccess: () => {
+      setCreatingFolder(false);
+      refresh();
+    },
+    onError: (err) => fail(err, "Couldn't create the folder."),
+  });
+  const renameFolderMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string }) => editPublicFolder(token, { folderId: vars.id, folderName: vars.name.trim() }),
+    onSuccess: () => {
+      setRenameTarget(null);
+      refresh();
+    },
+    onError: (err) => fail(err, "Couldn't rename the folder."),
+  });
+  const moveFolderMutation = useMutation({
+    mutationFn: (vars: { id: string; newParentId: string }) =>
+      movePublicFolder(token, { folderId: vars.id, newParentFolderId: vars.newParentId }),
+    onSuccess: () => {
+      setMoveTarget(null);
+      refresh();
+    },
+    onError: (err) => fail(err, "Couldn't move the folder."),
+  });
+  const busy = createFolderMutation.isPending || renameFolderMutation.isPending || moveFolderMutation.isPending;
 
   const items = useMemo(() => sortItems(rows.map(mapPublicResource), sortField, sortOrder), [rows, sortField, sortOrder]);
 
@@ -222,46 +245,19 @@ export function SharedFileView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolderId]);
 
-  const submitCreateFolder = async (name: string) => {
+  const submitCreateFolder = (name: string) => {
     if (!token || !currentFolderId || !name.trim()) return;
-    setBusy(true);
-    try {
-      await createPublicFolder(token, { parentFolderId: currentFolderId, folderName: name.trim(), shareId });
-      setCreatingFolder(false);
-      await refresh();
-    } catch (err) {
-      fail(err, "Couldn't create the folder.");
-    } finally {
-      setBusy(false);
-    }
+    createFolderMutation.mutate(name);
   };
 
-  const submitRename = async (name: string) => {
+  const submitRename = (name: string) => {
     if (!renameTarget || !name.trim()) return;
-    setBusy(true);
-    try {
-      await editPublicFolder(token, { folderId: renameTarget.id, folderName: name.trim() });
-      setRenameTarget(null);
-      await refresh();
-    } catch (err) {
-      fail(err, "Couldn't rename the folder.");
-    } finally {
-      setBusy(false);
-    }
+    renameFolderMutation.mutate({ id: renameTarget.id, name });
   };
 
-  const moveHere = async () => {
+  const moveHere = () => {
     if (!moveTarget || !currentFolderId) return;
-    setBusy(true);
-    try {
-      await movePublicFolder(token, { folderId: moveTarget.id, newParentFolderId: currentFolderId });
-      setMoveTarget(null);
-      await refresh();
-    } catch (err) {
-      fail(err, "Couldn't move the folder.");
-    } finally {
-      setBusy(false);
-    }
+    moveFolderMutation.mutate({ id: moveTarget.id, newParentId: currentFolderId });
   };
 
   const exitShare = async () => {
@@ -274,19 +270,19 @@ export function SharedFileView() {
     window.location.assign(`/share-ended?from=${encodeURIComponent(shareId)}`);
   };
 
-  const submitPassword = async () => {
+  const passwordMutation = useMutation({
+    mutationFn: (password: string) => validatePublicSessionPassword(session!.public_session_token, password),
+    onSuccess: () => {
+      setPhase(session!.is_email_otp_protected || session!.is_phone_otp_protected ? "otp" : "granted");
+    },
+    onError: (err) => setPasswordError(err instanceof Error ? err.message : "Incorrect password"),
+  });
+  const submitPassword = () => {
     if (!session || !passwordInput) return;
-    setChecking(true);
     setPasswordError(null);
-    try {
-      await validatePublicSessionPassword(session.public_session_token, passwordInput);
-      setPhase(session.is_email_otp_protected || session.is_phone_otp_protected ? "otp" : "granted");
-    } catch (err) {
-      setPasswordError(err instanceof Error ? err.message : "Incorrect password");
-    } finally {
-      setChecking(false);
-    }
+    passwordMutation.mutate(passwordInput);
   };
+  const checking = passwordMutation.isPending;
 
   const renderContextMenu = (item: FileItem) => {
     const rowClass =
