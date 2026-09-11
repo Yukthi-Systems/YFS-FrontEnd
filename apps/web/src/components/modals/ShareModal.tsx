@@ -178,7 +178,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
         key: s.share_id,
         shareId: s.share_id,
         base: s,
-        perms: permsOf(s),
+        perms: permsOf(s.permission_set),
         otpEmails: s.emails_for_otp.join(", "),
         otpPhones: s.phones_for_otp.join(", "),
         expiresAt: toDateInput(s.expires_at),
@@ -242,7 +242,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     if (l.base === null) return !l.removed;
     if (l.removed) return true;
     return (
-      !permsEqual(permsOf(l.base), l.perms) ||
+      !permsEqual(permsOf(l.base.permission_set), l.perms) ||
       !sameList(l.base.emails_for_otp, splitList(l.otpEmails)) ||
       !sameList(l.base.phones_for_otp, splitList(l.otpPhones)) ||
       toDateInput(l.base.expires_at) !== l.expiresAt ||

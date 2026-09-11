@@ -31,6 +31,7 @@ import { FileListTable } from "../files/FileListTable";
 import { FileGrid } from "../files/FileGrid";
 import { Breadcrumbs, type BreadcrumbSegment } from "../layout/Breadcrumbs";
 import { ShareInfoBar } from "./ShareInfoBar";
+import { SharedDetailsPanel } from "./SharedDetailsPanel";
 import { ListSkeleton, GridSkeleton } from "../common/Skeletons";
 import { EmptyState } from "../common/EmptyState";
 import { CreateFolderModal } from "../modals/CreateFolderModal";
@@ -167,9 +168,9 @@ export function SharedFileView() {
 
   const shareRootId = info?.share_folder_target_id ?? null;
   const currentFolderId = path.length ? path[path.length - 1].id : shareRootId;
-  const canCreate = !!info?.can_create;
-  const canEdit = !!info?.can_update;
-  const canMove = !!info?.can_update && !!info?.can_create;
+  const canCreate = !!info?.permission_set.can_create;
+  const canEdit = !!info?.permission_set.can_update;
+  const canMove = !!info?.permission_set.can_update && !!info?.permission_set.can_create;
 
   const folderQueryKey = ["publicFolder", token, currentFolderId] as const;
   const folderQuery = useQuery({
@@ -244,6 +245,8 @@ export function SharedFileView() {
     selection.setCheckedItemIds([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolderId]);
+
+  const selectedItem = items.find((i) => i.id === selection.selectedItemId) ?? null;
 
   const submitCreateFolder = (name: string) => {
     if (!token || !currentFolderId || !name.trim()) return;
@@ -451,6 +454,7 @@ export function SharedFileView() {
         </div>
       </header>
 
+      <div className="flex-1 flex overflow-hidden relative">
       <div
         className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"
         onClick={() => {
@@ -571,6 +575,22 @@ export function SharedFileView() {
         <p className="text-[11px] text-text-main text-center mt-2">
           Preview and download for shared content aren&apos;t available yet.
         </p>
+      </div>
+
+      {selectedItem && (
+        <SharedDetailsPanel
+          item={selectedItem}
+          canEdit={canEdit}
+          canMove={canMove}
+          onClose={selection.clearSelection}
+          onOpenFolder={() => {
+            openFolder(selectedItem);
+            selection.clearSelection();
+          }}
+          onRename={() => setRenameTarget({ id: selectedItem.id, name: selectedItem.name })}
+          onMove={() => setMoveTarget({ id: selectedItem.id, name: selectedItem.name })}
+        />
+      )}
       </div>
 
       {creatingFolder && (

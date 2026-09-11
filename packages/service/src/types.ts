@@ -85,13 +85,14 @@ export interface InternalSharePermissions {
 // sharing-in: `user_id` is the folder owner. sharing-out: one row per owned folder
 // that has at least one share, `user_id` is the most-recent recipient and the
 // permissions are that share's (use getFolderShareInfo for the full per-user list).
-export interface InternalSharedResource extends InternalSharePermissions {
+export interface InternalSharedResource {
   is_resource_folder: boolean;
   user_id: string;
   resource_id: string;
   resource_name: string;
   resource_info: Record<string, unknown> | null;
   total_resource_size: number;
+  permission_set: InternalSharePermissions;
   created_at: string; // RFC3339
   updated_at: string; // RFC3339
 }

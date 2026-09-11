@@ -7,11 +7,12 @@ import type { InternalSharePermissions, PageQuery } from "./types";
 // Mirrors src/models/files_folders.rs and src/routes/shares.rs.
 
 // One external share as returned by GET /share/external/list.
-export interface ExternalShare extends InternalSharePermissions {
+export interface ExternalShare {
   share_id: string; // caller-chosen, 3–36 chars, used in the /share/<id> URL
   created_by: string;
   share_file_target_id: string | null;
   share_folder_target_id: string | null;
+  permission_set: InternalSharePermissions;
   share_info: Record<string, unknown>; // UI notes etc.
   password_hash: string | null; // presence = password-protected (never the raw value)
   phones_for_otp: string[];
