@@ -195,13 +195,7 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
     resourceInfo: info,
     sharedIn: {
       ownerUserId: r.user_id,
-      permissions: {
-        can_preview: r.can_preview,
-        can_download: r.can_download,
-        can_create: r.can_create,
-        can_update: r.can_update,
-        can_delete: r.can_delete,
-      },
+      permissions: { ...r.permission_set },
     },
   };
 };

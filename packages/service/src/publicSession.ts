@@ -1,6 +1,6 @@
 import { apiRequest } from "./apiClient";
 import { PAGE_SIZE } from "./types";
-import type { BackendResource, PageQuery } from "./types";
+import type { BackendResource, InternalSharePermissions, PageQuery } from "./types";
 
 // Anonymous access to an external share (the /share/<share_id> page). No YFS
 // account — a short-lived public session (Redis, ~3h) stands in for one.
@@ -58,11 +58,7 @@ export interface PublicSessionInfo {
   created_by: string;
   share_folder_target_id: string | null;
   share_file_target_id: string | null;
-  can_preview: boolean;
-  can_download: boolean;
-  can_create: boolean;
-  can_update: boolean;
-  can_delete: boolean;
+  permission_set: InternalSharePermissions;
 }
 
 // GET /public/session — details for the active session. 401 until the session is
