@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "./context/AuthContext";
-import { useFileSystem } from "./context/FileSystemContext";
+import { useAuth } from "./hooks/useAuth";
+import { useFileSystem } from "./hooks/useFileSystem";
 import { useToast } from "./atoms/toast";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { useUserSettings } from "./hooks/useUserSettings";

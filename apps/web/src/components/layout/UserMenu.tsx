@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-react";
 import { capitalize } from "@yfs/utils";
-import type { UserInfo } from "../../context/AuthContext";
+import type { UserInfo } from "../../atoms/auth";
 import { useTheme } from "../../atoms/theme";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import type { Theme } from "../../utils/theme";

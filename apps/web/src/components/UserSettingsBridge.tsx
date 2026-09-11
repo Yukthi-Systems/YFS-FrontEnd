@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAtom, useSetAtom } from "jotai";
 import { getUserById, updateUserInfo } from "@yfs/service";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../atoms/theme";
 import {
   viewModeAtom,
@@ -21,7 +21,7 @@ import type { Theme } from "../utils/theme";
 //   - public_info:  profile fields the whole org can see (display name, avatar colour)
 // Both are written back wholesale via PATCH /user/update-user-info/{isPublic}, so we
 // keep the full blob in a ref and merge the current atom values into it before saving
-// (debounced). Render once, under AuthProvider — the atoms it seeds/persists are read
+// (debounced). Render once, alongside AuthBridge — the atoms it seeds/persists are read
 // and written by useUserSettings() anywhere else in the tree.
 
 const SAVE_DEBOUNCE_MS = 700;

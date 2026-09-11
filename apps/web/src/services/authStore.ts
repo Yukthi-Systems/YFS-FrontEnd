@@ -1,0 +1,278 @@
+import { getDefaultStore } from "jotai";
+import {
+  openSsoPopupAndAuthenticate,
+  silentSsoAuthenticate,
+  isReturningFromSsoRedirect,
+  logout as apiLogout,
+  fetchSession,
+  refreshSession,
+  HttpError,
+} from "@yfs/service";
+import type { AuthPayload, BackendUserInfo, SsoProfile } from "@yfs/service";
+import {
+  userAtom,
+  tokenAtom,
+  userIdAtom,
+  sessionExpiresAtAtom,
+  isAuthLoadingAtom,
+  authErrorMsgAtom,
+  type UserInfo,
+} from "../atoms/auth";
+
+// The session store: a singleton (one for the whole app, like there's one signed-in
+// user) holding the SSO/token-refresh orchestration that used to live in
+// AuthContext.tsx. Reactive state lives in atoms/auth.ts; components read it via
+// hooks/useAuth.ts and it's booted once by components/AuthBridge.tsx.
+
+const store = getDefaultStore();
+
+// Session-scoped only — nothing about the signed-in user is written to localStorage.
+// A page reload re-validates against the API (or re-runs the cookie login).
+const SS = {
+  token: "yfs_token",
+  refresh: "yfs_refresh_token",
+  user: "yfs_user",
+  userId: "yfs_user_id",
+  expiresAt: "yfs_expires_at",
+} as const;
+
+// Set once per browser session the first time auto-SSO is kicked off. It survives a
+// full-page redirect (blocked-popup fallback) so that a login that keeps failing —
+// bad API URL, CORS, expired SSO session — drops the user on the login screen instead
+// of retriggering the popup/redirect forever. Cleared only on a successful sign-in or
+// an explicit logout (NOT in clearSession, which also runs on every failed attempt).
+export const AUTO_SSO_ATTEMPTED_KEY = "yfs_sso_auto_attempted";
+
+const clearAutoSsoAttempt = () => {
+  try {
+    sessionStorage.removeItem(AUTO_SSO_ATTEMPTED_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
+// localStorage keys written by earlier builds; cleared on logout so they can't linger.
+const LEGACY_LS_KEYS = ["yfs_token", "yfs_refresh_token", "yfs_user", "yfs_user_id", "yfs_expires_at", "yfs_files"];
+
+const buildUser = (info: BackendUserInfo, profile: SsoProfile | undefined, prev: UserInfo | null): UserInfo => {
+  const firstName = profile?.first_name ?? prev?.first_name;
+  const lastName = profile?.last_name ?? prev?.last_name;
+  const phone = profile?.phone ?? prev?.phone;
+  const twoFactorMethods = profile?.two_factor_methods ?? prev?.two_factor_methods;
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+  return {
+    email: info.email,
+    user_id: info.user_id,
+    domain_name: info.domain_name,
+    organization_id: info.organization_id,
+    organization_name: info.organization_name,
+    is_file_versioning_enabled: info.is_file_versioning_enabled,
+    is_sharing_enabled: info.is_sharing_enabled,
+    enable_file_sharing: info.is_sharing_enabled,
+    quota_allocated: info.quota_allocated,
+    quota_utilized: info.quota_utilized,
+    first_name: firstName,
+    last_name: lastName,
+    phone,
+    two_factor_methods: twoFactorMethods,
+    id: 0,
+    username: fullName || info.email.split("@")[0],
+  };
+};
+
+export const ssoUrl = import.meta.env.VITE_SSO_URL || "https://sso.your-domain.tld";
+
+// Not exposed to consumers (the old AuthContextType never included it either) — only
+// this module's own refresh/logout logic needs it, so it stays a plain module var
+// rather than an atom.
+let refreshTokenValue: string | null = null;
+
+const persistPayload = (payload: AuthPayload, profile?: SsoProfile) => {
+  const nextUser = buildUser(payload.user_info, profile ?? payload.sso_profile, store.get(userAtom));
+  const nextUserId = payload.user_info.user_id;
+  const nextRefresh = payload.refresh_token ?? refreshTokenValue;
+  // /auth/refresh may omit X-Session-Expiry — keep the last known expiry then.
+  const expiresAt = payload.expires_in ? Date.now() + payload.expires_in * 1000 : store.get(sessionExpiresAtAtom);
+
+  store.set(tokenAtom, payload.access_token);
+  refreshTokenValue = nextRefresh;
+  store.set(userIdAtom, nextUserId);
+  store.set(userAtom, nextUser);
+  store.set(sessionExpiresAtAtom, expiresAt);
+  // Signed in — a future auto-SSO attempt (e.g. after the session later expires) is
+  // allowed again.
+  clearAutoSsoAttempt();
+
+  try {
+    sessionStorage.setItem(SS.token, payload.access_token);
+    sessionStorage.setItem(SS.user, JSON.stringify(nextUser));
+    sessionStorage.setItem(SS.userId, nextUserId);
+    if (nextRefresh) sessionStorage.setItem(SS.refresh, nextRefresh);
+    if (expiresAt) sessionStorage.setItem(SS.expiresAt, String(expiresAt));
+  } catch (err) {
+    console.error("Failed to cache auth session:", err);
+  }
+};
+
+const clearSession = () => {
+  store.set(tokenAtom, null);
+  refreshTokenValue = null;
+  store.set(userIdAtom, null);
+  store.set(userAtom, null);
+  store.set(sessionExpiresAtAtom, null);
+  try {
+    Object.values(SS).forEach((key) => sessionStorage.removeItem(key));
+    LEGACY_LS_KEYS.forEach((key) => localStorage.removeItem(key));
+    localStorage.removeItem("yfs_fs_cache");
+  } catch {
+    /* ignore */
+  }
+};
+
+// Single-flight: concurrent 401s (e.g. several list calls firing at once on boot)
+// must share ONE /auth/refresh, not each rotate the refresh token.
+let refreshInFlight: Promise<string | null> | null = null;
+
+export const refreshAccessToken = (): Promise<string | null> => {
+  if (refreshInFlight) return refreshInFlight;
+
+  const run = (async (): Promise<string | null> => {
+    const curToken = store.get(tokenAtom);
+    const curRefresh = refreshTokenValue;
+    const curUserId = store.get(userIdAtom);
+    if (!curToken || !curRefresh || !curUserId) {
+      clearSession();
+      return null;
+    }
+    try {
+      const payload = await refreshSession({ refreshToken: curRefresh, accessToken: curToken, userId: curUserId });
+      persistPayload(payload);
+      return payload.access_token;
+    } catch (err) {
+      console.warn("Session refresh failed, signing out:", err);
+      clearSession();
+      return null;
+    }
+  })();
+
+  refreshInFlight = run;
+  run.finally(() => {
+    refreshInFlight = null;
+  });
+  return run;
+};
+
+// Boot sequence, run once on app start by AuthBridge: if the SSO cookie is present,
+// log in through it. A cached session-storage token short-circuits to a cheap
+// /auth/session validation so a reload doesn't mint a brand-new session every time.
+// `signal.cancelled` lets the caller abandon a stale run (component unmounted).
+export const bootAuth = async (signal: { cancelled: boolean }) => {
+  const isLogoutParam = new URLSearchParams(window.location.search).get("logout") === "true";
+
+  let cachedToken: string | null = null;
+  try {
+    cachedToken = sessionStorage.getItem(SS.token);
+    const cachedUserJson = sessionStorage.getItem(SS.user);
+    if (cachedToken && cachedUserJson) {
+      store.set(tokenAtom, cachedToken);
+      refreshTokenValue = sessionStorage.getItem(SS.refresh);
+      store.set(userIdAtom, sessionStorage.getItem(SS.userId));
+      const cachedUser = JSON.parse(cachedUserJson) as UserInfo;
+      store.set(userAtom, cachedUser);
+      const cachedExpiry = Number(sessionStorage.getItem(SS.expiresAt)) || null;
+      store.set(sessionExpiresAtAtom, cachedExpiry);
+    }
+  } catch (err) {
+    console.error("Failed to read cached session:", err);
+  }
+
+  // Silent login: ask the SSO service (hidden iframe) whether a session already
+  // exists and, if so, exchange its cookie for a YFS token — no popup.
+  const trySilentLogin = async () => {
+    try {
+      const { data } = await silentSsoAuthenticate(ssoUrl);
+      if (!signal.cancelled) persistPayload(data, data.sso_profile);
+    } catch {
+      // No live SSO session -> user simply isn't signed in yet.
+      if (!signal.cancelled) clearSession();
+    }
+  };
+
+  try {
+    if (isReturningFromSsoRedirect()) {
+      // Came back from a full-page SSO redirect (popup was blocked) — the cookie
+      // is set now, so go straight to the backend exchange.
+      try {
+        const { data } = await openSsoPopupAndAuthenticate(ssoUrl);
+        if (!signal.cancelled) persistPayload(data, data.sso_profile);
+      } catch (err) {
+        console.warn("SSO redirect-return login failed:", err);
+        if (!signal.cancelled) {
+          clearSession();
+          store.set(authErrorMsgAtom, err instanceof Error ? err.message : "SSO sign-in could not be completed");
+        }
+      }
+    } else if (cachedToken) {
+      // Validate the cached token; refresh once on 401 before giving up.
+      try {
+        const info = await fetchSession(cachedToken);
+        if (!signal.cancelled) persistPayload({ access_token: cachedToken, user_info: info });
+      } catch (err) {
+        if (signal.cancelled) return;
+        if (err instanceof HttpError && (err.status === 401 || err.status === 400)) {
+          const refreshed = await refreshAccessToken();
+          if (!refreshed && !signal.cancelled && !isLogoutParam) await trySilentLogin();
+        } else {
+          console.warn("Could not verify cached session, keeping it for now:", err);
+        }
+      }
+    } else if (!isLogoutParam) {
+      await trySilentLogin();
+    }
+  } finally {
+    if (!signal.cancelled) store.set(isAuthLoadingAtom, false);
+  }
+};
+
+export const loginWithSso = async () => {
+  store.set(isAuthLoadingAtom, true);
+  store.set(authErrorMsgAtom, null);
+  try {
+    const { data } = await openSsoPopupAndAuthenticate(ssoUrl);
+    persistPayload(data, data.sso_profile);
+
+    if (window.location.search) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  } catch (err: unknown) {
+    console.error("SSO authentication failed:", err);
+    const message = err instanceof Error ? err.message : "SSO Authentication failed";
+    store.set(authErrorMsgAtom, message);
+    throw err;
+  } finally {
+    store.set(isAuthLoadingAtom, false);
+  }
+};
+
+export const logout = async () => {
+  store.set(isAuthLoadingAtom, true);
+  const currentToken = store.get(tokenAtom);
+  try {
+    // apiLogout tears down the YFS session (DELETE /auth/logout) and then the SSO
+    // session (ssoLogout from @rjyspl/phoenix-sso-react).
+    await apiLogout(currentToken, ssoUrl);
+  } catch (err) {
+    console.error("Logout request failed:", err);
+  } finally {
+    clearSession();
+    clearAutoSsoAttempt(); // explicit logout re-enables auto-SSO for the next visit
+    store.set(isAuthLoadingAtom, false);
+
+    if (!window.location.pathname.includes("/logout")) {
+      window.location.search = "logout=true";
+    }
+  }
+};
+
+export const clearError = () => store.set(authErrorMsgAtom, null);
