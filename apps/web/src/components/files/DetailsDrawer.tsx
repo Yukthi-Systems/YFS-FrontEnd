@@ -7,7 +7,10 @@ import { MediaPlayer } from "../viewers/MediaPlayer";
 const PLACEHOLDER_SVG =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='1'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><polyline points='21 15 16 10 5 21'/></svg>";
 
-function CompactPreview({ item }: { item: FileItem }) {
+// `openable`: whether clicking through to a full viewer is actually wired up for
+// this render — false in read-only contexts (e.g. the public share view) that have
+// no "Open" action, so the hint text isn't left promising one.
+export function CompactPreview({ item, openable = true }: { item: FileItem; openable?: boolean }) {
   if (item.isFolder) {
     return (
       <div className="flex flex-col items-center gap-2 text-center text-text-main">
@@ -34,12 +37,14 @@ function CompactPreview({ item }: { item: FileItem }) {
   return (
     <div className="flex flex-col items-center gap-2 text-center text-text-main">
       {getFileIcon(item.type, "w-12 h-12")}
-      <div className="text-xs font-medium">{item.extension?.toUpperCase() || "Unknown"} file — click Open to view</div>
+      <div className="text-xs font-medium">
+        {item.extension?.toUpperCase() || "Unknown"} file{openable ? " — click Open to view" : ""}
+      </div>
     </div>
   );
 }
 
-const KIND_LABEL: Record<FileItem["type"], string> = {
+export const KIND_LABEL: Record<FileItem["type"], string> = {
   folder: "Folder",
   audio: "Audio",
   video: "Video",
@@ -51,7 +56,7 @@ const KIND_LABEL: Record<FileItem["type"], string> = {
   other: "File",
 };
 
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-xs leading-normal">
       <span className="text-text-main font-semibold shrink-0">{label}</span>

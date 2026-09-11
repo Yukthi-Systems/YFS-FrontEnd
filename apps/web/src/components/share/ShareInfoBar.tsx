@@ -1,12 +1,12 @@
-import { Check, Clock, Hash, Info, Minus } from "lucide-react";
-import type { PublicSession, PublicSessionInfo } from "@yfs/service";
+import { Check, Clock, Hash, Info } from "lucide-react";
+import type { InternalSharePermissions, PublicSession, PublicSessionInfo } from "@yfs/service";
 import { formatDate } from "../../utils/format";
 
 // Surfaces the share-level details from POST /public/session + GET /public/session
 // that the visitor should be able to see: what they're allowed to do, when the link
 // expires, its id, and any note the owner attached.
 
-const PERMS: { key: keyof PublicSessionInfo; label: string }[] = [
+const PERMS: { key: keyof InternalSharePermissions; label: string }[] = [
   { key: "can_preview", label: "Preview" },
   { key: "can_download", label: "Download" },
   { key: "can_create", label: "Create" },
@@ -15,9 +15,10 @@ const PERMS: { key: keyof PublicSessionInfo; label: string }[] = [
 ];
 
 const accessSummary = (info: PublicSessionInfo): string => {
-  if (info.can_update || info.can_create || info.can_delete) return "You can edit this folder";
-  if (info.can_download) return "View & download";
-  if (info.can_preview) return "View only";
+  const p = info.permission_set;
+  if (p.can_update || p.can_create || p.can_delete) return "You can edit this folder";
+  if (p.can_download) return "View & download";
+  if (p.can_preview) return "View only";
   return "No access";
 };
 
@@ -48,22 +49,15 @@ export function ShareInfoBar({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="font-semibold text-text-heading">{accessSummary(info)}</span>
         <span className="flex flex-wrap items-center gap-1.5">
-          {PERMS.map(({ key, label }) => {
-            const on = !!info[key];
-            return (
-              <span
-                key={key}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  on
-                    ? "bg-accent-bg text-accent border border-accent-border"
-                    : "bg-transparent text-text-main border border-border-main line-through decoration-text-main/40"
-                }`}
-              >
-                {on ? <Check className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-                {label}
-              </span>
-            );
-          })}
+          {PERMS.filter(({ key }) => info.permission_set[key]).map(({ key, label }) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-accent-bg text-accent border border-accent-border"
+            >
+              <Check className="w-3 h-3" />
+              {label}
+            </span>
+          ))}
         </span>
       </div>
 
