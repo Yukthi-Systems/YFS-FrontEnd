@@ -15,7 +15,7 @@ import {
   deleteExternalShare,
 } from "@yfs/service";
 import { useAuth } from "../../context/AuthContext";
-import { useToast } from "../../context/ToastContext";
+import { useToast } from "../../atoms/toast";
 import { ModalShell } from "./ModalShell";
 
 const PERMISSION_FIELDS: { key: keyof InternalSharePermissions; label: string }[] = [

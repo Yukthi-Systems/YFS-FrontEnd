@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { UploadCloud } from "lucide-react";
 import { resolveDroppedItems } from "../../utils/directoryEntry";
-import type { FileWithRelativePath } from "../../context/UploadQueueContext";
+import type { FileWithRelativePath } from "../../atoms/uploadQueue";
 
 export function UploadDropzone({
   onDropFiles,

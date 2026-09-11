@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-react";
 import { capitalize } from "@yfs/utils";
 import type { UserInfo } from "../../context/AuthContext";
-import { useTheme } from "../../context/ThemeContext";
-import { useUserSettings } from "../../context/UserSettingsContext";
+import { useTheme } from "../../atoms/theme";
+import { useUserSettings } from "../../hooks/useUserSettings";
 import type { Theme } from "../../utils/theme";
 import { ProfileModal } from "../modals/ProfileModal";
 

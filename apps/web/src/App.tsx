@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./context/AuthContext";
 import { useFileSystem } from "./context/FileSystemContext";
-import { useToast } from "./context/ToastContext";
-import { useUploadQueue } from "./context/UploadQueueContext";
-import { useUserSettings, ThemeSettingsBridge } from "./context/UserSettingsContext";
+import { useToast } from "./atoms/toast";
+import { useUploadQueue } from "./hooks/useUploadQueue";
+import { useUserSettings } from "./hooks/useUserSettings";
+import { UserSettingsBridge } from "./components/UserSettingsBridge";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
@@ -81,7 +82,7 @@ function App() {
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
 
-  // View preferences are server-backed (private_info) via UserSettingsContext, so
+  // View preferences are server-backed (private_info) via UserSettingsBridge, so
   // they follow the user across devices; they fall back to defaults until loaded.
   const {
     viewMode,
@@ -306,7 +307,7 @@ function App() {
 
   return (
     <div className="flex w-screen h-screen bg-bg-main text-text-main overflow-hidden font-sans" onClick={menus.dismissAll}>
-      <ThemeSettingsBridge />
+      <UserSettingsBridge />
       {mobileNavOpen && (
         <div
           className="hidden max-[768px]:block fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"

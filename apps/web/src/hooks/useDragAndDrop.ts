@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FileItem } from "../types/file";
-import type { ToastVariant } from "../context/ToastContext";
+import type { ToastVariant } from "../atoms/toast";
 
 export function useDragAndDrop({
   checkedItemIds,

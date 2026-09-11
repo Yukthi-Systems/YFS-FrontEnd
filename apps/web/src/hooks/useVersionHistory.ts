@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FileItem, FileVersion } from "../types/file";
-import type { ToastVariant } from "../context/ToastContext";
+import type { ToastVariant } from "../atoms/toast";
 
 export function useVersionHistory({
   files,
