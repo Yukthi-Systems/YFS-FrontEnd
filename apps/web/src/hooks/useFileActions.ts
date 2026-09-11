@@ -240,23 +240,20 @@ export function useFileActions({
       return;
     }
 
-    const link = document.createElement("a");
-    if (item.blobUrl) {
-      link.href = item.blobUrl;
-      link.download = item.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      const blob = new Blob([`Seeded File: ${item.name}\nSize: ${item.size} bytes`], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      link.href = url;
-      link.download = item.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    // blobUrl only exists for a file uploaded in this browser tab (see
+    // uploadClient.ts/fileSystemStore.ts hydrateBlobs) — YFS-Main-API has no
+    // download endpoint mounted yet (FileOpsType::Download exists but its handler
+    // isn't registered in main.rs), so there's no real content to fetch otherwise.
+    if (!item.blobUrl) {
+      showToast("Downloading this file isn't supported yet — not available from the server", "error");
+      return;
     }
+    const link = document.createElement("a");
+    link.href = item.blobUrl;
+    link.download = item.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleBatchDownload = async (ids: string[]) => {
