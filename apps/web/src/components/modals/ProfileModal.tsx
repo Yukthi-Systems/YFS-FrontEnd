@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Building2, Check, Globe, HardDrive, Pencil, Phone, RefreshCcw, ShieldCheck, X } from "lucide-react";
 import type { UserInfo } from "../../context/AuthContext";
-import { AVATAR_COLORS, useUserSettings } from "../../context/UserSettingsContext";
+import { AVATAR_COLORS, useUserSettings } from "../../hooks/useUserSettings";
 import { capitalize } from "@yfs/utils";
 import { ModalShell } from "./ModalShell";
 

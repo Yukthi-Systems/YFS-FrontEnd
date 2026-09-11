@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FileItem } from "../types/file";
-import type { ToastVariant } from "../context/ToastContext";
-import type { FileWithRelativePath } from "../context/UploadQueueContext";
+import type { ToastVariant } from "../atoms/toast";
+import type { FileWithRelativePath } from "../atoms/uploadQueue";
 import { downloadAsZip } from "../utils/zipDownload";
 
 interface PendingConfirm {
