@@ -4,6 +4,7 @@ import { useAtom, useSetAtom } from "jotai";
 import { getUserById, updateUserInfo } from "@yfs/service";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../atoms/theme";
+import { showToast } from "../atoms/toast";
 import {
   viewModeAtom,
   sortFieldAtom,
@@ -58,6 +59,13 @@ export function UserSettingsBridge() {
     queryFn: () => getUserById(token!, userId!),
     enabled: !!token && !!userId,
   });
+
+  useEffect(() => {
+    if (query.isError) {
+      showToast(query.error instanceof Error ? query.error.message : "Couldn't load your preferences", "error");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query.isError]);
 
   const privateBlobRef = useRef<PrivateBlob>({});
   const publicBlobRef = useRef<Record<string, unknown>>({});
@@ -116,9 +124,10 @@ export function UserSettingsBridge() {
     clearTimeout(privTimer.current);
     privTimer.current = setTimeout(() => {
       if (!token) return;
-      updateUserInfo(token, "private", privateBlobRef.current).catch((err) =>
-        console.warn("private_info save failed", err)
-      );
+      updateUserInfo(token, "private", privateBlobRef.current).catch((err) => {
+        console.warn("private_info save failed", err);
+        showToast(err instanceof Error ? err.message : "Couldn't save your preferences", "error");
+      });
     }, SAVE_DEBOUNCE_MS);
   }, [theme, viewMode, sortField, sortOrder, sidebarCollapsed, token]);
 
@@ -136,7 +145,10 @@ export function UserSettingsBridge() {
         return;
       }
       updateUserInfo(token, "public", publicBlobRef.current)
-        .catch((err) => console.warn("public_info save failed", err))
+        .catch((err) => {
+          console.warn("public_info save failed", err);
+          showToast(err instanceof Error ? err.message : "Couldn't save your profile", "error");
+        })
         .finally(() => setSavingProfile(false));
     }, SAVE_DEBOUNCE_MS);
   }, [publicProfile, token, setSavingProfile]);

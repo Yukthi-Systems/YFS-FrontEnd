@@ -42,8 +42,7 @@ import {
 export type { AddFileInput, PaginationInfo } from "../atoms/fileSystem";
 
 // Reads services/fileSystemStore.ts (a singleton, wired to the session by
-// components/FileSystemBridge.tsx) and re-exports its operations, matching the shape
-// of the former FileSystemContext's useFileSystem().
+// components/FileSystemBridge.tsx) and re-exports its operations.
 export const useFileSystem = () => {
   const files = useAtomValue(filesAtom);
   const isLoading = useAtomValue(isLoadingAtom);

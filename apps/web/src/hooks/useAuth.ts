@@ -5,7 +5,7 @@ import { loginWithSso, logout, clearError, refreshAccessToken } from "../service
 export type { UserInfo } from "../atoms/auth";
 
 // Reads services/authStore.ts (a singleton, booted once by components/AuthBridge.tsx)
-// and re-exports its actions, matching the shape of the former AuthContext's useAuth().
+// and re-exports its actions.
 export const useAuth = () => {
   const user = useAtomValue(userAtom);
   const token = useAtomValue(tokenAtom);

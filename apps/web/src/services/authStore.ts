@@ -18,11 +18,11 @@ import {
   authErrorMsgAtom,
   type UserInfo,
 } from "../atoms/auth";
+import { showToast } from "../atoms/toast";
 
-// The session store: a singleton (one for the whole app, like there's one signed-in
-// user) holding the SSO/token-refresh orchestration that used to live in
-// AuthContext.tsx. Reactive state lives in atoms/auth.ts; components read it via
-// hooks/useAuth.ts and it's booted once by components/AuthBridge.tsx.
+// Session singleton: SSO/token-refresh orchestration. Reactive state lives in
+// atoms/auth.ts; components read it via hooks/useAuth.ts and it's booted once by
+// components/AuthBridge.tsx.
 
 const store = getDefaultStore();
 
@@ -83,9 +83,7 @@ const buildUser = (info: BackendUserInfo, profile: SsoProfile | undefined, prev:
 
 export const ssoUrl = import.meta.env.VITE_SSO_URL || "https://sso.your-domain.tld";
 
-// Not exposed to consumers (the old AuthContextType never included it either) — only
-// this module's own refresh/logout logic needs it, so it stays a plain module var
-// rather than an atom.
+// Never read by components, so a plain module var rather than an atom.
 let refreshTokenValue: string | null = null;
 
 const persistPayload = (payload: AuthPayload, profile?: SsoProfile) => {
@@ -152,6 +150,7 @@ export const refreshAccessToken = (): Promise<string | null> => {
     } catch (err) {
       console.warn("Session refresh failed, signing out:", err);
       clearSession();
+      showToast("Your session has expired — please sign in again", "error");
       return null;
     }
   })();

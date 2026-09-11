@@ -28,6 +28,7 @@ import {
 import { sanitizeName, categorizeByName } from "../utils/fileType";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient } from "../lib/queryClient";
+import { showToast } from "../atoms/toast";
 import {
   filesAtom,
   isLoadingAtom,
@@ -39,20 +40,14 @@ import {
   type AddFileInput,
 } from "../atoms/fileSystem";
 
-// This is the client-side file-system store: the entire tree (root + shared + trash)
-// held as one flat FileItem[] in filesAtom, plus the mutation/sync logic that keeps it
-// in step with YFS-Main-API. It's a singleton (one store for the whole app, like
-// services/authStore.ts is one session) — components read it via hooks/useFileSystem.ts and it's
-// wired to the signed-in user by components/FileSystemBridge.tsx, mounted once.
-//
-// Ported from the former FileSystemContext.tsx with the state mechanism swapped
-// (React state/refs -> a Jotai store + module-level mutable state), and network reads
-// now go through queryClient.fetchQuery (caching/dedup — see folderQueryKey) with
-// writes fired as real queryClient mutations (see runMutation). The merge, pagination
-// bookkeeping and optimistic-update logic (what each operation does to filesAtom) is
-// otherwise kept as-is — this store still owns one flat, richly cross-referenced tree
-// rather than Query's native per-resource cache, since the rest of the app (search,
-// breadcrumbs, trash view) depends on that shape.
+// Client-side file-system store: the entire tree (root + shared + trash) held as one
+// flat FileItem[] in filesAtom, plus the mutation/sync logic that keeps it in step
+// with YFS-Main-API. A singleton, wired to the signed-in user by
+// components/FileSystemBridge.tsx; components read it via hooks/useFileSystem.ts.
+// Deliberately still one flat tree rather than Query's per-resource cache — search,
+// breadcrumbs and the trash view all need the whole thing at once. Reads go through
+// queryClient.fetchQuery (see folderQueryKey), writes through queryClient mutations
+// (see runMutation).
 
 const store = getDefaultStore();
 
@@ -61,9 +56,7 @@ const ROOT_KEY = "__root__";
 // A real root folder that holds trashed items. Auto-created on first login.
 const TRASH_FOLDER_NAME = "Trash";
 
-// --- Auth/user snapshot, kept fresh by FileSystemBridge (mirrors the old authRef /
-// ownerEmailRef / userNameRef pattern, now module-level since this store has no
-// component instance of its own). ---
+// Auth/user snapshot, kept fresh by FileSystemBridge every render.
 interface AuthSnapshot {
   token: string | null;
   userId: string | null;
@@ -357,12 +350,9 @@ const withFreshToken = async <T,>(fn: (token: string) => Promise<T>): Promise<T 
 };
 
 // Fires a background write as a real queryClient mutation (the same MutationCache
-// primitive useMutation is built on — tracked/visible in devtools, though here it's
-// fire-and-forget from a plain function rather than a component). `onError` mirrors
-// what each caller used to hand a bare `.catch(...)`; these operations don't roll the
-// optimistic local edit back on failure (createFolder is the one exception, and does
-// its own explicit rollback inside onError) — that's existing behavior, not something
-// this migration changes.
+// primitive useMutation is built on), fire-and-forget since callers here are plain
+// functions, not components. Failures don't roll the optimistic local edit back —
+// createFolder is the one exception, with its own rollback inside onError.
 const runMutation = <TVariables>(
   mutationFn: (variables: TVariables) => Promise<unknown>,
   variables: TVariables,
@@ -373,6 +363,13 @@ const runMutation = <TVariables>(
     // onError above already handled/logged it; swallow so this fire-and-forget
     // call doesn't produce an unhandled promise rejection.
   });
+};
+
+// Common runMutation onError: log for debugging, toast the (now backend-provided,
+// see apiClient.ts) message for the user.
+const notifySyncFailed = (context: string, fallback: string) => (err: unknown) => {
+  console.warn(context, err);
+  showToast(err instanceof Error ? err.message : fallback, "error");
 };
 
 // One folder page fetch. `mode` picks the intent:
@@ -586,6 +583,7 @@ export const loadSharedOut = async (opts?: { force?: boolean }) => {
   } catch (err) {
     if (err instanceof AuthUnavailableError) return;
     console.warn("Failed to load shared-out folders", err);
+    showToast(err instanceof Error ? err.message : "Couldn't load folders you've shared", "error");
   }
 };
 
@@ -607,6 +605,7 @@ export const loadSharedLinks = async (opts?: { force?: boolean }) => {
   } catch (err) {
     if (err instanceof AuthUnavailableError) return;
     console.warn("Failed to load public links", err);
+    showToast(err instanceof Error ? err.message : "Couldn't load public links", "error");
   }
 };
 
@@ -787,7 +786,7 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
         ).then(() => loadFolder(parentId, { force: true })),
       { parentId, safeName },
       (err) => {
-        console.warn("Folder create did not sync to API", err);
+        notifySyncFailed("Folder create did not sync to API", "Couldn't create the folder")(err);
         // Roll the optimistic row back — nothing retries local folders and
         // fetchFolderPage won't list their children, so a kept row becomes a
         // permanent phantom. Then re-list in case the create actually landed
@@ -959,7 +958,7 @@ export const renameItem = (id: string, newName: string) => {
           })
         ),
       { id, safeName },
-      (err) => console.warn("Folder rename did not sync to API", err)
+      notifySyncFailed("Folder rename did not sync to API", "Couldn't rename the folder")
     );
   } else if (!target.isFolder && target.origin === "server" && target.fileId) {
     runMutation(
@@ -968,7 +967,7 @@ export const renameItem = (id: string, newName: string) => {
           apiUpdateFileInfo(t, { file_id: target.fileId!, file_name: safeName, file_info: target.resourceInfo ?? {} })
         ),
       { id, safeName },
-      (err) => console.warn("File rename did not sync to API", err)
+      notifySyncFailed("File rename did not sync to API", "Couldn't rename the file")
     );
   }
 };
@@ -1000,7 +999,7 @@ const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
         })
       ),
     { id, patch },
-    (err) => console.warn("Folder appearance did not sync to API", err)
+    notifySyncFailed("Folder appearance did not sync to API", "Couldn't save that change")
   );
 };
 
@@ -1086,7 +1085,7 @@ export const trashItems = (ids: string[]) => {
               if (trashId) await apiMoveFolder(t, { folderId: f.id, newParentFolderId: trashId });
             }),
           { id: f.id },
-          (err) => console.warn("Trash did not sync to API", err)
+          notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
         );
       });
   }
@@ -1134,7 +1133,7 @@ export const restoreItems = (ids: string[]) => {
               await apiMoveFolder(t, { folderId: f.id, newParentFolderId: restoreTo });
             }),
           { id: f.id },
-          (err) => console.warn("Restore did not sync to API", err)
+          notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
         );
       });
   }
@@ -1192,7 +1191,7 @@ export const moveItems = (ids: string[], newParentId: string | null): { moved: n
       runMutation(
         () => withFreshToken((t) => apiMoveFolder(t, { folderId: id, newParentFolderId: newParentId, sharedFolderId })),
         { id, sharedFolderId },
-        (err) => console.warn("Folder move did not sync to API", err)
+        notifySyncFailed("Folder move did not sync to API", "Couldn't move that folder")
       );
     });
   }

@@ -1,4 +1,4 @@
-import { atom, useAtomValue, useSetAtom } from "jotai";
+import { atom, useAtomValue, useSetAtom, getDefaultStore } from "jotai";
 
 export type ToastVariant = "success" | "error" | "info";
 
@@ -34,3 +34,8 @@ export const useToast = () => {
   const dismissToast = useSetAtom(dismissToastAtom);
   return { toasts, showToast, dismissToast };
 };
+
+// For non-component callers (services/fileSystemStore.ts, services/authStore.ts).
+const store = getDefaultStore();
+export const showToast = (message: string, variant: ToastVariant = "info") =>
+  store.set(showToastAtom, message, variant);
