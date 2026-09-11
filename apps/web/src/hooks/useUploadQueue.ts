@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { useAtom } from "jotai";
 import type { FileOperationResult } from "@yfs/service";
-import { useAuth } from "../context/AuthContext";
-import { useFileSystem } from "../context/FileSystemContext";
+import { useAuth } from "./useAuth";
+import { useFileSystem } from "./useFileSystem";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
 import { uploadClient } from "../services/uploadClient";
 import { buildFileOperations, runPool, UPLOAD_CONCURRENCY, type PlannedUpload } from "../services/uploadPlan";

@@ -10,7 +10,7 @@ import { putBlob } from "./blobStore";
 
 // Keep the uploaded bytes in IndexedDB too, so previews work instantly instead of
 // waiting on a real download endpoint (which doesn't exist yet). storageKey =
-// file_location, which is what FileSystemContext hydrates from.
+// file_location, which is what fileSystemStore hydrates from.
 const cacheLocally = (location: string, file: File) =>
   putBlob(location, file).catch((err) => console.warn("Local blob cache failed", err));
 

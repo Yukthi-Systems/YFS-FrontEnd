@@ -1,1 +1,0 @@
-{"root":["./src/apiClient.ts","./src/auth.ts","./src/externalShares.ts","./src/files.ts","./src/folders.ts","./src/http.ts","./src/index.ts","./src/publicSession.ts","./src/shares.ts","./src/sso.ts","./src/types.ts","./src/users.ts","./src/vite-env.d.ts"],"version":"6.0.3"}
