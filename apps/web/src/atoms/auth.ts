@@ -20,13 +20,8 @@ export interface UserInfo {
   username?: string;
 }
 
-// Reactive session state, written by services/authStore.ts (the only place with write
-// access) and wired up once by components/AuthBridge.tsx; read anywhere via
-// hooks/useAuth.ts. `atom(null as T | null)` rather than `atom<T | null>(null)`: this
-// repo builds with strictNullChecks off, so a bare `null` argument is structurally
-// assignable to jotai's `Read<Value>` (a function type) and overload resolution would
-// otherwise pick the read-only `atom(read): Atom<Value>` overload instead of the
-// primitive (writable) one. See atoms/fileSystem.ts for the same fix.
+// Written by services/authStore.ts, read via hooks/useAuth.ts. `null as T | null`
+// rather than `atom<T | null>(null)` — see atoms/fileSystem.ts for why.
 export const userAtom = atom(null as UserInfo | null);
 export const tokenAtom = atom(null as string | null);
 export const userIdAtom = atom(null as string | null);

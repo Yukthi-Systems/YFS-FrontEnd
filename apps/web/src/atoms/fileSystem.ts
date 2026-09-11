@@ -21,19 +21,13 @@ export interface PaginationInfo {
   loading: boolean;
 }
 
-// The whole client-side file tree (root + shared + trash) as one flat list, plus the
-// handful of sibling buckets (sharedOut, sharedLinks, pagination) that go with it.
-// Written to by services/fileSystemStore.ts (the only place with write access to the
-// underlying data); read anywhere via hooks/useFileSystem.ts.
+// Written by services/fileSystemStore.ts; read via hooks/useFileSystem.ts.
 export const filesAtom = atom<FileItem[]>([]);
 export const isLoadingAtom = atom<boolean>(true);
-// `atom(null as string | null)` rather than `atom<string | null>(null)`: this repo
-// builds with strictNullChecks off, so a bare `null` argument is structurally
-// assignable to jotai's `Read<Value>` (a function type) and overload resolution
-// picks the read-only `atom(read): Atom<Value>` overload instead of the primitive
-// (writable) one — silently making the atom read-only. Casting the initial value so
-// its static type includes `string` (never assignable to a function type) rules that
-// overload out regardless of strictNullChecks.
+// `null as T | null` rather than `atom<T | null>(null)`: with strictNullChecks off,
+// a bare `null` matches jotai's read-only atom(read) overload instead of the
+// writable one. The cast keeps `string` in the value's static type, which isn't
+// assignable to that overload's function parameter, so it resolves correctly.
 export const remoteErrorAtom = atom(null as string | null);
 export const pageInfoAtom = atom<Record<string, PaginationInfo>>({});
 export const trashFolderIdAtom = atom(null as string | null);
