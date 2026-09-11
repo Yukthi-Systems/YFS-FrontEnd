@@ -54,13 +54,22 @@ export async function apiRequest<T = unknown>(
   }
 
   if (!res.ok) {
-    let detail = "";
+    // YFS-Main-API's error body is always `{ "error": "<message>" }` (see
+    // src/models/errors.rs) — parse it out so callers/toasts show that message
+    // instead of the raw JSON text.
+    let message = "";
     try {
-      detail = await res.text();
+      const text = await res.text();
+      try {
+        const parsed = JSON.parse(text);
+        message = typeof parsed?.error === "string" ? parsed.error : text;
+      } catch {
+        message = text;
+      }
     } catch {
       /* body already consumed / unavailable */
     }
-    throw new HttpError(res.status, detail || `${init.method || "GET"} ${path} failed with status ${res.status}`);
+    throw new HttpError(res.status, message || `${init.method || "GET"} ${path} failed with status ${res.status}`);
   }
 
   let data = undefined as T;

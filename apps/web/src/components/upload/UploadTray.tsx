@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronDown, ChevronUp, FileUp, Loader2, X, XCircle } from "lucide-react";
 import { useState } from "react";
-import { useUploadQueue } from "../../context/UploadQueueContext";
+import { useUploadQueue } from "../../hooks/useUploadQueue";
 
 export function UploadTray() {
   const { tasks, dismissTask } = useUploadQueue();

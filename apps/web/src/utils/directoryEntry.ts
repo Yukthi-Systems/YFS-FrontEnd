@@ -1,4 +1,4 @@
-import type { FileWithRelativePath } from "../context/UploadQueueContext";
+import type { FileWithRelativePath } from "../atoms/uploadQueue";
 
 // Minimal shape of the non-standard FileSystemEntry API exposed by
 // DataTransferItem.webkitGetAsEntry() — used to walk a dropped folder recursively and

@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type { SidebarTab } from "../../types/file";
-import type { UserInfo } from "../../context/AuthContext";
+import type { UserInfo } from "../../atoms/auth";
 import { UserMenu } from "./UserMenu";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };

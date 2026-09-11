@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AUTO_SSO_ATTEMPTED_KEY } from "../context/AuthContext";
+import { AUTO_SSO_ATTEMPTED_KEY } from "../services/authStore";
 
 // Whether auto-SSO has already been kicked off in this browser session. Persisted so
 // the blocked-popup full-page redirect doesn't come back and immediately re-trigger.
@@ -23,7 +23,7 @@ const markAutoSsoAttempted = (): void => {
 // Runs AT MOST ONCE per browser session: if that attempt fails (bad API URL, CORS,
 // popup blocked and the redirect returns still-unauthenticated, ...) the user lands on
 // the login screen with a button instead of an endless popup/redirect loop. A
-// successful sign-in or an explicit logout re-arms it (see AuthContext).
+// successful sign-in or an explicit logout re-arms it (see services/authStore.ts).
 export function useSsoAutoLogin({
   isAuthenticated,
   authLoading,

@@ -66,7 +66,7 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
 // All descendant ids of a folder, recursive. `rootId: null` means "the whole tree from the
 // top" (top-level items have parentId === null, so the BFS just starts there). This is a
 // pure, files-array-based counterpart to the private helper of the same name in
-// FileSystemContext.tsx (which only ever needs a real id, never the whole-tree case).
+// services/fileSystemStore.ts (which only ever needs a real id, never the whole-tree case).
 export function collectDescendantIds(files: FileItem[], rootId: string | null): string[] {
   const result: string[] = [];
   const queue: (string | null)[] = [rootId];
