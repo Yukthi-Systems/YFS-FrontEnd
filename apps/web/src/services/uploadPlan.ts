@@ -1,4 +1,3 @@
-import type { FileOperationEntry } from "@yfs/service";
 import type { FileItem } from "../types/file";
 
 // One file about to be uploaded, with its folder chain already resolved to a real id.
@@ -11,57 +10,44 @@ export interface PlannedUpload {
   sharedFolderId: string | null;
 }
 
-const DEFAULT_MIME = "application/octet-stream";
-const key = (folderId: string, name: string) => `${folderId} ${name.toLowerCase()}`;
+export type UploadBlockReason = "shared-folder" | "needs-versioning";
 
-// Build the JSON array for POST /files/operations, one entry per planned upload in
-// the same order.
-//
-// Version + op resolution:
-//   - new name                    -> "Upload",  file_version 1
-//   - existing name, versioning ON -> "Upload",  file_version = highest known + 1
-//   - existing name, versioning OFF -> "Replace", file_version 1 (overwrites content;
-//     the backend's UNIQUE(folder_id, file_name) keeps it one row)
-// "Known" spans both what's already in the folder and earlier files in this same
-// batch, so re-uploading a folder with two same-named files bumps the second again.
-export const buildFileOperations = (
-  uploads: PlannedUpload[],
+export interface UploadStep {
+  plan: PlannedUpload;
+  fileId: string | null; // set when this is a new version of an existing file
+  fileVersion: number;
+}
+
+const DEFAULT_MIME = "application/octet-stream";
+
+// Decides whether POST /files/upload can currently handle this planned upload, and
+// with what file_id/file_version — it's upload-only right now, so:
+//   - new name                     -> allowed, file_version 1
+//   - existing name, versioning ON -> allowed, file_version = existing + 1
+//   - existing name, versioning OFF -> blocked (server has no in-place replace yet)
+//   - target inside a shared folder -> blocked (server ignores shared_folder_id today)
+export const resolveUploadStep = (
+  plan: PlannedUpload,
   existingFiles: FileItem[],
   versioningEnabled: boolean
-): FileOperationEntry[] => {
-  const maxVersion = new Map<string, number>();
-  for (const f of existingFiles) {
-    if (f.isFolder || f.isDeleted) continue;
-    const k = key(f.parentId ?? "", f.name); // "" == the user's root, matches ROOT_FOLDER_ID
-    const v = f.version ?? 1;
-    if (v > (maxVersion.get(k) ?? 0)) maxVersion.set(k, v);
-  }
+): { step: UploadStep } | { blocked: UploadBlockReason } => {
+  if (plan.sharedFolderId !== null) return { blocked: "shared-folder" };
 
-  return uploads.map(({ file, fileName, targetFolderId, sharedFolderId }) => {
-    const k = key(targetFolderId, fileName);
-    const exists = maxVersion.has(k);
+  const existing = existingFiles.find(
+    (f) => !f.isFolder && !f.isDeleted && f.parentId === plan.targetFolderId && f.name === plan.fileName
+  );
+  if (!existing) return { step: { plan, fileId: null, fileVersion: 1 } };
+  if (!versioningEnabled || !existing.fileId) return { blocked: "needs-versioning" };
 
-    let file_version = 1;
-    let file_ops_type: FileOperationEntry["file_ops_type"] = "Upload";
-    if (exists && versioningEnabled) {
-      file_version = (maxVersion.get(k) ?? 0) + 1;
-      maxVersion.set(k, file_version);
-    } else if (exists) {
-      file_ops_type = "Replace";
-    }
-
-    return {
-      folder_id: targetFolderId,
-      file_name: fileName,
-      file_info: {},
-      file_type: file.type || DEFAULT_MIME,
-      file_version,
-      expected_file_size: file.size,
-      file_ops_type,
-      shared_folder_id: sharedFolderId,
-    };
-  });
+  return { step: { plan, fileId: existing.fileId, fileVersion: (existing.version ?? 1) + 1 } };
 };
+
+export const uploadBlockMessage = (reason: UploadBlockReason): string =>
+  reason === "shared-folder"
+    ? "Uploading into shared folders isn't supported yet"
+    : "A file with this name already exists — enable file versioning to upload a new version";
+
+export const fileTypeOf = (file: File): string => file.type || DEFAULT_MIME;
 
 // Cap concurrent uploads so a big folder drop doesn't open hundreds of sockets.
 export const UPLOAD_CONCURRENCY = 4;
