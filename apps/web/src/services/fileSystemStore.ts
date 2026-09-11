@@ -254,9 +254,13 @@ const mergeServerListing = (
     return {
       ...res,
       // isStarred / color / icon now live in resource_info (carried by ...res).
-      // trash_info in resource_info (res) is authoritative; also keep a local flag
-      // set optimistically before the edit has synced.
-      isDeleted: f.isDeleted || res.isDeleted,
+      // trash_info in resource_info (res) is authoritative. Folders keep a local
+      // optimistic flag too (trashItems syncs them, but the real edit may not have
+      // landed yet) — files never get a local one now (trash is blocked client-side
+      // for files, see useFileActions.ts), so always trust the server for them;
+      // otherwise a file trashed before that block existed would stay stuck
+      // "deleted" locally forever even once the server says otherwise.
+      isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
       trashedFrom: f.trashedFrom ?? res.trashedFrom,
       share: f.share,
       versions: f.versions,

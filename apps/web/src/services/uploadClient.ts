@@ -1,67 +1,50 @@
 import * as tus from "tus-js-client";
-import { fileOperations, type FileOperationEntry, type FileOperationResult } from "@yfs/service";
-import { putBlob } from "./blobStore";
+import { requestFileUpload, type FileUploadRequest, type UploadSession } from "@yfs/service";
+import { generateStorageKey, putBlob } from "./blobStore";
 
 // Talks to the real upload backend: ask YFS-Main-API for a per-file upload session
-// (POST /files/operations -> token + tus endpoint), then push the bytes to the
-// Storage API — resumable via tus, or a plain pre-signed PUT if the server says so.
-// The Storage API confirms the committed version back to YFS-Main-API through a
-// server-side callback, so there's no confirm step here.
+// (POST /files/upload -> token + storage API base_url), then push the bytes to the
+// Storage API over tus (resumable). The Storage API confirms the committed version
+// back to YFS-Main-API through a server-side callback, so there's no confirm step
+// here.
 
-// Keep the uploaded bytes in IndexedDB too, so previews work instantly instead of
-// waiting on a real download endpoint (which doesn't exist yet). storageKey =
-// file_location, which is what fileSystemStore hydrates from.
-const cacheLocally = (location: string, file: File) =>
-  putBlob(location, file).catch((err) => console.warn("Local blob cache failed", err));
+// The Storage API's tus mount point — not returned in the session response, so this
+// has to match YFS-Files-Api's TUS_BASE_PATH config (defaults to this value; would
+// need updating here if that default ever changes).
+const TUS_BASE_PATH = "/upload/tus/";
 
 const TUS_RETRY_DELAYS = [0, 1000, 3000, 5000, 10000];
 
-const putWithProgress = (
-  url: string,
-  file: File,
-  token: string,
-  onProgress: (pct: number) => void,
-  signal?: AbortSignal
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-    if (file.type) xhr.setRequestHeader("Content-Type", file.type);
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () =>
-      xhr.status >= 200 && xhr.status < 300
-        ? resolve()
-        : reject(new Error(`PUT failed with status ${xhr.status}`));
-    xhr.onerror = () => reject(new Error("PUT failed"));
-    xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
-    signal?.addEventListener("abort", () => xhr.abort());
-    xhr.send(file);
-  });
+// Keep the uploaded bytes in IndexedDB too, so previews work instantly instead of
+// waiting on a real download endpoint (which doesn't exist yet). The upload session
+// response has no storage key for us to reuse, so we mint our own.
+const cacheLocally = async (file: File): Promise<string> => {
+  const storageKey = generateStorageKey();
+  await putBlob(storageKey, file).catch((err) => console.warn("Local blob cache failed", err));
+  return storageKey;
+};
 
 const uploadViaTus = (
   file: File,
-  target: FileOperationResult,
+  session: UploadSession,
   onProgress: (pct: number) => void,
   signal?: AbortSignal
 ): Promise<void> =>
   new Promise((resolve, reject) => {
     const upload = new tus.Upload(file, {
-      endpoint: target.upload_url,
+      endpoint: `${session.base_url.replace(/\/$/, "")}${TUS_BASE_PATH}`,
       // The Storage API authorizes every tus request (POST create + HEAD/PATCH/
       // DELETE) with this per-file bearer token, not X-API-Token.
-      headers: target.token ? { Authorization: `Bearer ${target.token}` } : undefined,
+      headers: session.token ? { Authorization: `Bearer ${session.token}` } : undefined,
       retryDelays: TUS_RETRY_DELAYS,
       // Same file dropped again resumes rather than restarts.
       fingerprint: async () =>
-        `yfs-${target.file_id}-v${target.file_version}-${file.size}-${file.lastModified}`,
+        `yfs-${session.file_id}-v${session.file_version}-${file.size}-${file.lastModified}`,
       metadata: {
-        filename: target.file_name,
+        filename: session.file_name,
         filetype: file.type || "application/octet-stream",
-        fileId: target.file_id,
-        fileVersion: String(target.file_version),
+        fileId: session.file_id,
+        fileVersion: String(session.file_version),
       },
       onProgress: (sent, total) => onProgress(Math.round((sent / total) * 100)),
       onError: (err) => reject(err),
@@ -77,23 +60,20 @@ const uploadViaTus = (
   });
 
 export const uploadClient = {
-  // POST /files/operations — one upload session (token + endpoint) per entry.
-  requestUpload(token: string, entries: FileOperationEntry[]): Promise<FileOperationResult[]> {
-    return fileOperations(token, entries);
+  // POST /files/upload — one file per call; see @yfs/service files.ts for why.
+  requestUpload(token: string, req: FileUploadRequest): Promise<UploadSession> {
+    return requestFileUpload(token, req);
   },
 
   async upload(
     file: File,
-    target: FileOperationResult,
+    session: UploadSession,
     onProgress: (pct: number) => void,
     signal?: AbortSignal
-  ): Promise<void> {
-    if (target.upload_protocol === "tus") {
-      await uploadViaTus(file, target, onProgress, signal);
-    } else {
-      await putWithProgress(target.upload_url, file, target.token, onProgress, signal);
-    }
-    await cacheLocally(target.file_location, file);
+  ): Promise<{ storageKey: string }> {
+    await uploadViaTus(file, session, onProgress, signal);
+    const storageKey = await cacheLocally(file);
+    return { storageKey };
   },
 };
 

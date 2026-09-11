@@ -106,18 +106,33 @@ export function useFileActions({
     setCheckedItemIds([]);
   };
 
+  // Trash/restore only sync to the server for folders (YFS-Main-API has no file
+  // delete/move/restore endpoints yet — only folders::move_folder and
+  // folders::edit_folder_details are mounted). Letting a file through here would
+  // optimistically mark it deleted with no server call behind it — it'd vanish from
+  // My Drive, never actually land in Trash, and the merge logic that reconciles
+  // local state with a fresh listing keeps that stale isDeleted flag forever. Block
+  // client-side instead of faking a state the server never agrees with.
+  const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
+
   const requestTrash = (ids: string[]) => {
     if (ids.length === 0) return;
+    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
+    const folderIds = targets.filter((f) => f.isFolder).map((f) => f.id);
+    const blocked = targets.length - folderIds.length;
+    if (blocked > 0) showToast(`${plural(blocked, "file")} can't be moved to Trash yet — not supported by the server`, "error");
+    if (folderIds.length === 0) return;
+
     setPendingConfirm({
       title: "Move to Trash",
-      description: `Are you sure you want to move ${ids.length > 1 ? `${ids.length} items` : "this item"} to the Trash? You can restore ${
-        ids.length > 1 ? "them" : "it"
+      description: `Are you sure you want to move ${folderIds.length > 1 ? `${folderIds.length} items` : "this item"} to the Trash? You can restore ${
+        folderIds.length > 1 ? "them" : "it"
       } later from the Trash tab.`,
       confirmLabel: "Move to Trash",
       destructive: true,
       onConfirm: () => {
-        fileSystem.trashItems(ids);
-        showToast(`Moved ${ids.length > 1 ? `${ids.length} items` : "item"} to Trash`, "success");
+        fileSystem.trashItems(folderIds);
+        showToast(`Moved ${plural(folderIds.length, "item")} to Trash`, "success");
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
@@ -126,16 +141,26 @@ export function useFileActions({
     });
   };
 
+  // Permanent delete has no server endpoint at all yet, for files or folders
+  // (folders::delete_folder_with_files is commented out server-side too) — except
+  // for items the server never knew about in the first place (created offline,
+  // origin !== "server"), which are safe to just drop locally.
   const requestPermanentDelete = (ids: string[]) => {
     if (ids.length === 0) return;
+    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
+    const removable = targets.filter((f) => f.isFolder && f.origin !== "server" && f.origin !== "shared").map((f) => f.id);
+    const blocked = targets.length - removable.length;
+    if (blocked > 0) showToast(`${plural(blocked, "item")} can't be permanently deleted yet — not supported by the server`, "error");
+    if (removable.length === 0) return;
+
     setPendingConfirm({
       title: "Delete Permanently",
-      description: `This will permanently delete ${ids.length > 1 ? `${ids.length} items` : "this item"}. This action cannot be undone.`,
+      description: `This will permanently delete ${removable.length > 1 ? `${removable.length} items` : "this item"}. This action cannot be undone.`,
       confirmLabel: "Delete Permanently",
       destructive: true,
       onConfirm: () => {
-        fileSystem.permanentDeleteItems(ids);
-        showToast(`Permanently deleted ${ids.length > 1 ? `${ids.length} items` : "item"}`, "success");
+        fileSystem.permanentDeleteItems(removable);
+        showToast(`Permanently deleted ${plural(removable.length, "item")}`, "success");
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
@@ -146,8 +171,14 @@ export function useFileActions({
 
   const handleRestore = (ids: string[]) => {
     if (ids.length === 0) return;
-    fileSystem.restoreItems(ids);
-    showToast(`Restored ${ids.length > 1 ? `${ids.length} items` : "item"}`, "success");
+    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
+    const folderIds = targets.filter((f) => f.isFolder).map((f) => f.id);
+    const blocked = targets.length - folderIds.length;
+    if (blocked > 0) showToast(`${plural(blocked, "file")} can't be restored yet — not supported by the server`, "error");
+    if (folderIds.length === 0) return;
+
+    fileSystem.restoreItems(folderIds);
+    showToast(`Restored ${plural(folderIds.length, "item")}`, "success");
     setCheckedItemIds([]);
     closeContextMenu();
   };
@@ -209,23 +240,20 @@ export function useFileActions({
       return;
     }
 
-    const link = document.createElement("a");
-    if (item.blobUrl) {
-      link.href = item.blobUrl;
-      link.download = item.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      const blob = new Blob([`Seeded File: ${item.name}\nSize: ${item.size} bytes`], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      link.href = url;
-      link.download = item.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    // blobUrl only exists for a file uploaded in this browser tab (see
+    // uploadClient.ts/fileSystemStore.ts hydrateBlobs) — YFS-Main-API has no
+    // download endpoint mounted yet (FileOpsType::Download exists but its handler
+    // isn't registered in main.rs), so there's no real content to fetch otherwise.
+    if (!item.blobUrl) {
+      showToast("Downloading this file isn't supported yet — not available from the server", "error");
+      return;
     }
+    const link = document.createElement("a");
+    link.href = item.blobUrl;
+    link.download = item.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleBatchDownload = async (ids: string[]) => {
