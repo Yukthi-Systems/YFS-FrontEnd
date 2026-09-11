@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 
 export interface UserInfo {
   email: string;
@@ -20,11 +21,22 @@ export interface UserInfo {
   username?: string;
 }
 
-// Written by services/authStore.ts, read via hooks/useAuth.ts. `null as T | null`
-// rather than `atom<T | null>(null)` — see atoms/fileSystem.ts for why.
-export const userAtom = atom(null as UserInfo | null);
-export const tokenAtom = atom(null as string | null);
-export const userIdAtom = atom(null as string | null);
-export const sessionExpiresAtAtom = atom(null as number | null);
-export const isAuthLoadingAtom = atom<boolean>(true);
+// Written by services/authStore.ts, read via hooks/useAuth.ts. Persisted to
+// localStorage so a refresh renders the signed-in UI immediately from the cached
+// session instead of blocking on a server round-trip first — services/authStore.ts
+// still verifies the session in the background and signs out if it's no longer
+// valid. `getOnInit: true` because atomWithStorage otherwise defaults to returning
+// the initial value (null) on first read and only hydrates from storage after
+// mount — without it, the very first render would see "signed out" regardless of
+// what's cached, for exactly one tick.
+const persisted = { getOnInit: true } as const;
+export const userAtom = atomWithStorage<UserInfo | null>("yfs_user", null, undefined, persisted);
+export const tokenAtom = atomWithStorage<string | null>("yfs_token", null, undefined, persisted);
+export const userIdAtom = atomWithStorage<string | null>("yfs_user_id", null, undefined, persisted);
+export const refreshTokenAtom = atomWithStorage<string | null>("yfs_refresh_token", null, undefined, persisted);
+export const sessionExpiresAtAtom = atomWithStorage<number | null>("yfs_expires_at", null, undefined, persisted);
+
+// Not persisted — only true while there's no cached session to render
+// optimistically and a silent-login check is in flight (see bootAuth).
+export const isAuthLoadingAtom = atom<boolean>(false);
 export const authErrorMsgAtom = atom(null as string | null);
