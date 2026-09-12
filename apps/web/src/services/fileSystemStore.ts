@@ -172,7 +172,10 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
   }
 
   const { type, extension } = categorizeByName(r.resource_name);
-  return { ...common, isFolder: false, type, extension: extension || undefined };
+  // resource_id IS files.file_id for a file row (see get_folders_and_files /
+  // get_root_folders in YFS-Main-API's database/folders.rs) — needed for any
+  // per-file call (download, update, move), not just ones this tab uploaded.
+  return { ...common, isFolder: false, type, extension: extension || undefined, fileId: r.resource_id };
 };
 
 // Map a "shared with me" folder into a FileItem parked under SHARED_ROOT_ID.
@@ -260,8 +263,10 @@ const mergeServerListing = (
       versions: f.versions,
       blobUrl: f.blobUrl,
       storageKey: f.storageKey,
-      // The folder listing doesn't carry version/file-id yet — keep what the upload set.
-      fileId: f.fileId,
+      // fileId now comes from the server listing itself (mapResource) — prefer it,
+      // falling back to a locally-set one only if this particular row is missing it.
+      // version isn't in the listing at all yet, so keep whatever the upload set.
+      fileId: res.fileId ?? f.fileId,
       version: f.version,
     };
   });
