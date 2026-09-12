@@ -1,18 +1,26 @@
 import { apiRequest } from "./apiClient";
 
-// File upload against YFS-Main-API's /files scope.
+// File upload/download against YFS-Main-API's /files scope.
 //
-//   POST /files/upload   body: FileOpsRequest (one file)  -> UploadSession[] (always
-//                         exactly one element — YFS-Main-API relays the Storage API's
-//                         /sessions/upload response verbatim, which is array-shaped
-//                         because it also serves batched internal callers)
+//   POST /files/upload    body: FileOpsRequest (one file)  -> UploadSession[] (always
+//                          exactly one element — YFS-Main-API relays the Storage API's
+//                          /sessions/upload response verbatim, which is array-shaped
+//                          because it also serves batched internal callers)
+//   POST /files/download  body: FileOpsRequest (one file)  -> DownloadSession — same
+//                          relay, but YFS-Files-Api's /sessions/download takes a single
+//                          object, not an array. Confirmed backend bug: YFS-Main-API
+//                          wraps the body in an array (routes/files.rs
+//                          request_file_download) the same way it does for upload, so
+//                          today this 400s inside YFS-Files-Api's JSON decode. Needs a
+//                          fix on one side of that internal call before this works
+//                          end-to-end — flagged to backend, not something to work
+//                          around here.
 //
-// This is upload-only for now — Download/Delete/Replace, batching, and shared-folder
-// targets aren't wired up server-side yet (see routes/files.rs and
-// models/files_folders.rs; shared_folder_id is accepted but unused by the handler).
-// Request/response shapes mirror the Rust (files_folders::FileOpsRequest) and Go
-// (models.UploadSession) structs — don't invent fields either side doesn't have,
-// notably there's no file_location or upload_protocol in the response.
+// Delete/Replace, batching, and shared-folder upload targets aren't wired up
+// server-side yet (see routes/files.rs and models/files_folders.rs; shared_folder_id
+// is accepted but unused by the upload handler). Request/response shapes mirror the
+// Rust (files_folders::FileOpsRequest) and Go (models.UploadSession /
+// models.DownloadSession) structs — don't invent fields either side doesn't have.
 
 export interface FileUploadRequest {
   folder_id: string; // real folders.folder_id UUID (the immediate parent)
@@ -50,16 +58,20 @@ export const requestFileUpload = async (accessToken: string, req: FileUploadRequ
   return session;
 };
 
-// files_folders::FileInfoEditRequest
+// FileOpsRequest — same body shape as upload/download. PATCH /files/update actually
+// deserializes into the full FileOpsRequest server-side (routes/files.rs
+// update_file_info), so folder_id/file_type/file_version/expected_file_size are
+// required even though only file_name and file_info get written — this narrower
+// shape will fail to deserialize until the update-file work extends it.
 export interface FileInfoEdit {
   file_id: string;
   file_name: string;
   file_info: Record<string, unknown>;
 }
 
-// PATCH /files/update — rename / edit a file's UI metadata (not its bytes). Not
-// currently mounted server-side (routes/files.rs has it commented out) — calling
-// this will 404 until that lands.
+// PATCH /files/update — rename / edit a file's UI metadata (not its bytes). Mounted
+// server-side now, but see FileInfoEdit above — the request body sent today is
+// missing fields the handler requires.
 export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): Promise<void> => {
   await apiRequest("/files/update", {
     accessToken,
@@ -73,5 +85,37 @@ export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): P
 // server-side either (see above).
 export const getFileInfo = async (accessToken: string, fileId: string): Promise<unknown> => {
   const { data } = await apiRequest<unknown>(`/files/info/${fileId}`, { accessToken });
+  return data;
+};
+
+// Same FileOpsRequest shape as FileUploadRequest — file_id is required (not optional)
+// since a download always targets an existing file/version.
+export interface FileDownloadRequest {
+  folder_id: string;
+  file_id: string;
+  shared_folder_id?: string | null;
+  file_name: string;
+  file_info: Record<string, unknown>;
+  file_type: string;
+  file_version: number;
+  expected_file_size: number;
+}
+
+// models.DownloadSession (YFS-Files-Api) — a token+URL good for one GET against the
+// Storage API's /download/{file_id}, sent as `Authorization: Bearer <token>`.
+export interface DownloadSession {
+  url: string;
+  token: string;
+  expires_at: string; // RFC3339
+}
+
+// POST /files/download — one file per call, mirrors /files/upload.
+export const requestFileDownload = async (accessToken: string, req: FileDownloadRequest): Promise<DownloadSession> => {
+  const { data } = await apiRequest<DownloadSession>("/files/download", {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  if (!data) throw new Error("Download session response was empty");
   return data;
 };

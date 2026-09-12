@@ -15,6 +15,13 @@ const TUS_BASE_PATH = "/upload/tus/";
 
 const TUS_RETRY_DELAYS = [0, 1000, 3000, 5000, 10000];
 
+// Send the file as a series of 10MB PATCH requests instead of tus-js-client's default
+// (one request for the whole file, chunkSize: Infinity) — bounds how much a flaky
+// connection has to redo per fault, and gives pause/resume a real chunk boundary to
+// stop at instead of aborting mid-stream. tusd (the Go backend's tus server) already
+// persists bytes incrementally as PATCHes arrive, so this needed no backend change.
+const CHUNK_SIZE = 10 * 1024 * 1024;
+
 // Keep the uploaded bytes in IndexedDB too, so previews work instantly instead of
 // waiting on a real download endpoint (which doesn't exist yet). The upload session
 // response has no storage key for us to reuse, so we mint our own.
@@ -24,40 +31,87 @@ const cacheLocally = async (file: File): Promise<string> => {
   return storageKey;
 };
 
-const uploadViaTus = (
+export interface UploadHandle {
+  // Stops sending without terminating the upload server-side — tus keeps the
+  // partially-received bytes, so resume() continues from the last acked chunk
+  // instead of restarting.
+  pause: () => void;
+  resume: () => void;
+  // Aborts in flight *and* tells the Storage API to discard what's been received so
+  // far (DELETE), unlike pause.
+  cancel: () => void;
+  // Settles once: resolves on success, rejects on error or cancel. Stays pending
+  // across any number of pause/resume cycles.
+  promise: Promise<void>;
+}
+
+const startTusUpload = (
   file: File,
   session: UploadSession,
   onProgress: (pct: number) => void,
-  signal?: AbortSignal
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const upload = new tus.Upload(file, {
-      endpoint: `${session.base_url.replace(/\/$/, "")}${TUS_BASE_PATH}`,
-      // The Storage API authorizes every tus request (POST create + HEAD/PATCH/
-      // DELETE) with this per-file bearer token, not X-API-Token.
-      headers: session.token ? { Authorization: `Bearer ${session.token}` } : undefined,
-      retryDelays: TUS_RETRY_DELAYS,
-      // Same file dropped again resumes rather than restarts.
-      fingerprint: async () =>
-        `yfs-${session.file_id}-v${session.file_version}-${file.size}-${file.lastModified}`,
-      metadata: {
-        filename: session.file_name,
-        filetype: file.type || "application/octet-stream",
-        fileId: session.file_id,
-        fileVersion: String(session.file_version),
-      },
-      onProgress: (sent, total) => onProgress(Math.round((sent / total) * 100)),
-      onError: (err) => reject(err),
-      onSuccess: () => resolve(),
-    });
-    signal?.addEventListener("abort", () => {
-      upload.abort(true).finally(() => reject(new DOMException("Upload cancelled", "AbortError")));
-    });
-    upload.findPreviousUploads().then((prev) => {
-      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
-      upload.start();
-    });
+  onStatusChange: (status: "uploading" | "paused") => void
+): UploadHandle => {
+  let settled = false;
+  let resolveFn!: () => void;
+  let rejectFn!: (err: unknown) => void;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
   });
+
+  const upload = new tus.Upload(file, {
+    endpoint: `${session.base_url.replace(/\/$/, "")}${TUS_BASE_PATH}`,
+    // The Storage API authorizes every tus request (POST create + HEAD/PATCH/
+    // DELETE) with this per-file bearer token, not X-API-Token.
+    headers: session.token ? { Authorization: `Bearer ${session.token}` } : undefined,
+    chunkSize: CHUNK_SIZE,
+    retryDelays: TUS_RETRY_DELAYS,
+    // Same file dropped again resumes rather than restarts.
+    fingerprint: async () =>
+      `yfs-${session.file_id}-v${session.file_version}-${file.size}-${file.lastModified}`,
+    metadata: {
+      filename: session.file_name,
+      filetype: file.type || "application/octet-stream",
+      fileId: session.file_id,
+      fileVersion: String(session.file_version),
+    },
+    onProgress: (sent, total) => onProgress(Math.round((sent / total) * 100)),
+    onError: (err) => {
+      // A pause aborts the in-flight chunk too — tus-js-client's abort() doesn't
+      // itself invoke onError, but guard anyway since we settle explicitly on cancel.
+      if (settled) return;
+      settled = true;
+      rejectFn(err);
+    },
+    onSuccess: () => {
+      if (settled) return;
+      settled = true;
+      resolveFn();
+    },
+  });
+
+  upload.findPreviousUploads().then((prev) => {
+    if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+    upload.start();
+  });
+
+  return {
+    pause: () => {
+      onStatusChange("paused");
+      upload.abort(false).catch(() => {});
+    },
+    resume: () => {
+      onStatusChange("uploading");
+      upload.start();
+    },
+    cancel: () => {
+      if (settled) return;
+      settled = true;
+      upload.abort(true).finally(() => rejectFn(new DOMException("Upload cancelled", "AbortError")));
+    },
+    promise,
+  };
+};
 
 export const uploadClient = {
   // POST /files/upload — one file per call; see @yfs/service files.ts for why.
@@ -65,16 +119,16 @@ export const uploadClient = {
     return requestFileUpload(token, req);
   },
 
-  async upload(
+  startUpload(
     file: File,
     session: UploadSession,
     onProgress: (pct: number) => void,
-    signal?: AbortSignal
-  ): Promise<{ storageKey: string }> {
-    await uploadViaTus(file, session, onProgress, signal);
-    const storageKey = await cacheLocally(file);
-    return { storageKey };
+    onStatusChange: (status: "uploading" | "paused") => void
+  ): UploadHandle {
+    return startTusUpload(file, session, onProgress, onStatusChange);
   },
+
+  cacheLocally,
 };
 
 export type UploadClient = typeof uploadClient;

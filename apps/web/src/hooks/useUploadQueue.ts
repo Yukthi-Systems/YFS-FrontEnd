@@ -4,7 +4,7 @@ import { HttpError, type FileUploadRequest, type UploadSession } from "@yfs/serv
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
-import { uploadClient } from "../services/uploadClient";
+import { uploadClient, type UploadHandle } from "../services/uploadClient";
 import {
   resolveUploadStep,
   uploadBlockMessage,
@@ -22,11 +22,22 @@ export type { UploadTask, FileWithRelativePath } from "../atoms/uploadQueue";
 const ROOT_FOLDER_ID = "";
 const toParentId = (folderId: string): string | null => (folderId === ROOT_FOLDER_ID ? null : folderId);
 
+// Module-level, not useRef: useUploadQueue() is called from more than one component
+// (App.tsx runs enqueueFiles/runUpload, UploadTray.tsx calls pause/resume/cancel) —
+// a useRef here would give each call site its own private, disconnected copy, so
+// pause/cancel from the tray could never reach the handle App's instance created.
+// In-flight tus handles, keyed by task id.
+const activeHandles = new Map<string, UploadHandle>();
+// Tasks cancelled before their turn in the concurrency pool came up (still resolving
+// folders, or queued behind UPLOAD_CONCURRENCY other files) — no handle exists yet to
+// cancel, so the worker checks this instead before starting.
+const cancelledPending = new Set<string>();
+let taskCounter = 0;
+
 export const useUploadQueue = () => {
   const { token, user, refreshAccessToken } = useAuth();
   const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId } = useFileSystem();
   const [tasks, setTasks] = useAtom(uploadTasksAtom);
-  const taskCounter = useRef(0);
 
   // Async upload runs span renders — read live context off refs.
   const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken });
@@ -36,7 +47,24 @@ export const useUploadQueue = () => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   };
 
+  const pauseTask = (id: string) => activeHandles.get(id)?.pause();
+  const resumeTask = (id: string) => activeHandles.get(id)?.resume();
+
+  const cancelTask = (id: string) => {
+    const handle = activeHandles.get(id);
+    if (handle) {
+      handle.cancel();
+      return;
+    }
+    cancelledPending.add(id);
+    updateTask(id, { status: "error", error: "Cancelled" });
+  };
+
   const dismissTask = (id: string) => {
+    const task = tasks.find((t) => t.id === id);
+    if (task && (task.status === "uploading" || task.status === "paused" || task.status === "pending")) {
+      cancelTask(id);
+    }
     setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
@@ -85,6 +113,8 @@ export const useUploadQueue = () => {
     //    POST /files/upload call per file (it isn't a batch endpoint), capped
     //    concurrency.
     await runPool(live, UPLOAD_CONCURRENCY, async ({ plan, taskId }) => {
+      if (cancelledPending.delete(taskId)) return;
+
       const { token: tk, versioningEnabled, files: existingFiles, refreshAccessToken: refresh } = ctxRef.current;
 
       const resolved = resolveUploadStep(plan, existingFiles, versioningEnabled);
@@ -117,7 +147,22 @@ export const useUploadQueue = () => {
           session = await uploadClient.requestUpload(fresh, request);
         }
 
-        const { storageKey } = await uploadClient.upload(plan.file, session, (pct) => updateTask(taskId, { progress: pct }));
+        if (cancelledPending.delete(taskId)) return;
+
+        const handle = uploadClient.startUpload(
+          plan.file,
+          session,
+          (pct) => updateTask(taskId, { progress: pct }),
+          (status) => updateTask(taskId, { status })
+        );
+        activeHandles.set(taskId, handle);
+        try {
+          await handle.promise;
+        } finally {
+          activeHandles.delete(taskId);
+        }
+
+        const storageKey = await uploadClient.cacheLocally(plan.file);
         const { type, extension } = categorizeFile(plan.file);
         addFile({
           name: plan.fileName,
@@ -166,9 +211,9 @@ export const useUploadQueue = () => {
         setTasks((prev) => [
           ...prev,
           ...rejected.map((it) => {
-            taskCounter.current += 1;
+            taskCounter += 1;
             return {
-              id: `upload-${taskCounter.current}`,
+              id: `upload-${taskCounter}`,
               fileName: it.file.name,
               progress: 0,
               status: "error" as const,
@@ -182,8 +227,8 @@ export const useUploadQueue = () => {
 
     // A task per file, up front, so the tray fills immediately.
     const taskIds = accepted.map(() => {
-      taskCounter.current += 1;
-      return `upload-${taskCounter.current}`;
+      taskCounter += 1;
+      return `upload-${taskCounter}`;
     });
     setTasks((prev) => [
       ...prev,
@@ -209,5 +254,5 @@ export const useUploadQueue = () => {
     });
   };
 
-  return { tasks, enqueueFiles, dismissTask };
+  return { tasks, enqueueFiles, dismissTask, pauseTask, resumeTask, cancelTask };
 };
