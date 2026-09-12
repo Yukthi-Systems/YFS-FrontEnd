@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { HttpError, type FileDownloadRequest } from "@yfs/service";
+import { HttpError, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { downloadClient } from "../services/downloadClient";
@@ -10,10 +10,22 @@ import type { FileItem } from "../types/file";
 const ROOT_FOLDER_ID = "";
 const DEFAULT_MIME = "application/octet-stream";
 
-// Fetches a file's real bytes for download/preview: server-backed files (own or
-// internally shared) go through YFS-Main-API's download session, then a direct GET
-// against the Storage API. Anything else falls back to the local blob cache (a file
-// uploaded in this tab, or a seeded demo item) — there's no server content for those.
+// YFS-Files-Api's /download/{fileID} (media/service.go BuildHeaders) sends
+// Content-Disposition: attachment for everything except these — images, video,
+// audio, and PDF always come back inline, regardless of intent. For "attachment"
+// types, a plain navigation to session.url triggers a real native browser download
+// (the browser recognizes it isn't a page to render and doesn't even leave the
+// current one) with zero fetch/CORS involved — the `?token=` query param on the URL
+// is exactly what makes that possible without an Authorization header. Inline types
+// need the bytes read in JS instead (to force a save via a local blob: URL), which
+// does require the Storage API to allow CORS on that route.
+const INLINE_FORCED_TYPES = new Set<FileItem["type"]>(["image", "video", "audio", "pdf"]);
+
+// Fetches a file's real bytes for zip/batch download or preview: server-backed
+// files (own or internally shared) go through YFS-Main-API's download session, then
+// a direct GET against the Storage API. Anything else falls back to the local blob
+// cache (a file uploaded in this tab, or a seeded demo item) — there's no server
+// content for those.
 export function useDownload() {
   const { token, refreshAccessToken } = useAuth();
   const { getSharedFolderId } = useFileSystem();
@@ -23,6 +35,28 @@ export function useDownload() {
   // closing over whatever was current when this render's fetchBlob was created.
   const tokenRef = useRef(token);
   tokenRef.current = token;
+
+  const buildRequest = (item: FileItem): FileDownloadRequest => ({
+    folder_id: item.parentId ?? ROOT_FOLDER_ID,
+    file_id: item.fileId!,
+    shared_folder_id: getSharedFolderId(item.parentId),
+    file_name: item.name,
+    file_info: item.resourceInfo ?? {},
+    file_type: DEFAULT_MIME,
+    file_version: item.version ?? 1,
+    expected_file_size: item.size,
+  });
+
+  const requestSession = async (request: FileDownloadRequest): Promise<DownloadSession> => {
+    try {
+      return await downloadClient.requestSession(tokenRef.current ?? "", request);
+    } catch (err) {
+      if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 400)) throw err;
+      const fresh = await refreshAccessToken();
+      if (!fresh) throw err;
+      return downloadClient.requestSession(fresh, request);
+    }
+  };
 
   const fetchBlob = async (item: FileItem): Promise<Blob | null> => {
     if (item.isFolder) return null;
@@ -34,27 +68,7 @@ export function useDownload() {
     }
     if (!item.fileId) return null;
 
-    const request: FileDownloadRequest = {
-      folder_id: item.parentId ?? ROOT_FOLDER_ID,
-      file_id: item.fileId,
-      shared_folder_id: getSharedFolderId(item.parentId),
-      file_name: item.name,
-      file_info: item.resourceInfo ?? {},
-      file_type: DEFAULT_MIME,
-      file_version: item.version ?? 1,
-      expected_file_size: item.size,
-    };
-
-    let session;
-    try {
-      session = await downloadClient.requestSession(tokenRef.current ?? "", request);
-    } catch (err) {
-      if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 400)) throw err;
-      const fresh = await refreshAccessToken();
-      if (!fresh) throw err;
-      session = await downloadClient.requestSession(fresh, request);
-    }
-
+    const session = await requestSession(buildRequest(item));
     return downloadClient.fetchBytes(session);
   };
 
@@ -70,6 +84,17 @@ export function useDownload() {
   };
 
   const downloadFile = async (item: FileItem): Promise<boolean> => {
+    if (
+      !item.isFolder &&
+      item.fileId &&
+      (item.origin === "server" || item.origin === "shared") &&
+      !INLINE_FORCED_TYPES.has(item.type)
+    ) {
+      const session = await requestSession(buildRequest(item));
+      window.location.href = session.url;
+      return true;
+    }
+
     const blob = await fetchBlob(item);
     if (!blob) return false;
     saveBlob(blob, item.name);
