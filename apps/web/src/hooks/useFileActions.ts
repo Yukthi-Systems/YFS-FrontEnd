@@ -3,6 +3,7 @@ import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
 import type { FileWithRelativePath } from "../atoms/uploadQueue";
 import { downloadAsZip } from "../utils/zipDownload";
+import { useDownload } from "./useDownload";
 
 interface PendingConfirm {
   title: string;
@@ -56,6 +57,7 @@ export function useFileActions({
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveCopyState, setMoveCopyState] = useState<MoveCopyState | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const { fetchBlob, downloadFile } = useDownload();
 
   const openCreateFolderModal = () => setActiveModal("createFolder");
   const closeCreateFolderModal = () => setActiveModal(null);
@@ -235,25 +237,21 @@ export function useFileActions({
     closeContextMenu();
 
     if (item.isFolder) {
-      const { skipped } = await downloadAsZip([item], files, item.name);
+      showToast(`Zipping "${item.name}"…`, "info");
+      const { skipped } = await downloadAsZip([item], files, item.name, fetchBlob);
       if (skipped > 0) showToast(`${skipped} item${skipped > 1 ? "s" : ""} had no content to include`, "error");
       return;
     }
 
-    // blobUrl only exists for a file uploaded in this browser tab (see
-    // uploadClient.ts/fileSystemStore.ts hydrateBlobs) — YFS-Main-API has no
-    // download endpoint mounted yet (FileOpsType::Download exists but its handler
-    // isn't registered in main.rs), so there's no real content to fetch otherwise.
-    if (!item.blobUrl) {
-      showToast("Downloading this file isn't supported yet — not available from the server", "error");
-      return;
+    // blobUrl-only files resolve instantly (no real fetch), so only announce the
+    // ones that actually hit the network — otherwise this toast outlives the download.
+    if (item.origin === "server" || item.origin === "shared") showToast(`Downloading "${item.name}"…`, "info");
+    try {
+      const ok = await downloadFile(item);
+      if (!ok) showToast("This file has no content to download", "error");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Download failed", "error");
     }
-    const link = document.createElement("a");
-    link.href = item.blobUrl;
-    link.download = item.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const handleBatchDownload = async (ids: string[]) => {
@@ -265,8 +263,13 @@ export function useFileActions({
       return;
     }
 
-    const { skipped } = await downloadAsZip(items, files, "Download");
-    if (skipped > 0) showToast(`${skipped} item${skipped > 1 ? "s" : ""} had no content to include`, "error");
+    try {
+      showToast(`Zipping ${items.length} items…`, "info");
+      const { skipped } = await downloadAsZip(items, files, "Download", fetchBlob);
+      if (skipped > 0) showToast(`${skipped} item${skipped > 1 ? "s" : ""} had no content to include`, "error");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Download failed", "error");
+    }
   };
 
   const handleSaveContent = async (id: string, blob: Blob) => {
