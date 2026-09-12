@@ -4,7 +4,7 @@ export interface UploadTask {
   id: string;
   fileName: string;
   progress: number;
-  status: "pending" | "uploading" | "done" | "error";
+  status: "pending" | "uploading" | "paused" | "done" | "error";
   error?: string;
 }
 

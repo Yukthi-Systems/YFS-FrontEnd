@@ -34,22 +34,34 @@ const triggerBlobDownload = (blob: Blob, filename: string) => {
 };
 
 // Zips one or more items (folders recursively, or a flat multi-selection) and triggers a
-// browser download. Items without real content (seeded demo files with no blobUrl) are
-// skipped rather than failing the whole archive, since there's nothing to fetch for them.
-export const downloadAsZip = async (roots: FileItem[], allFiles: FileItem[], archiveName: string): Promise<{ skipped: number }> => {
+// browser download. `fetchBlob` resolves one item's real bytes (server download session,
+// or the local blob cache) — items it can't resolve (no server content, no local blob) are
+// skipped rather than failing the whole archive.
+export const downloadAsZip = async (
+  roots: FileItem[],
+  allFiles: FileItem[],
+  archiveName: string,
+  fetchBlob: (item: FileItem) => Promise<Blob | null>
+): Promise<{ skipped: number }> => {
   const entries = collectFilesForZip(roots, allFiles);
   const zip = new JSZip();
   let skipped = 0;
 
+  // One file's session/fetch failing (e.g. a locked file, an expired token) shouldn't
+  // sink the whole archive — count it as skipped like "no content" and keep going.
   await Promise.all(
     entries.map(async ({ path, item }) => {
-      if (!item.blobUrl) {
+      try {
+        const blob = await fetchBlob(item);
+        if (!blob) {
+          skipped++;
+          return;
+        }
+        zip.file(path, blob);
+      } catch (err) {
+        console.error(`Skipping "${item.name}" in zip — failed to fetch its content`, err);
         skipped++;
-        return;
       }
-      const res = await fetch(item.blobUrl);
-      const blob = await res.blob();
-      zip.file(path, blob);
     })
   );
 
