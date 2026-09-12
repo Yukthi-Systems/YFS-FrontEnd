@@ -6,15 +6,10 @@ import { apiRequest } from "./apiClient";
 //                          exactly one element — YFS-Main-API relays the Storage API's
 //                          /sessions/upload response verbatim, which is array-shaped
 //                          because it also serves batched internal callers)
-//   POST /files/download  body: FileOpsRequest (one file)  -> DownloadSession — same
-//                          relay, but YFS-Files-Api's /sessions/download takes a single
-//                          object, not an array. Confirmed backend bug: YFS-Main-API
-//                          wraps the body in an array (routes/files.rs
-//                          request_file_download) the same way it does for upload, so
-//                          today this 400s inside YFS-Files-Api's JSON decode. Needs a
-//                          fix on one side of that internal call before this works
-//                          end-to-end — flagged to backend, not something to work
-//                          around here.
+//   POST /files/download  body: FileOpsRequest (one file)  -> DownloadSession[] (same
+//                          array-of-one relay as upload, confirmed against a live
+//                          response 2026-09-12 — the array-vs-object mismatch flagged
+//                          earlier is fixed backend-side)
 //
 // Delete/Replace, batching, and shared-folder upload targets aren't wired up
 // server-side yet (see routes/files.rs and models/files_folders.rs; shared_folder_id
@@ -101,21 +96,30 @@ export interface FileDownloadRequest {
   expected_file_size: number;
 }
 
-// models.DownloadSession (YFS-Files-Api) — a token+URL good for one GET against the
-// Storage API's /download/{file_id}, sent as `Authorization: Bearer <token>`.
+// One issued download slot for exactly one file — mirrors UploadSession's shape.
+// `url` already carries the token as a `?token=` query param, good for one GET
+// against the Storage API (e.g. straight into an <a>/<img>/<video> src, or fetch()
+// with an `Authorization: Bearer <token>` header — either works).
 export interface DownloadSession {
-  url: string;
+  file_name: string;
+  file_id: string;
+  file_version: number;
+  folder_id: string;
+  owner_id: string;
   token: string;
+  url: string;
   expires_at: string; // RFC3339
 }
 
-// POST /files/download — one file per call, mirrors /files/upload.
+// POST /files/download — one file per call, mirrors /files/upload (including the
+// array-of-one response shape).
 export const requestFileDownload = async (accessToken: string, req: FileDownloadRequest): Promise<DownloadSession> => {
-  const { data } = await apiRequest<DownloadSession>("/files/download", {
+  const { data } = await apiRequest<DownloadSession[]>("/files/download", {
     accessToken,
     method: "POST",
     body: JSON.stringify(req),
   });
-  if (!data) throw new Error("Download session response was empty");
-  return data;
+  const session = data?.[0];
+  if (!session) throw new Error("Download session response was empty");
+  return session;
 };
