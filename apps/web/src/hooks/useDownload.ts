@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { HttpError, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
 import { useAuth } from "./useAuth";
@@ -58,6 +59,15 @@ export function useDownload() {
     }
   };
 
+  const getStreamUrl = async (item: FileItem): Promise<string | null> => {
+    if (item.blobUrl) return item.blobUrl;
+    if (item.isFolder || !item.fileId) return null;
+    if (item.origin !== "server" && item.origin !== "shared") return null;
+
+    const session = await requestSession(buildRequest(item));
+    return session.url;
+  };
+
   const fetchBlob = async (item: FileItem): Promise<Blob | null> => {
     if (item.isFolder) return null;
 
@@ -87,11 +97,14 @@ export function useDownload() {
     if (
       !item.isFolder &&
       item.fileId &&
-      (item.origin === "server" || item.origin === "shared") &&
-      !INLINE_FORCED_TYPES.has(item.type)
+      (item.origin === "server" || item.origin === "shared")
     ) {
       const session = await requestSession(buildRequest(item));
-      window.location.href = session.url;
+      if (INLINE_FORCED_TYPES.has(item.type)) {
+        window.open(session.url, "_blank");
+      } else {
+        window.location.href = session.url;
+      }
       return true;
     }
 
@@ -101,5 +114,24 @@ export function useDownload() {
     return true;
   };
 
-  return { fetchBlob, downloadFile };
+  return { fetchBlob, downloadFile, getStreamUrl };
+}
+
+// Media streaming hook (video, audio, image): fetches the direct session URL which
+// carries ?token= and is served inline, enabling native streaming/seeking without CORS.
+export function useStreamUrl(item: FileItem | null) {
+  const { getStreamUrl } = useDownload();
+
+  return useQuery({
+    queryKey: ["streamUrl", item?.id, item?.fileId, item?.version, item?.blobUrl],
+    queryFn: async () => {
+      if (!item) return null;
+      return getStreamUrl(item);
+    },
+    enabled:
+      !!item &&
+      !item.isFolder &&
+      (!!item.blobUrl || (!!item.fileId && (item.origin === "server" || item.origin === "shared"))),
+    staleTime: 5 * 60 * 1000,
+  });
 }

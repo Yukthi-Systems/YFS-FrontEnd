@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useAtom } from "jotai";
 import { HttpError, type FileUploadRequest, type UploadSession } from "@yfs/service";
 import { useAuth } from "./useAuth";
@@ -43,8 +43,51 @@ export const useUploadQueue = () => {
   const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken });
   ctxRef.current = { token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken };
 
+  // Auto-pause on network loss and auto-resume when connectivity restores
+  useEffect(() => {
+    const handleOffline = () => {
+      activeHandles.forEach((handle, id) => {
+        handle.pause();
+        updateTask(id, {
+          status: "reconnecting",
+          error: "Connection lost — waiting to reconnect…",
+        });
+      });
+    };
+
+    const handleOnline = () => {
+      setTasks((prev) => {
+        const reconnecting = prev.filter((t) => t.status === "reconnecting");
+        reconnecting.forEach((t) => {
+          activeHandles.get(t.id)?.resume();
+        });
+        return prev.map((t) =>
+          t.status === "reconnecting"
+            ? { ...t, status: "uploading", error: undefined }
+            : t
+        );
+      });
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, []);
+
   const updateTask = (id: string, patch: Partial<UploadTask>) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const next = { ...t, ...patch };
+        if (patch.status === "uploading" && patch.error === undefined) {
+          next.error = undefined;
+        }
+        return next;
+      })
+    );
   };
 
   const pauseTask = (id: string) => activeHandles.get(id)?.pause();
@@ -179,6 +222,15 @@ export const useUploadQueue = () => {
         // Auto-clear successes like toasts; errors stay until dismissed.
         setTimeout(() => dismissTask(taskId), 4000);
       } catch (err) {
+        const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+        const isAbort = err instanceof DOMException && err.name === "AbortError";
+        if (isOffline && !isAbort) {
+          updateTask(taskId, {
+            status: "reconnecting",
+            error: "Connection lost — waiting to reconnect…",
+          });
+          return;
+        }
         updateTask(taskId, {
           status: "error",
           error: err instanceof Error ? err.message : "Upload failed",

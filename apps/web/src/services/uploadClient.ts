@@ -13,14 +13,14 @@ import { generateStorageKey, putBlob } from "./blobStore";
 // need updating here if that default ever changes).
 const TUS_BASE_PATH = "/upload/tus/";
 
-const TUS_RETRY_DELAYS = [0, 1000, 3000, 5000, 10000];
+const TUS_RETRY_DELAYS = [0, 1000, 2000, 3000, 5000, 10000, 15000, 30000, 60000];
 
-// Send the file as a series of 10MB PATCH requests instead of tus-js-client's default
+// Send the file as a series of 100MB PATCH requests instead of tus-js-client's default
 // (one request for the whole file, chunkSize: Infinity) — bounds how much a flaky
 // connection has to redo per fault, and gives pause/resume a real chunk boundary to
 // stop at instead of aborting mid-stream. tusd (the Go backend's tus server) already
 // persists bytes incrementally as PATCHes arrive, so this needed no backend change.
-const CHUNK_SIZE = 10 * 1024 * 1024;
+const CHUNK_SIZE = 100 * 1024 * 1024;
 
 // Keep the uploaded bytes in IndexedDB too, so previews work instantly instead of
 // waiting on a real download endpoint (which doesn't exist yet). The upload session
@@ -49,7 +49,7 @@ const startTusUpload = (
   file: File,
   session: UploadSession,
   onProgress: (pct: number) => void,
-  onStatusChange: (status: "uploading" | "paused") => void
+  onStatusChange: (status: "uploading" | "paused" | "reconnecting") => void
 ): UploadHandle => {
   let settled = false;
   let resolveFn!: () => void;
@@ -66,6 +66,16 @@ const startTusUpload = (
     headers: session.token ? { Authorization: `Bearer ${session.token}` } : undefined,
     chunkSize: CHUNK_SIZE,
     retryDelays: TUS_RETRY_DELAYS,
+    // Automatically flag reconnecting status when tus encounters transient network errors
+    onShouldRetry: (err) => {
+      const status = err.originalResponse ? err.originalResponse.getStatus() : 0;
+      // Do not retry on permanent 4xx client errors (401, 403, 404, etc.)
+      if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+        return false;
+      }
+      onStatusChange("reconnecting");
+      return true;
+    },
     // Same file dropped again resumes rather than restarts.
     fingerprint: async () =>
       `yfs-${session.file_id}-v${session.file_version}-${file.size}-${file.lastModified}`,
@@ -75,7 +85,10 @@ const startTusUpload = (
       fileId: session.file_id,
       fileVersion: String(session.file_version),
     },
-    onProgress: (sent, total) => onProgress(Math.round((sent / total) * 100)),
+    onProgress: (sent, total) => {
+      onStatusChange("uploading");
+      onProgress(Math.round((sent / total) * 100));
+    },
     onError: (err) => {
       // A pause aborts the in-flight chunk too — tus-js-client's abort() doesn't
       // itself invoke onError, but guard anyway since we settle explicitly on cancel.
@@ -123,7 +136,7 @@ export const uploadClient = {
     file: File,
     session: UploadSession,
     onProgress: (pct: number) => void,
-    onStatusChange: (status: "uploading" | "paused") => void
+    onStatusChange: (status: "uploading" | "paused" | "reconnecting") => void
   ): UploadHandle {
     return startTusUpload(file, session, onProgress, onStatusChange);
   },

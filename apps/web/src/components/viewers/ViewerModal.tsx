@@ -1,5 +1,14 @@
-import { Suspense, lazy, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Download, File as FileIcon, X } from "lucide-react";
+import { Suspense, lazy, useEffect, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  File as FileIcon,
+  Maximize2,
+  Minimize2,
+  Video,
+  X,
+} from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { isTextEditable } from "../../utils/fileType";
 import { ImageLightbox } from "./ImageLightbox";
@@ -31,6 +40,9 @@ export function ViewerModal({
   onDownload: (item: FileItem) => void;
   onSaveContent: (id: string, blob: Blob) => void;
 }) {
+  const [isPiPActive, setIsPiPActive] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+
   const viewable = siblings.filter((f) => !f.isFolder);
   const index = viewable.findIndex((f) => f.id === item.id);
   const prevItem = index > 0 ? viewable[index - 1] : null;
@@ -38,17 +50,51 @@ export function ViewerModal({
 
   // Office-suite documents (PDF/Word/Excel) get a near-fullscreen viewport instead of the
   // narrower default box, since they're read as full pages rather than a quick preview.
-  const isOfficeDoc = item.type === "pdf" || item.type === "spreadsheet" || (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension));
+  const isOfficeDoc =
+    item.type === "pdf" ||
+    item.type === "spreadsheet" ||
+    (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension));
+
+  const handleClose = () => {
+    if (isPiPActive && !isMinimized) {
+      // If PiP is actively playing, dock to bottom-right mini player instead of terminating PiP!
+      setIsMinimized(true);
+      return;
+    }
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    }
+    setIsMinimized(false);
+    onClose();
+  };
+
+  const handleBackdropClick = () => {
+    if (isMinimized) return;
+    if (isPiPActive) {
+      setIsMinimized(true);
+    } else {
+      onClose();
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && prevItem) onNavigate(prevItem);
-      else if (e.key === "ArrowRight" && nextItem) onNavigate(nextItem);
+      if (e.defaultPrevented) return;
+      if (e.key === "Escape") {
+        if (isPiPActive && !isMinimized) {
+          setIsMinimized(true);
+        } else {
+          handleClose();
+        }
+      } else if (!isMinimized && e.key === "ArrowLeft" && prevItem) {
+        onNavigate(prevItem);
+      } else if (!isMinimized && e.key === "ArrowRight" && nextItem) {
+        onNavigate(nextItem);
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, onNavigate, prevItem, nextItem]);
+  }, [onClose, onNavigate, prevItem, nextItem, isPiPActive, isMinimized]);
 
   const renderContent = () => {
     if (item.type === "image") return <ImageLightbox item={item} />;
@@ -66,7 +112,17 @@ export function ViewerModal({
         </Suspense>
       );
     }
-    if (item.type === "video" || item.type === "audio") return <MediaPlayer item={item} size="full" />;
+    if (item.type === "video" || item.type === "audio") {
+      return (
+        <MediaPlayer
+          item={item}
+          size="full"
+          isMinimized={isMinimized}
+          onPiPChange={setIsPiPActive}
+          onRestoreModal={() => setIsMinimized(false)}
+        />
+      );
+    }
     if (item.type === "document" && item.extension && WORD_EXTENSIONS.has(item.extension)) {
       return (
         <Suspense fallback={<ViewerLoading />}>
@@ -90,53 +146,116 @@ export function ViewerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[1500] bg-black/60 backdrop-blur-sm flex flex-col animate-fade-in" onClick={onClose}>
-      <div className="flex items-center justify-between px-6 py-4 text-white shrink-0" onClick={(e) => e.stopPropagation()}>
-        <span className="text-sm font-semibold truncate max-w-[60vw]">{item.name}</span>
-        <div className="flex items-center gap-2">
-          {!item.isFolder && (
-            <button
-              onClick={() => onDownload(item)}
-              className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
-              title="Download"
-            >
-              <Download className="w-4 h-4" />
-            </button>
+    <div
+      className={`fixed z-[1500] transition-all duration-300 ${
+        isMinimized
+          ? "bottom-6 right-6 w-88 shadow-2xl rounded-2xl bg-neutral-900 border border-white/20 overflow-hidden flex flex-col"
+          : "inset-0 bg-black/60 backdrop-blur-sm flex flex-col animate-fade-in"
+      }`}
+      onClick={handleBackdropClick}
+    >
+      <div
+        className={`flex items-center justify-between text-white shrink-0 ${
+          isMinimized ? "px-3.5 py-2.5 bg-neutral-950/90 border-b border-white/10" : "px-6 py-4"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 truncate max-w-[65%]">
+          {isMinimized && <Video className="w-4 h-4 text-rose-400 shrink-0" />}
+          <span className="text-sm font-semibold truncate">{item.name}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isMinimized ? (
+            <>
+              <button
+                onClick={() => {
+                  setIsMinimized(false);
+                  if (document.pictureInPictureElement) {
+                    document.exitPictureInPicture().catch(() => {});
+                  }
+                }}
+                className="border-none bg-white/10 hover:bg-white/20 p-1.5 rounded-lg text-white cursor-pointer transition flex items-center justify-center"
+                title="Expand to Fullscreen / Modal"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleClose}
+                className="border-none bg-white/10 hover:bg-white/20 p-1.5 rounded-lg text-white cursor-pointer transition flex items-center justify-center"
+                title="Close Video"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </>
+          ) : (
+            <>
+              {item.type === "video" && (
+                <button
+                  onClick={() => setIsMinimized(true)}
+                  className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
+                  title="Minimize to Floating Dock"
+                >
+                  <Minimize2 className="w-4 h-4" />
+                </button>
+              )}
+              {!item.isFolder && (
+                <button
+                  onClick={() => onDownload(item)}
+                  className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
+                  title="Download"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                onClick={handleClose}
+                className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
           )}
-          <button
-            onClick={onClose}
-            className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
-            title="Close (Esc)"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center gap-4 px-4 pb-6 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => prevItem && onNavigate(prevItem)}
-          disabled={!prevItem}
-          className="border-none bg-white/10 hover:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition shrink-0"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
+      <div
+        className={`flex-1 flex items-center justify-center overflow-hidden transition-all ${
+          isMinimized ? "p-0 h-48 max-h-48" : "gap-4 px-4 pb-6"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!isMinimized && (
+          <button
+            onClick={() => prevItem && onNavigate(prevItem)}
+            disabled={!prevItem}
+            className="border-none bg-white/10 hover:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition shrink-0"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+        )}
 
         <div
-          className={`bg-bg-main rounded-2xl shadow-lg flex flex-col overflow-hidden ${
-            isOfficeDoc ? "w-[97%] h-[95%]" : "w-full max-w-3xl max-h-full"
+          className={`flex flex-col overflow-hidden transition-all ${
+            isMinimized
+              ? "w-full h-full bg-black rounded-none shadow-none"
+              : `bg-bg-main rounded-2xl shadow-lg ${
+                  isOfficeDoc ? "w-[97%] h-[95%]" : "w-full max-w-3xl max-h-full"
+                }`
           }`}
         >
-          <div className="flex-1 min-h-0 overflow-y-auto p-6">{renderContent()}</div>
+          <div className={`flex-1 min-h-0 overflow-y-auto ${isMinimized ? "p-0" : "p-6"}`}>{renderContent()}</div>
         </div>
 
-        <button
-          onClick={() => nextItem && onNavigate(nextItem)}
-          disabled={!nextItem}
-          className="border-none bg-white/10 hover:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition shrink-0"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
+        {!isMinimized && (
+          <button
+            onClick={() => nextItem && onNavigate(nextItem)}
+            disabled={!nextItem}
+            className="border-none bg-white/10 hover:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition shrink-0"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </div>
   );
