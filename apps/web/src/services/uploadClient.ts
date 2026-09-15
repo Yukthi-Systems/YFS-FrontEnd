@@ -15,12 +15,12 @@ const TUS_BASE_PATH = "/upload/tus/";
 
 const TUS_RETRY_DELAYS = [0, 1000, 3000, 5000, 10000];
 
-// Send the file as a series of 10MB PATCH requests instead of tus-js-client's default
+// Send the file as a series of 100MB PATCH requests instead of tus-js-client's default
 // (one request for the whole file, chunkSize: Infinity) — bounds how much a flaky
 // connection has to redo per fault, and gives pause/resume a real chunk boundary to
 // stop at instead of aborting mid-stream. tusd (the Go backend's tus server) already
 // persists bytes incrementally as PATCHes arrive, so this needed no backend change.
-const CHUNK_SIZE = 10 * 1024 * 1024;
+const CHUNK_SIZE = 100 * 1024 * 1024;
 
 // Keep the uploaded bytes in IndexedDB too, so previews work instantly instead of
 // waiting on a real download endpoint (which doesn't exist yet). The upload session

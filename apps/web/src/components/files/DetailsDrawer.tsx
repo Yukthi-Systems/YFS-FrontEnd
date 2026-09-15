@@ -3,6 +3,7 @@ import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { formatBytes, formatDate } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
+import { useStreamUrl } from "../../hooks/useDownload";
 
 const PLACEHOLDER_SVG =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='1'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><polyline points='21 15 16 10 5 21'/></svg>";
@@ -11,6 +12,8 @@ const PLACEHOLDER_SVG =
 // this render — false in read-only contexts (e.g. the public share view) that have
 // no "Open" action, so the hint text isn't left promising one.
 export function CompactPreview({ item, openable = true }: { item: FileItem; openable?: boolean }) {
+  const { data: imageUrl } = useStreamUrl(item.type === "image" ? item : null);
+
   if (item.isFolder) {
     return (
       <div className="flex flex-col items-center gap-2 text-center text-text-main">
@@ -23,7 +26,7 @@ export function CompactPreview({ item, openable = true }: { item: FileItem; open
   if (item.type === "image") {
     return (
       <img
-        src={item.blobUrl || PLACEHOLDER_SVG}
+        src={imageUrl || item.blobUrl || PLACEHOLDER_SVG}
         alt={item.name}
         className="max-w-full max-h-[160px] object-contain rounded-lg shadow-sm"
       />
