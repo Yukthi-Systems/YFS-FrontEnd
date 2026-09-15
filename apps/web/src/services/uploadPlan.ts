@@ -31,7 +31,7 @@ export const resolveUploadStep = (
   existingFiles: FileItem[],
   versioningEnabled: boolean
 ): { step: UploadStep } | { blocked: UploadBlockReason } => {
-  if (plan.sharedFolderId !== null) return { blocked: "shared-folder" };
+  // if (plan.sharedFolderId !== null) return { blocked: "shared-folder" };
 
   const existing = existingFiles.find(
     (f) => !f.isFolder && !f.isDeleted && f.parentId === plan.targetFolderId && f.name === plan.fileName
