@@ -97,11 +97,14 @@ export function useDownload() {
     if (
       !item.isFolder &&
       item.fileId &&
-      (item.origin === "server" || item.origin === "shared") &&
-      !INLINE_FORCED_TYPES.has(item.type)
+      (item.origin === "server" || item.origin === "shared")
     ) {
       const session = await requestSession(buildRequest(item));
-      window.location.href = session.url;
+      if (INLINE_FORCED_TYPES.has(item.type)) {
+        window.open(session.url, "_blank");
+      } else {
+        window.location.href = session.url;
+      }
       return true;
     }
 
