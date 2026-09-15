@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { useStreamUrl } from "../../hooks/useDownload";
 import type { FileItem } from "../../types/file";
 
 const PLACEHOLDER_SVG =
@@ -7,16 +8,24 @@ const PLACEHOLDER_SVG =
 
 export function ImageLightbox({ item }: { item: FileItem }) {
   const [zoom, setZoom] = useState(1);
+  const { data: streamUrl, isLoading } = useStreamUrl(item);
 
   return (
     <div className="flex flex-col items-center gap-4 w-full h-full">
       <div className="flex-1 w-full flex items-center justify-center overflow-auto">
-        <img
-          src={item.blobUrl || PLACEHOLDER_SVG}
-          alt={item.name}
-          style={{ transform: `scale(${zoom})` }}
-          className="max-w-full max-h-[70vh] object-contain transition-transform duration-150"
-        />
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-text-main">
+            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+            <div className="text-xs">Loading image…</div>
+          </div>
+        ) : (
+          <img
+            src={streamUrl || item.blobUrl || PLACEHOLDER_SVG}
+            alt={item.name}
+            style={{ transform: `scale(${zoom})` }}
+            className="max-w-full max-h-[70vh] object-contain transition-transform duration-150"
+          />
+        )}
       </div>
       <div className="flex items-center gap-2 bg-code-bg border border-border-main rounded-full px-2 py-1">
         <button
