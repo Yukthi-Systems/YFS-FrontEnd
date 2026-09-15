@@ -8,7 +8,7 @@ export function UploadTray() {
 
   if (tasks.length === 0) return null;
 
-  const isActive = (status: string) => status === "uploading" || status === "pending" || status === "paused";
+  const isActive = (status: string) => status === "uploading" || status === "pending" || status === "paused" || status === "reconnecting";
   const activeCount = tasks.filter((t) => isActive(t.status)).length;
   const allActivePaused = activeCount > 0 && tasks.filter((t) => isActive(t.status)).every((t) => t.status === "paused");
 
@@ -41,13 +41,14 @@ export function UploadTray() {
             <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border-main last:border-b-0">
               {task.status === "uploading" && <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />}
               {task.status === "pending" && <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />}
+              {task.status === "reconnecting" && <Loader2 className="w-4 h-4 text-orange-500 shrink-0 animate-spin" />}
               {task.status === "paused" && <Pause className="w-4 h-4 text-text-main shrink-0" />}
               {task.status === "done" && <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />}
               {task.status === "error" && <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
 
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium text-text-heading truncate">{task.fileName}</div>
-                {(task.status === "uploading" || task.status === "paused") && (
+                {(task.status === "uploading" || task.status === "paused" || task.status === "reconnecting") && (
                   <div className="w-full h-1 bg-border-main rounded-full overflow-hidden mt-1">
                     <div
                       className="h-full bg-accent rounded-full transition-all duration-150"
@@ -56,6 +57,7 @@ export function UploadTray() {
                   </div>
                 )}
                 {task.status === "pending" && <div className="text-[11px] text-text-main mt-0.5">Preparing…</div>}
+                {task.status === "reconnecting" && <div className="text-[11px] text-orange-500 mt-0.5">Reconnecting…</div>}
                 {task.status === "error" && <div className="text-[11px] text-red-500 mt-0.5">{task.error}</div>}
               </div>
 
