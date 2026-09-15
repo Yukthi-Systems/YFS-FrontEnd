@@ -23,6 +23,7 @@ import {
   listExternalShares,
   deleteExternalShare,
   updateFileInfo as apiUpdateFileInfo,
+  moveFile as apiMoveFile,
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
@@ -964,10 +965,20 @@ export const renameItem = (id: string, newName: string) => {
       notifySyncFailed("Folder rename did not sync to API", "Couldn't rename the folder")
     );
   } else if (!target.isFolder && target.origin === "server" && target.fileId) {
+    if (shared && !shared.perms.can_update) return; // no edit permission
     runMutation(
       () =>
         withFreshToken((t) =>
-          apiUpdateFileInfo(t, { file_id: target.fileId!, file_name: safeName, file_info: target.resourceInfo ?? {} })
+          apiUpdateFileInfo(t, { 
+            folder_id: target.parentId!,
+            file_id: target.fileId!, 
+            shared_folder_id: shared?.sharedFolderId ?? null,
+            file_name: safeName, 
+            file_info: target.resourceInfo ?? {},
+            file_type: target.type === "other" ? "application/octet-stream" : target.type, // Best guess fallback
+            file_version: target.version ?? 1,
+            expected_file_size: target.size,
+          })
         ),
       { id, safeName },
       notifySyncFailed("File rename did not sync to API", "Couldn't rename the file")
@@ -1150,12 +1161,9 @@ export const permanentDeleteItems = (ids: string[]) => {
 export const moveItems = (ids: string[], newParentId: string | null): { moved: number; blocked: number } => {
   let moved = 0;
   let blocked = 0;
-  // Folder moves to sync server-side, with the shared_folder_id (if any) resolved
-  // BEFORE we mutate parentId below (the walk-up needs the pre-move tree).
   const folderMoves: { id: string; sharedFolderId: string | null }[] = [];
+  const fileMoves: { id: string; fileId: string; sharedFolderId: string | null }[] = [];
   const files = store.get(filesAtom);
-  // A "Shared with me" folder can only be moved to another spot in the SAME share,
-  // and only with can_update + can_create — otherwise the change stays client-only.
   const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
   const next = files.map((f) => f);
 
@@ -1169,15 +1177,17 @@ export const moveItems = (ids: string[], newParentId: string | null): { moved: n
     }
     if (item.parentId === newParentId) continue;
 
-    if (item.isFolder && (item.origin === "server" || item.origin === "shared")) {
+    if (item.origin === "server" || item.origin === "shared") {
       const srcShared = sharedSubtreeContext(files, id);
-      if (srcShared) {
-        if (dstShared?.rootId === srcShared.rootId && srcShared.permissions.can_update && srcShared.permissions.can_create) {
-          folderMoves.push({ id, sharedFolderId: srcShared.rootId });
+      const isCrossShare = srcShared?.rootId !== dstShared?.rootId;
+      const hasPerms = srcShared ? srcShared.permissions.can_update && srcShared.permissions.can_create : true;
+      
+      if (!isCrossShare && hasPerms) {
+        if (item.isFolder) {
+          folderMoves.push({ id, sharedFolderId: srcShared?.rootId ?? null });
+        } else if (item.fileId) {
+          fileMoves.push({ id, fileId: item.fileId, sharedFolderId: srcShared?.rootId ?? null });
         }
-        // cross-share / no-permission move: optimistic only, no API call
-      } else if (item.origin === "server") {
-        folderMoves.push({ id, sharedFolderId: null });
       }
     }
 
@@ -1189,12 +1199,19 @@ export const moveItems = (ids: string[], newParentId: string | null): { moved: n
   if (moved > 0) persist(next);
 
   const tk = authSnapshot.token;
-  if (tk && folderMoves.length > 0) {
+  if (tk) {
     folderMoves.forEach(({ id, sharedFolderId }) => {
       runMutation(
         () => withFreshToken((t) => apiMoveFolder(t, { folderId: id, newParentFolderId: newParentId, sharedFolderId })),
         { id, sharedFolderId },
         notifySyncFailed("Folder move did not sync to API", "Couldn't move that folder")
+      );
+    });
+    fileMoves.forEach(({ id, fileId, sharedFolderId }) => {
+      runMutation(
+        () => withFreshToken((t) => apiMoveFile(t, { file_id: fileId, new_parent_folder_id: newParentId, shared_folder_id: sharedFolderId })),
+        { id, sharedFolderId },
+        notifySyncFailed("File move did not sync to API", "Couldn't move that file")
       );
     });
   }

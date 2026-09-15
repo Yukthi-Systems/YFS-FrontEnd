@@ -59,9 +59,14 @@ export const requestFileUpload = async (accessToken: string, req: FileUploadRequ
 // required even though only file_name and file_info get written — this narrower
 // shape will fail to deserialize until the update-file work extends it.
 export interface FileInfoEdit {
+  folder_id: string;
   file_id: string;
+  shared_folder_id?: string | null;
   file_name: string;
   file_info: Record<string, unknown>;
+  file_type: string;
+  file_version: number;
+  expected_file_size: number;
 }
 
 // PATCH /files/update — rename / edit a file's UI metadata (not its bytes). Mounted
@@ -122,4 +127,19 @@ export const requestFileDownload = async (accessToken: string, req: FileDownload
   const session = data?.[0];
   if (!session) throw new Error("Download session response was empty");
   return session;
+};
+
+// PUT /files/move
+export interface FileMoveRequest {
+  file_id: string;
+  new_parent_folder_id: string | null;
+  shared_folder_id?: string | null;
+}
+
+export const moveFile = async (accessToken: string, req: FileMoveRequest): Promise<void> => {
+  await apiRequest("/files/move", {
+    accessToken,
+    method: "PUT",
+    body: JSON.stringify(req),
+  });
 };
