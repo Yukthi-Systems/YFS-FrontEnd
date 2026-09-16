@@ -1,6 +1,7 @@
-import { Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2 } from "lucide-react";
+import { useState } from "react";
+import { Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2, Loader2, Copy, Check } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import { formatBytes, formatDate } from "../../utils/format";
+import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 import { useStreamUrl } from "../../hooks/useDownload";
@@ -19,6 +20,16 @@ export function CompactPreview({ item, openable = true }: { item: FileItem; open
       <div className="flex flex-col items-center gap-2 text-center text-text-main">
         {getItemIcon(item, "w-12 h-12")}
         <div className="text-xs font-medium">Folder containing directory contents</div>
+      </div>
+    );
+  }
+
+  if (isItemProcessing(item)) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-center text-text-main py-4">
+        <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
+        <div className="text-xs font-semibold text-text-heading">Processing File</div>
+        <div className="text-[11px] text-text-main max-w-[200px]">This file is being processed on the server.</div>
       </div>
     );
   }
@@ -131,6 +142,13 @@ export function DetailsDrawer({
   const allowDelete = !shared && !item.isDeleted;
   const allowShare = !shared;
 
+  const [copiedId, setCopiedId] = useState(false);
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(item.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 1500);
+  };
+
   const { data: fileInfo } = useFileInfo(item, !item.isFolder);
 
   return (
@@ -195,7 +213,18 @@ export function DetailsDrawer({
           <InfoRow label="Location">
             <span title={pathLabel}>{pathLabel}</span>
           </InfoRow>
-          <InfoRow label="Size">{item.size ? formatBytes(item.size) : "—"}</InfoRow>
+          <InfoRow label="Size">
+            {item.isFolder ? (
+              "—"
+            ) : isItemProcessing(item) ? (
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
+                <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                Processing
+              </span>
+            ) : (
+              formatBytes(item.size)
+            )}
+          </InfoRow>
           <InfoRow label="Modified">{formatDate(item.modifiedAt)}</InfoRow>
           <InfoRow label="Created">{formatDate(item.createdAt)}</InfoRow>
 
@@ -208,14 +237,40 @@ export function DetailsDrawer({
             </div>
           )}
 
-          <InfoRow label="ID">
-            <span className="font-mono text-[10px]" title={item.id}>
-              {item.id.slice(0, 8)}…
-            </span>
-          </InfoRow>
+          <div className="flex flex-col gap-1 text-xs leading-normal pt-1">
+            <div className="flex justify-between items-center">
+              <span className="text-text-main font-semibold">ID</span>
+              <button
+                type="button"
+                onClick={handleCopyId}
+                className="inline-flex items-center gap-1 text-[11px] text-text-main hover:text-text-heading border-none bg-transparent cursor-pointer px-1.5 py-0.5 rounded hover:bg-code-bg transition"
+                title="Copy full ID"
+              >
+                {copiedId ? (
+                  <>
+                    <Check className="w-3 h-3 text-green-500" />
+                    <span className="text-green-500 text-[10px] font-medium">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span className="text-[10px] font-medium">Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="font-mono text-[11px] text-text-heading bg-code-bg px-2.5 py-1.5 rounded-lg border border-border-main break-all select-all font-medium">
+              {item.id}
+            </div>
+          </div>
 
-          {!item.isFolder && fileInfo?.is_locked && (
-            <InfoRow label="Status">Locked (upload in progress)</InfoRow>
+          {!item.isFolder && (fileInfo?.is_locked || isItemProcessing(item)) && (
+            <InfoRow label="Status">
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
+                <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                {fileInfo?.is_locked ? "Locked (upload in progress)" : "Processing"}
+              </span>
+            </InfoRow>
           )}
         </div>
 
@@ -223,7 +278,9 @@ export function DetailsDrawer({
           {!item.isFolder && (
             <button
               onClick={onOpenFull}
-              className="flex items-center justify-center gap-2 w-full py-2 bg-gradient-to-br from-accent to-purple-600 text-white font-semibold rounded-xl hover:shadow-md cursor-pointer transition-all"
+              disabled={isItemProcessing(item)}
+              title={isItemProcessing(item) ? "File is still processing" : undefined}
+              className="flex items-center justify-center gap-2 w-full py-2 bg-gradient-to-br from-accent to-purple-600 text-white font-semibold rounded-xl hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
             >
               <Expand className="w-4 h-4" /> Open
             </button>
@@ -231,7 +288,9 @@ export function DetailsDrawer({
           {allowDownload && (
             <button
               onClick={onDownload}
-              className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
+              disabled={isItemProcessing(item)}
+              title={isItemProcessing(item) ? "File is still processing" : undefined}
+              className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs"
             >
               <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
             </button>

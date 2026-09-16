@@ -1,5 +1,9 @@
+export const isItemProcessing = (item: { isFolder?: boolean; size?: number | null }): boolean => {
+  return !item.isFolder && (!item.size || item.size <= 0);
+};
+
 export const formatBytes = (bytes: number): string => {
-  if (bytes === 0) return "-";
+  if (!bytes || bytes <= 0) return "-";
   const k = 1024;
   const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));

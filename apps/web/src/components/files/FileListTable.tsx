@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MoreVertical } from "lucide-react";
+import { Loader2, MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate } from "../../utils/format";
+import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -140,7 +140,18 @@ export function FileListTable({
                 </td>
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[980px]:hidden">{item.createdBy || "—"}</td>
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
-                <td className="px-3 py-2 border-b border-border-main text-xs text-text-main">{formatBytes(item.size)}</td>
+                <td className="px-3 py-2 border-b border-border-main text-xs text-text-main">
+                  {item.isFolder ? (
+                    "—"
+                  ) : isItemProcessing(item) ? (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                      Processing
+                    </span>
+                  ) : (
+                    formatBytes(item.size)
+                  )}
+                </td>
                 <td className="px-3 py-2 border-b border-border-main text-center relative" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={(e) => {

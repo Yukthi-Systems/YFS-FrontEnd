@@ -1,6 +1,6 @@
-import { Download, FolderInput, Pencil, X } from "lucide-react";
+import { Download, FolderInput, Pencil, X, Loader2 } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate } from "../../utils/format";
+import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { CompactPreview, InfoRow, KIND_LABEL } from "../files/DetailsDrawer";
 
 // Read-only counterpart to DetailsDrawer for the anonymous /share/<id> view: same
@@ -53,7 +53,18 @@ export function SharedDetailsPanel({
           <InfoRow label="Kind">
             {item.isFolder ? "Folder" : `${item.extension ? item.extension.toUpperCase() + " · " : ""}${KIND_LABEL[item.type]}`}
           </InfoRow>
-          <InfoRow label="Size">{item.size ? formatBytes(item.size) : "—"}</InfoRow>
+          <InfoRow label="Size">
+            {item.isFolder ? (
+              "—"
+            ) : isItemProcessing(item) ? (
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
+                <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                Processing
+              </span>
+            ) : (
+              formatBytes(item.size)
+            )}
+          </InfoRow>
           <InfoRow label="Modified">{formatDate(item.modifiedAt)}</InfoRow>
           <InfoRow label="Created">{formatDate(item.createdAt)}</InfoRow>
         </div>
