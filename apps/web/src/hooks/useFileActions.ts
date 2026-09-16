@@ -215,9 +215,10 @@ export function useFileActions({
   const handleMoveCopyConfirm = (destinationId: string | null) => {
     if (!moveCopyState) return;
     if (moveCopyState.mode === "move") {
-      const { moved, blocked } = fileSystem.moveItems(moveCopyState.ids, destinationId);
+      const { moved, blocked, unsupported } = fileSystem.moveItems(moveCopyState.ids, destinationId);
       if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""}`, "success");
       if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — can't move a folder into itself`, "error");
+      if (unsupported > 0) showToast(`Skipped ${unsupported} file${unsupported > 1 ? "s" : ""} — moving a file to My Drive root isn't supported yet`, "error");
     } else {
       let totalCopied = 0;
       let anyBlocked = false;

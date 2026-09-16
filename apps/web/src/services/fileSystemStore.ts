@@ -1158,11 +1158,25 @@ export const permanentDeleteItems = (ids: string[]) => {
   persist(store.get(filesAtom).filter((f) => !allIds.has(f.id)));
 };
 
-export const moveItems = (ids: string[], newParentId: string | null): { moved: number; blocked: number } => {
+export const moveItems = (
+  ids: string[],
+  newParentId: string | null
+): { moved: number; blocked: number; unsupported: number } => {
   let moved = 0;
   let blocked = 0;
+  let unsupported = 0;
   const folderMoves: { id: string; sharedFolderId: string | null }[] = [];
-  const fileMoves: { id: string; fileId: string; sharedFolderId: string | null }[] = [];
+  const fileMoves: {
+    id: string;
+    fileId: string;
+    sharedFolderId: string | null;
+    sourceFolderId: string;
+    fileName: string;
+    fileInfo: Record<string, unknown>;
+    fileType: string;
+    fileVersion: number;
+    expectedFileSize: number;
+  }[] = [];
   const files = store.get(filesAtom);
   const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
   const next = files.map((f) => f);
@@ -1177,16 +1191,33 @@ export const moveItems = (ids: string[], newParentId: string | null): { moved: n
     }
     if (item.parentId === newParentId) continue;
 
+    // PUT /files/move/{destination_folder_id} requires a real destination folder
+    // UUID — there's no way to move a file to root against that endpoint.
+    if (!item.isFolder && newParentId === null) {
+      unsupported++;
+      continue;
+    }
+
     if (item.origin === "server" || item.origin === "shared") {
       const srcShared = sharedSubtreeContext(files, id);
       const isCrossShare = srcShared?.rootId !== dstShared?.rootId;
       const hasPerms = srcShared ? srcShared.permissions.can_update && srcShared.permissions.can_create : true;
-      
+
       if (!isCrossShare && hasPerms) {
         if (item.isFolder) {
           folderMoves.push({ id, sharedFolderId: srcShared?.rootId ?? null });
-        } else if (item.fileId) {
-          fileMoves.push({ id, fileId: item.fileId, sharedFolderId: srcShared?.rootId ?? null });
+        } else if (item.fileId && item.parentId) {
+          fileMoves.push({
+            id,
+            fileId: item.fileId,
+            sharedFolderId: srcShared?.rootId ?? null,
+            sourceFolderId: item.parentId,
+            fileName: item.name,
+            fileInfo: item.resourceInfo ?? {},
+            fileType: item.type === "other" ? "application/octet-stream" : item.type,
+            fileVersion: item.version ?? 1,
+            expectedFileSize: item.size,
+          });
         }
       }
     }
@@ -1207,16 +1238,30 @@ export const moveItems = (ids: string[], newParentId: string | null): { moved: n
         notifySyncFailed("Folder move did not sync to API", "Couldn't move that folder")
       );
     });
-    fileMoves.forEach(({ id, fileId, sharedFolderId }) => {
+    // fileMoves is always empty when newParentId is null (files are filtered out as
+    // "unsupported" above), so apiMoveFile's non-null destination is always valid here.
+    fileMoves.forEach(({ id, fileId, sharedFolderId, sourceFolderId, fileName, fileInfo, fileType, fileVersion, expectedFileSize }) => {
       runMutation(
-        () => withFreshToken((t) => apiMoveFile(t, { file_id: fileId, new_parent_folder_id: newParentId, shared_folder_id: sharedFolderId })),
+        () =>
+          withFreshToken((t) =>
+            apiMoveFile(t, newParentId as string, {
+              folder_id: sourceFolderId,
+              file_id: fileId,
+              shared_folder_id: sharedFolderId,
+              file_name: fileName,
+              file_info: fileInfo,
+              file_type: fileType,
+              file_version: fileVersion,
+              expected_file_size: expectedFileSize,
+            })
+          ),
         { id, sharedFolderId },
         notifySyncFailed("File move did not sync to API", "Couldn't move that file")
       );
     });
   }
 
-  return { moved, blocked };
+  return { moved, blocked, unsupported };
 };
 
 export const copyItem = (id: string, newParentId: string | null): { copied: number; blocked: boolean } => {

@@ -129,17 +129,32 @@ export const requestFileDownload = async (accessToken: string, req: FileDownload
   return session;
 };
 
-// PUT /files/move
+// Same FileOpsRequest shape as FileUploadRequest/FileDownloadRequest — folder_id is
+// the file's *current* parent (not the destination), required for the source-side
+// permission check. destinationFolderId is a required path segment server-side
+// (routes/files.rs move_file), so moving a file to root isn't representable against
+// this endpoint at all — there's no way to pass "no parent" for a file move.
 export interface FileMoveRequest {
+  folder_id: string;
   file_id: string;
-  new_parent_folder_id: string | null;
   shared_folder_id?: string | null;
+  file_name: string;
+  file_info: Record<string, unknown>;
+  file_type: string;
+  file_version: number;
+  expected_file_size: number;
 }
 
-export const moveFile = async (accessToken: string, req: FileMoveRequest): Promise<void> => {
-  await apiRequest("/files/move", {
+// PUT /files/move/{destination_folder_id}
+export const moveFile = async (
+  accessToken: string,
+  destinationFolderId: string,
+  req: FileMoveRequest
+): Promise<void> => {
+  await apiRequest(`/files/move/${destinationFolderId}`, {
     accessToken,
     method: "PUT",
+    parseJson: false,
     body: JSON.stringify(req),
   });
 };
