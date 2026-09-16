@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Download, Star, RotateCcw, Trash2, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
+import { isItemProcessing } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 
 export function ItemContextMenu({
@@ -58,7 +59,12 @@ export function ItemContextMenu({
   return (
     <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
       {allowDownload && (
-        <button onClick={onDownload} className={itemClass}>
+        <button
+          onClick={onDownload}
+          disabled={isItemProcessing(item)}
+          title={isItemProcessing(item) ? "File is still processing" : undefined}
+          className={`${itemClass} ${isItemProcessing(item) ? "opacity-50 cursor-not-allowed" : ""}`}
+        >
           <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
         </button>
       )}

@@ -8,8 +8,10 @@ import {
   Minimize2,
   Video,
   X,
+  Loader2,
 } from "lucide-react";
 import type { FileItem } from "../../types/file";
+import { isItemProcessing } from "../../utils/format";
 import { isTextEditable } from "../../utils/fileType";
 import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
@@ -97,6 +99,22 @@ export function ViewerModal({
   }, [onClose, onNavigate, prevItem, nextItem, isPiPActive, isMinimized]);
 
   const renderContent = () => {
+    if (isItemProcessing(item)) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 text-center text-text-main py-16">
+          <div className="relative flex items-center justify-center">
+            <FileIcon className="w-12 h-12 text-neutral-400" />
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-bg-main">
+              <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+            </span>
+          </div>
+          <div className="text-sm font-semibold text-text-heading">File is currently processing</div>
+          <div className="text-xs text-text-main max-w-sm">
+            This file is being processed on the server. Preview will be available once processing completes.
+          </div>
+        </div>
+      );
+    }
     if (item.type === "image") return <ImageLightbox item={item} />;
     if (item.type === "pdf") {
       return (
@@ -201,8 +219,9 @@ export function ViewerModal({
               {!item.isFolder && (
                 <button
                   onClick={() => onDownload(item)}
-                  className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
-                  title="Download"
+                  disabled={isItemProcessing(item)}
+                  title={isItemProcessing(item) ? "File is still processing" : "Download"}
+                  className="border-none bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
                 >
                   <Download className="w-4 h-4" />
                 </button>

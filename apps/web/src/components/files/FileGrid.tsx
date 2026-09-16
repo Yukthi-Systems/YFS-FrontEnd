@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MoreVertical } from "lucide-react";
+import { Loader2, MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes } from "../../utils/format";
+import { formatBytes, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -134,7 +134,18 @@ export function FileGrid({
 
         <div className="flex flex-col gap-0.5 text-center mt-2">
           <span className="text-xs font-semibold text-text-heading truncate w-full px-1">{item.name}</span>
-          <span className="text-[10px] text-text-main">{item.isFolder ? "Directory" : formatBytes(item.size)}</span>
+          <span className="text-[10px] text-text-main">
+            {item.isFolder ? (
+              "Directory"
+            ) : isItemProcessing(item) ? (
+              <span className="inline-flex items-center justify-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
+                Processing
+              </span>
+            ) : (
+              formatBytes(item.size)
+            )}
+          </span>
         </div>
       </div>
     );
