@@ -131,7 +131,7 @@ export function DetailsDrawer({
   const allowDelete = !shared && !item.isDeleted;
   const allowShare = !shared;
 
-  const { data: fileInfo, isLoading: isLoadingInfo } = useFileInfo(item, !item.isFolder);
+  const { data: fileInfo } = useFileInfo(item, !item.isFolder);
 
   return (
     <aside
@@ -209,23 +209,13 @@ export function DetailsDrawer({
           )}
 
           <InfoRow label="ID">
-            <span className="font-mono text-[10px]">{item.id}</span>
+            <span className="font-mono text-[10px]" title={item.id}>
+              {item.id.slice(0, 8)}…
+            </span>
           </InfoRow>
 
-          {!item.isFolder && (
-            <>
-              <div className="my-2 border-t border-border-main" />
-              {isLoadingInfo ? (
-                <div className="text-xs text-text-main text-center py-2">Loading additional details...</div>
-              ) : fileInfo ? (
-                <div className="flex flex-col gap-2">
-                  <h4 className="text-sm font-semibold text-text-heading">Extended Info</h4>
-                  <pre className="text-[10px] text-text-main bg-code-bg p-2 rounded border border-border-main overflow-auto max-h-40">
-                    {JSON.stringify(fileInfo, null, 2)}
-                  </pre>
-                </div>
-              ) : null}
-            </>
+          {!item.isFolder && fileInfo?.is_locked && (
+            <InfoRow label="Status">Locked (upload in progress)</InfoRow>
           )}
         </div>
 
