@@ -131,7 +131,7 @@ export function DetailsDrawer({
   const allowDelete = !shared && !item.isDeleted;
   const allowShare = !shared;
 
-  const { data: fileInfo, isLoading: isLoadingInfo } = useFileInfo(item.id, !item.isFolder);
+  const { data: fileInfo, isLoading: isLoadingInfo } = useFileInfo(item, !item.isFolder);
 
   return (
     <aside

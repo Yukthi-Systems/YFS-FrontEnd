@@ -81,13 +81,6 @@ export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): P
   });
 };
 
-// GET /files/info/{file_id} — file details + version history. Not currently mounted
-// server-side either (see above).
-export const getFileInfo = async (accessToken: string, fileId: string): Promise<unknown> => {
-  const { data } = await apiRequest<unknown>(`/files/info/${fileId}`, { accessToken });
-  return data;
-};
-
 // Same FileOpsRequest shape as FileUploadRequest — file_id is required (not optional)
 // since a download always targets an existing file/version.
 export interface FileDownloadRequest {
@@ -127,6 +120,33 @@ export const requestFileDownload = async (accessToken: string, req: FileDownload
   const session = data?.[0];
   if (!session) throw new Error("Download session response was empty");
   return session;
+};
+
+// database::files::BasicFileInfo (YFS-Main-API) — what POST /files/get-info returns.
+export interface FileBasicInfo {
+  file_id: string;
+  folder_id: string;
+  user_id: string;
+  file_name: string;
+  file_info: Record<string, unknown>;
+  is_locked: boolean;
+  available_versions: number[];
+  created_at: string; // RFC3339
+  updated_at: string; // RFC3339
+}
+
+// POST /files/get-info — same FileOpsRequest shape as download, and it's validated
+// server-side as a Download op too: file_version must already be in the response's
+// own available_versions, which is exactly what you don't know yet. Pass 1 — every
+// file that's completed its first upload has a version 1, so it's always a valid
+// guess purely to get past that check and read the real available_versions/is_locked.
+export const getFileBasicInfo = async (accessToken: string, req: FileDownloadRequest): Promise<FileBasicInfo> => {
+  const { data } = await apiRequest<FileBasicInfo>("/files/get-info", {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  return data;
 };
 
 // Same FileOpsRequest shape as FileUploadRequest/FileDownloadRequest — folder_id is

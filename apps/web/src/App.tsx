@@ -76,7 +76,6 @@ function App() {
     moveItems,
     copyItem,
     updateFileContent,
-    restoreVersion,
   } = useFileSystem();
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
@@ -255,7 +254,7 @@ function App() {
     setCheckedItemIds: selection.setCheckedItemIds,
   });
 
-  const versionHistory = useVersionHistory({ files, restoreVersion, showToast, closeContextMenu: menus.closeContextMenu });
+  const versionHistory = useVersionHistory({ files, showToast, closeContextMenu: menus.closeContextMenu });
   const shareSettings = useShareSettings({ closeContextMenu: menus.closeContextMenu });
 
   const dnd = useDragAndDrop({
@@ -611,19 +610,16 @@ function App() {
         />
       )}
 
-      {versionHistory.versionHistoryItemId &&
-        (() => {
-          const versionHistoryItem = files.find((f) => f.id === versionHistory.versionHistoryItemId);
-          if (!versionHistoryItem) return null;
-          return (
-            <VersionHistoryModal
-              item={versionHistoryItem}
-              onClose={versionHistory.closeVersionHistory}
-              onRestore={versionHistory.handleRestoreVersion}
-              onDownloadVersion={versionHistory.handleDownloadVersion}
-            />
-          );
-        })()}
+      {versionHistory.item && (
+        <VersionHistoryModal
+          item={versionHistory.item}
+          latestVersion={versionHistory.latestVersion}
+          olderVersions={versionHistory.olderVersions}
+          loading={versionHistory.isLoadingVersions}
+          onClose={versionHistory.closeVersionHistory}
+          onDownloadVersion={versionHistory.handleDownloadVersion}
+        />
+      )}
 
       {shareSettings.shareItemId &&
         (() => {
