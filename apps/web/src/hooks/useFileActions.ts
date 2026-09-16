@@ -42,7 +42,7 @@ export function useFileActions({
     trashItems: (ids: string[]) => void;
     restoreItems: (ids: string[]) => void;
     permanentDeleteItems: (ids: string[]) => void;
-    moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number };
+    moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
     copyItem: (id: string, newParentId: string | null) => { copied: number; blocked: boolean };
     updateFileContent: (id: string, blob: Blob) => Promise<void>;
   };

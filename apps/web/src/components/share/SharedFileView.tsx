@@ -24,10 +24,12 @@ import {
   type BackendResource,
   type PublicSession,
 } from "@yfs/service";
+import { SORT_FIELD_OPTIONS } from "../../types/file";
 import type { FileItem, SortField, SortOrder, ViewMode } from "../../types/file";
 import { categorizeByName } from "../../utils/fileType";
 import { useFileSelection } from "../../hooks/useFileSelection";
 import { FileListTable } from "../files/FileListTable";
+import { Dropdown } from "../common/Dropdown";
 import { FileGrid } from "../files/FileGrid";
 import { Breadcrumbs, type BreadcrumbSegment } from "../layout/Breadcrumbs";
 import { ShareInfoBar } from "./ShareInfoBar";
@@ -37,11 +39,7 @@ import { EmptyState } from "../common/EmptyState";
 import { CreateFolderModal } from "../modals/CreateFolderModal";
 import { RenameModal } from "../modals/RenameModal";
 
-// Anonymous visitor page for an external folder-share link (/share/<share_id>).
-// Uses the same browse UI as the signed-in app (FileListTable / FileGrid /
-// Breadcrumbs), driven by the public endpoints and gated on the session's
-// per-visitor permissions. File shares and content preview/download have no public
-// endpoint yet, so a file target stops at the access screen.
+
 
 type Phase = "loading" | "not-found" | "expired" | "password" | "otp" | "granted";
 interface Crumb {
@@ -140,6 +138,7 @@ export function SharedFileView() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
   const [contextMenuId, setContextMenuId] = useState<string | null>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
 
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
@@ -456,6 +455,7 @@ export function SharedFileView() {
 
       <div className="flex-1 flex overflow-hidden relative">
       <div
+        ref={setScrollContainer}
         className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"
         onClick={() => {
           setContextMenuId(null);
@@ -500,15 +500,7 @@ export function SharedFileView() {
           )}
 
           <div className="flex gap-2">
-            <select
-              value={sortField}
-              onChange={(e) => setSortField(e.target.value as SortField)}
-              className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer focus:outline-none"
-            >
-              <option value="name">Sort by Name</option>
-              <option value="modifiedAt">Sort by Modified</option>
-              <option value="size">Sort by Size</option>
-            </select>
+            <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={(v) => setSortField(v)} align="end" />
             <button
               onClick={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
               className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
@@ -532,6 +524,7 @@ export function SharedFileView() {
         ) : viewMode === "list" ? (
           <FileListTable
             items={items}
+            scrollElement={scrollContainer}
             selectedItemId={selection.selectedItemId}
             checkedItemIds={selection.checkedItemIds}
             contextMenuId={contextMenuId}
@@ -553,6 +546,7 @@ export function SharedFileView() {
         ) : (
           <FileGrid
             items={items}
+            scrollElement={scrollContainer}
             selectedItemId={selection.selectedItemId}
             checkedItemIds={selection.checkedItemIds}
             contextMenuId={contextMenuId}

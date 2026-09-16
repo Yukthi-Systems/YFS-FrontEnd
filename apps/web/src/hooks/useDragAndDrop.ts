@@ -9,7 +9,7 @@ export function useDragAndDrop({
   onDropFiles,
 }: {
   checkedItemIds: string[];
-  moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number };
+  moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
   showToast: (message: string, variant?: ToastVariant) => void;
   onDropFiles: (fileList: FileList, parentId: string) => void;
 }) {

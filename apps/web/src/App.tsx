@@ -453,6 +453,7 @@ function App() {
                   ) : viewMode === "list" ? (
                     <FileListTable
                       items={listItems}
+                      scrollElement={scrollContainer}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
@@ -471,6 +472,7 @@ function App() {
                   ) : (
                     <FileGrid
                       items={listItems}
+                      scrollElement={scrollContainer}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
