@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
-import { HttpError, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
+import { HttpError, getFileBasicInfo, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { downloadClient } from "../services/downloadClient";
@@ -37,16 +37,31 @@ export function useDownload() {
   const tokenRef = useRef(token);
   tokenRef.current = token;
 
-  const buildRequest = (item: FileItem): FileDownloadRequest => ({
+  const buildRequest = (item: FileItem, versionOverride?: number): FileDownloadRequest => ({
     folder_id: item.parentId ?? ROOT_FOLDER_ID,
     file_id: item.fileId!,
     shared_folder_id: getSharedFolderId(item.parentId),
     file_name: item.name,
     file_info: item.resourceInfo ?? {},
     file_type: DEFAULT_MIME,
-    file_version: item.version ?? 1,
+    file_version: versionOverride ?? item.version ?? 1,
     expected_file_size: item.size,
   });
+
+  // item.version is only trustworthy if this tab is what last touched the file —
+  // same staleness the upload/replace bug had. Ask the server for the real latest
+  // version before downloading instead of trusting local state. Falls back to
+  // whatever's locally known rather than blocking the download if the lookup itself
+  // fails (offline, transient error, etc).
+  const resolveLatestVersion = async (item: FileItem): Promise<number> => {
+    if (!item.fileId || !item.parentId) return item.version ?? 1;
+    try {
+      const info = await getFileBasicInfo(tokenRef.current ?? "", buildRequest(item, 1));
+      return info.available_versions.length ? Math.max(...info.available_versions) : (item.version ?? 1);
+    } catch {
+      return item.version ?? 1;
+    }
+  };
 
   const requestSession = async (request: FileDownloadRequest): Promise<DownloadSession> => {
     try {
@@ -99,7 +114,8 @@ export function useDownload() {
       item.fileId &&
       (item.origin === "server" || item.origin === "shared")
     ) {
-      const session = await requestSession(buildRequest(item));
+      const latestVersion = await resolveLatestVersion(item);
+      const session = await requestSession(buildRequest(item, latestVersion));
       if (INLINE_FORCED_TYPES.has(item.type)) {
         window.open(session.url, "_blank");
       } else {
@@ -114,7 +130,22 @@ export function useDownload() {
     return true;
   };
 
-  return { fetchBlob, downloadFile, getStreamUrl };
+  // Downloads a specific past version (Version History) rather than whatever's
+  // current. Always fetches real bytes into a blob (unlike downloadFile's
+  // navigation shortcut for non-inline types) — a plain navigation can't be pointed
+  // at a particular version with a version-distinguishing filename, and the
+  // server's own Content-Disposition doesn't vary by version anyway. This does mean
+  // it needs the Storage API's CORS fix (see progress.md item 1) for every file
+  // type, not just images/video/audio/PDF.
+  const downloadFileVersion = async (item: FileItem, version: number): Promise<boolean> => {
+    if (item.isFolder || !item.fileId || (item.origin !== "server" && item.origin !== "shared")) return false;
+    const session = await requestSession(buildRequest(item, version));
+    const blob = await downloadClient.fetchBytes(session);
+    saveBlob(blob, `v${version}-${item.name}`);
+    return true;
+  };
+
+  return { fetchBlob, downloadFile, downloadFileVersion, getStreamUrl };
 }
 
 // Media streaming hook (video, audio, image): fetches the direct session URL which

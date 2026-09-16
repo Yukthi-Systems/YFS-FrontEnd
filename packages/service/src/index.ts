@@ -7,7 +7,7 @@ export {
   requestFileUpload,
   requestFileDownload,
   updateFileInfo,
-  getFileInfo,
+  getFileBasicInfo,
   moveFile,
   type FileUploadRequest,
   type FileDownloadRequest,
@@ -15,6 +15,7 @@ export {
   type DownloadSession,
   type FileInfoEdit,
   type FileMoveRequest,
+  type FileBasicInfo,
 } from "./files";
 export * from "./users";
 export * from "./shares";

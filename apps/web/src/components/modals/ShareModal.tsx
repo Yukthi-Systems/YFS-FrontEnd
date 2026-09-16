@@ -45,7 +45,37 @@ const permsOf = (s: InternalSharePermissions): InternalSharePermissions => ({
 const permsEqual = (a: InternalSharePermissions, b: InternalSharePermissions) =>
   PERMISSION_FIELDS.every(({ key }) => a[key] === b[key]);
 const newShareId = () => Math.random().toString(36).slice(2, 12);
-const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+// Extract the *local* calendar date an ISO instant falls on (not a raw UTC slice —
+// see toExpiresIso below for why the two have to agree).
+const toDateInput = (iso: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const toExpiresIso = (dateStr: string): string | null => {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+};
+const todayDateInput = () => toDateInput(new Date().toISOString());
+// Links can't be set to expire more than 3 months out.
+const MAX_EXPIRY_MONTHS = 3;
+const maxDateInput = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() + MAX_EXPIRY_MONTHS);
+  return toDateInput(d.toISOString());
+};
+const isPastDate = (dateStr: string) => !!dateStr && dateStr < todayDateInput();
+const isTooFarFuture = (dateStr: string) => !!dateStr && dateStr > maxDateInput();
+const expiryError = (dateStr: string): string | null => {
+  if (isPastDate(dateStr)) return "Expiry date can't be in the past.";
+  if (isTooFarFuture(dateStr)) return `Expiry can't be more than ${MAX_EXPIRY_MONTHS} months out.`;
+  return null;
+};
 const splitList = (raw: string) =>
   raw.split(",").map((s) => s.trim()).filter(Boolean);
 const sameList = (a: string[], b: string[]) => [...a].sort().join(",") === [...b].sort().join(",");
@@ -259,6 +289,10 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     () => people.some(personDirty) || links.some(linkDirty),
     [people, links]
   );
+  const hasInvalidExpiry = useMemo(
+    () => links.some((l) => !l.removed && !!expiryError(l.expiresAt)),
+    [links]
+  );
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -287,6 +321,11 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
               errors.push(`Link id "${id}" must be 3–36 characters`);
               continue;
             }
+            const expiryErr = expiryError(l.expiresAt);
+            if (expiryErr) {
+              errors.push(`Link "${id}": ${expiryErr}`);
+              continue;
+            }
             await createExternalShare(token, {
               shareId: id,
               fileTargetId: item.isFolder ? null : item.id,
@@ -295,9 +334,14 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
               rawPassword: l.password.trim() || null,
               emailsForOtp: splitList(l.otpEmails),
               phonesForOtp: splitList(l.otpPhones),
-              expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
+              expiresAt: toExpiresIso(l.expiresAt),
             });
           } else if (l.base && !l.removed && linkDirty(l)) {
+            const expiryErr = expiryError(l.expiresAt);
+            if (expiryErr) {
+              errors.push(`Link "${id}": ${expiryErr}`);
+              continue;
+            }
             await updateExternalShare(token, l.shareId, {
               permissions: l.perms,
               shareInfo: l.base.share_info,
@@ -305,7 +349,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
               rawPassword: l.changePassword ? l.password.trim() || null : null,
               emailsForOtp: splitList(l.otpEmails),
               phonesForOtp: splitList(l.otpPhones),
-              expiresAt: l.expiresAt ? new Date(l.expiresAt).toISOString() : null,
+              expiresAt: toExpiresIso(l.expiresAt),
             });
           }
         } catch (err) {
@@ -387,10 +431,14 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
       )}
 
       <div className="flex items-center justify-end gap-3 mt-5">
-        {dirty && <span className="text-[11px] text-text-main mr-auto">Unsaved changes</span>}
+        {hasInvalidExpiry ? (
+          <span className="text-[11px] text-red-500 mr-auto">Fix the expiry date on a link before saving</span>
+        ) : (
+          dirty && <span className="text-[11px] text-text-main mr-auto">Unsaved changes</span>
+        )}
         <button
           onClick={save}
-          disabled={!dirty || saving}
+          disabled={!dirty || saving || hasInvalidExpiry}
           className="btn-primary flex items-center justify-center gap-1.5"
           style={{ width: "auto" }}
         >
@@ -535,36 +583,49 @@ function PeopleTab({
             className="dialog-input w-full"
           />
           {(searching || results.length > 0) && emailQuery.trim().length >= 2 && (
-            <div className="absolute z-10 left-0 right-0 mt-1 bg-bg-main border border-border-main rounded-lg shadow-lg max-h-40 overflow-y-auto">
-              {searching && <div className="px-2.5 py-1.5 text-[11px] text-text-main">Searching…</div>}
+            <div className="absolute z-20 left-0 right-0 mt-1.5 bg-bg-main border border-border-main rounded-xl p-1 shadow-lg animate-scale-in max-h-48 overflow-y-auto flex flex-col gap-0.5">
+              {searching && (
+                <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-text-main">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Searching…
+                </div>
+              )}
               {!searching && results.length === 0 && (
-                <div className="px-2.5 py-1.5 text-[11px] text-text-main">No matching users.</div>
+                <div className="px-2.5 py-2 text-[11px] text-text-main">No matching users.</div>
               )}
               {results.map((u) => {
                 const already = people.some((p) => p.userId === u.user_id && !p.removed);
                 const name = displayNameOf(u);
+                const initials = (name || u.email).substring(0, 2).toUpperCase();
                 return (
                   <button
                     key={u.user_id}
                     disabled={already}
                     onClick={() => onAddPerson(u)}
-                    className="w-full text-left px-2.5 py-1.5 text-xs text-text-heading hover:bg-code-bg disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs font-medium border-none bg-transparent cursor-pointer transition text-text-main hover:bg-code-bg hover:text-text-heading disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
-                    {name ? (
-                      <>
-                        {name} <span className="text-text-main">· {u.email}</span>
-                      </>
-                    ) : (
-                      u.email
-                    )}{" "}
-                    {already && <span className="text-[10px] text-text-main">· already added</span>}
+                    <span className="w-6 h-6 min-w-6 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {initials}
+                    </span>
+                    <span className="flex-1 truncate text-text-heading">
+                      {name ? (
+                        <>
+                          {name} <span className="text-text-main font-normal">· {u.email}</span>
+                        </>
+                      ) : (
+                        u.email
+                      )}
+                    </span>
+                    {already && <span className="text-[10px] text-text-main shrink-0">Added</span>}
                   </button>
                 );
               })}
             </div>
           )}
         </div>
-        <PermissionToggles value={newPerms} onChange={setNewPerms} />
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-text-main">Permissions for new people</span>
+          <PermissionToggles value={newPerms} onChange={setNewPerms} />
+        </div>
       </div>
     </div>
   );
@@ -593,91 +654,112 @@ function LinksTab({
     <div className="flex flex-col gap-3">
       {links.length === 0 && <div className="text-xs text-text-main">No public links yet.</div>}
 
-      {links.map((l) => (
-        <div
-          key={l.key}
-          className={`bg-code-bg rounded-lg px-2.5 py-2.5 flex flex-col gap-2 ${l.removed ? "opacity-50" : ""}`}
-        >
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-main shrink-0">{origin}/share/</span>
-            <input
-              value={l.shareId}
-              disabled={l.base !== null}
-              onChange={(e) => patchLink(l.key, { shareId: e.target.value })}
-              className="dialog-input flex-1 font-mono text-[11px] disabled:opacity-70"
-            />
-            <button
-              onClick={() => toggleRemoved(l.key, !l.removed)}
-              title={l.removed ? "Keep link" : "Remove link"}
-              className="p-1 rounded text-red-500 hover:bg-red-500/10 shrink-0"
-            >
-              {l.removed ? <Undo2 className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
-            </button>
-          </div>
+      {links.map((l) => {
+        const expiryErr = l.removed ? null : expiryError(l.expiresAt);
+        return (
+          <div
+            key={l.key}
+            className={`bg-code-bg rounded-lg px-2.5 py-2.5 flex flex-col gap-2.5 ${l.removed ? "opacity-50" : ""}`}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-main shrink-0">{origin}/share/</span>
+              <input
+                value={l.shareId}
+                disabled={l.base !== null}
+                onChange={(e) => patchLink(l.key, { shareId: e.target.value })}
+                className="dialog-input flex-1 font-mono text-[11px] disabled:opacity-70"
+              />
+              <button
+                onClick={() => toggleRemoved(l.key, !l.removed)}
+                title={l.removed ? "Keep link" : "Remove link"}
+                className="p-1 rounded text-red-500 hover:bg-red-500/10 shrink-0"
+              >
+                {l.removed ? <Undo2 className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
 
-          {!l.removed && (
-            <>
-              <div className="flex items-center gap-2">
-                <PermissionToggles value={l.perms} onChange={(next) => patchLink(l.key, { perms: next })} />
-                {l.base === null && <span className="text-[10px] text-accent">· new</span>}
-                {l.base !== null && linkDirty(l) && <span className="text-[10px] text-amber-500">· edited</span>}
-              </div>
-
-              {l.base === null ? (
-                <input
-                  type="password"
-                  value={l.password}
-                  onChange={(e) => patchLink(l.key, { password: e.target.value })}
-                  placeholder="Password (optional)"
-                  className="dialog-input"
-                />
-              ) : (
+            {!l.removed && (
+              <>
                 <div className="flex flex-col gap-1">
-                  <label className="flex items-center gap-1.5 text-[11px] text-text-heading cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={l.changePassword}
-                      onChange={(e) => patchLink(l.key, { changePassword: e.target.checked, password: "" })}
-                    />
-                    {l.base.password_hash ? "Change / remove password" : "Set a password"}
-                  </label>
-                  {l.changePassword && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-text-main">Permissions</span>
+                    {l.base === null && <span className="text-[10px] text-accent">· new</span>}
+                    {l.base !== null && linkDirty(l) && <span className="text-[10px] text-amber-500">· edited</span>}
+                  </div>
+                  <PermissionToggles value={l.perms} onChange={(next) => patchLink(l.key, { perms: next })} />
+                </div>
+
+                {l.base === null ? (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-text-main">Password (optional)</span>
                     <input
                       type="password"
                       value={l.password}
                       onChange={(e) => patchLink(l.key, { password: e.target.value })}
-                      placeholder="New password (leave blank to remove)"
+                      placeholder="No password"
                       className="dialog-input"
                     />
-                  )}
-                </div>
-              )}
+                  </label>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center gap-1.5 text-[11px] text-text-heading cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={l.changePassword}
+                        onChange={(e) => patchLink(l.key, { changePassword: e.target.checked, password: "" })}
+                      />
+                      {l.base.password_hash ? "Change / remove password" : "Set a password"}
+                    </label>
+                    {l.changePassword && (
+                      <input
+                        type="password"
+                        value={l.password}
+                        onChange={(e) => patchLink(l.key, { password: e.target.value })}
+                        placeholder="New password (leave blank to remove)"
+                        className="dialog-input"
+                      />
+                    )}
+                  </div>
+                )}
 
-              <input
-                value={l.otpEmails}
-                onChange={(e) => patchLink(l.key, { otpEmails: e.target.value })}
-                placeholder="OTP emails, comma-separated (optional)"
-                className="dialog-input"
-              />
-              <input
-                value={l.otpPhones}
-                onChange={(e) => patchLink(l.key, { otpPhones: e.target.value })}
-                placeholder="OTP phone numbers, comma-separated (optional)"
-                className="dialog-input"
-              />
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-text-main">Expires (optional)</span>
-                <input
-                  type="date"
-                  value={l.expiresAt}
-                  onChange={(e) => patchLink(l.key, { expiresAt: e.target.value })}
-                  className="dialog-input"
-                />
-              </label>
-            </>
-          )}
-        </div>
-      ))}
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-text-main">OTP emails (optional)</span>
+                    <input
+                      value={l.otpEmails}
+                      onChange={(e) => patchLink(l.key, { otpEmails: e.target.value })}
+                      placeholder="name@company.com, …"
+                      className="dialog-input"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-text-main">OTP phone numbers (optional)</span>
+                    <input
+                      value={l.otpPhones}
+                      onChange={(e) => patchLink(l.key, { otpPhones: e.target.value })}
+                      placeholder="+1 555 0100, …"
+                      className="dialog-input"
+                    />
+                  </label>
+                </div>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-text-main">Expires (optional)</span>
+                  <input
+                    type="date"
+                    min={todayDateInput()}
+                    max={maxDateInput()}
+                    value={l.expiresAt}
+                    onChange={(e) => patchLink(l.key, { expiresAt: e.target.value })}
+                    className="dialog-input"
+                  />
+                  {expiryErr && <span className="text-[10px] text-red-500">{expiryErr}</span>}
+                </label>
+              </>
+            )}
+          </div>
+        );
+      })}
 
       <button onClick={onAddLink} className="btn-outline self-start flex items-center gap-1.5" style={{ width: "auto" }}>
         <Plus className="w-3.5 h-3.5" /> Add link

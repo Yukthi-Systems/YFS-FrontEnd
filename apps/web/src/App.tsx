@@ -25,7 +25,6 @@ import { useInfiniteScroll } from "./hooks/useInfiniteScroll";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
-import { Breadcrumbs } from "./components/layout/Breadcrumbs";
 import { FilterSortBar } from "./components/files/FilterSortBar";
 import { FileListTable } from "./components/files/FileListTable";
 import { FileGrid } from "./components/files/FileGrid";
@@ -77,7 +76,6 @@ function App() {
     moveItems,
     copyItem,
     updateFileContent,
-    restoreVersion,
   } = useFileSystem();
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
@@ -102,6 +100,7 @@ function App() {
   const canvasFileInputRef = useRef<HTMLInputElement>(null);
   const canvasFolderInputRef = useRef<HTMLInputElement>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const sso = useSsoAutoLogin({ isAuthenticated, authLoading, loginWithSso, clearError });
   const menus = useContextMenuState();
@@ -179,6 +178,23 @@ function App() {
     loadSharedLinks,
   ]);
 
+  // Re-fetch whatever's currently showing, bypassing cache — mirrors the load
+  // effect above's per-tab branching.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const tab = nav.activeSidebarTab;
+      if (tab === "shared" && !nav.currentFolderId) await loadSharedFolders({ force: true });
+      else if (tab === "shared-out") await loadSharedOut({ force: true });
+      else if (tab === "shared-links") await loadSharedLinks({ force: true });
+      else if (tab === "trash") {
+        if (trashFolderId) await loadFolder(trashFolderId, { force: true });
+      } else await loadFolder(nav.currentFolderId, { force: true });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // Infinite scroll — only the server-backed listings ("drive" folders, the
   // "shared with me" bucket, and folders opened inside a share) page; the other
   // tabs are client-side filters.
@@ -238,7 +254,7 @@ function App() {
     setCheckedItemIds: selection.setCheckedItemIds,
   });
 
-  const versionHistory = useVersionHistory({ files, restoreVersion, showToast, closeContextMenu: menus.closeContextMenu });
+  const versionHistory = useVersionHistory({ files, showToast, closeContextMenu: menus.closeContextMenu });
   const shareSettings = useShareSettings({ closeContextMenu: menus.closeContextMenu });
 
   const dnd = useDragAndDrop({
@@ -429,15 +445,17 @@ function App() {
                 />
               ) : (
                 <>
-                  <Breadcrumbs segments={nav.getBreadcrumbSegments(files)} onNavigate={goToBreadcrumb} />
-
                   <FilterSortBar
+                    breadcrumbSegments={nav.getBreadcrumbSegments(files)}
+                    onBreadcrumbNavigate={goToBreadcrumb}
                     activeSidebarTab={nav.activeSidebarTab}
                     checkedCount={selection.checkedItemIds.length}
                     sortField={sortField}
                     onSortFieldChange={setSortField}
                     sortOrder={sortOrder}
                     onToggleSortOrder={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                    onRefresh={handleRefresh}
+                    refreshing={refreshing}
                     onClearSelection={() => selection.setCheckedItemIds([])}
                     onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
                     onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
@@ -453,6 +471,7 @@ function App() {
                   ) : viewMode === "list" ? (
                     <FileListTable
                       items={listItems}
+                      scrollElement={scrollContainer}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
@@ -471,6 +490,7 @@ function App() {
                   ) : (
                     <FileGrid
                       items={listItems}
+                      scrollElement={scrollContainer}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
@@ -538,6 +558,10 @@ function App() {
             canvasFolderInputRef.current?.click();
             menus.setCanvasContextMenu(null);
           }}
+          onRefresh={() => {
+            handleRefresh();
+            menus.setCanvasContextMenu(null);
+          }}
         />
       )}
       <input
@@ -586,19 +610,16 @@ function App() {
         />
       )}
 
-      {versionHistory.versionHistoryItemId &&
-        (() => {
-          const versionHistoryItem = files.find((f) => f.id === versionHistory.versionHistoryItemId);
-          if (!versionHistoryItem) return null;
-          return (
-            <VersionHistoryModal
-              item={versionHistoryItem}
-              onClose={versionHistory.closeVersionHistory}
-              onRestore={versionHistory.handleRestoreVersion}
-              onDownloadVersion={versionHistory.handleDownloadVersion}
-            />
-          );
-        })()}
+      {versionHistory.item && (
+        <VersionHistoryModal
+          item={versionHistory.item}
+          latestVersion={versionHistory.latestVersion}
+          olderVersions={versionHistory.olderVersions}
+          loading={versionHistory.isLoadingVersions}
+          onClose={versionHistory.closeVersionHistory}
+          onDownloadVersion={versionHistory.handleDownloadVersion}
+        />
+      )}
 
       {shareSettings.shareItemId &&
         (() => {

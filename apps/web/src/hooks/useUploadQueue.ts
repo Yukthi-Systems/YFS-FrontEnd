@@ -36,7 +36,7 @@ let taskCounter = 0;
 
 export const useUploadQueue = () => {
   const { token, user, refreshAccessToken } = useAuth();
-  const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId } = useFileSystem();
+  const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId, buildCreationInfo } = useFileSystem();
   const [tasks, setTasks] = useAtom(uploadTasksAtom);
 
   // Async upload runs span renders — read live context off refs.
@@ -160,21 +160,23 @@ export const useUploadQueue = () => {
 
       const { token: tk, versioningEnabled, files: existingFiles, refreshAccessToken: refresh } = ctxRef.current;
 
-      const resolved = resolveUploadStep(plan, existingFiles, versioningEnabled);
-      if ("blocked" in resolved) {
-        updateTask(taskId, { status: "error", error: uploadBlockMessage(resolved.blocked) });
-        return;
-      }
-      const { fileId, fileVersion } = resolved.step;
-
       updateTask(taskId, { status: "uploading" });
       try {
+        const resolved = await resolveUploadStep(plan, existingFiles, versioningEnabled, tk ?? "");
+        if ("blocked" in resolved) {
+          updateTask(taskId, { status: "error", error: uploadBlockMessage(resolved.blocked) });
+          return;
+        }
+        const { fileId, fileVersion } = resolved.step;
+
         const request: FileUploadRequest = {
           folder_id: plan.targetFolderId,
           file_id: fileId,
           shared_folder_id: plan.sharedFolderId,
           file_name: plan.fileName,
-          file_info: {},
+          // Stamps creation_info.user_name, same as folder creation — otherwise
+          // "Created By" comes back empty once this file round-trips through a listing.
+          file_info: buildCreationInfo(toParentId(plan.targetFolderId)),
           file_type: fileTypeOf(plan.file),
           file_version: fileVersion,
           expected_file_size: plan.file.size,
