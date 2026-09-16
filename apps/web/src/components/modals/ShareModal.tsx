@@ -583,29 +583,39 @@ function PeopleTab({
             className="dialog-input w-full"
           />
           {(searching || results.length > 0) && emailQuery.trim().length >= 2 && (
-            <div className="absolute z-10 left-0 right-0 mt-1 bg-bg-main border border-border-main rounded-lg shadow-lg max-h-40 overflow-y-auto">
-              {searching && <div className="px-2.5 py-1.5 text-[11px] text-text-main">Searching…</div>}
+            <div className="absolute z-20 left-0 right-0 mt-1.5 bg-bg-main border border-border-main rounded-xl p-1 shadow-lg animate-scale-in max-h-48 overflow-y-auto flex flex-col gap-0.5">
+              {searching && (
+                <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-text-main">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Searching…
+                </div>
+              )}
               {!searching && results.length === 0 && (
-                <div className="px-2.5 py-1.5 text-[11px] text-text-main">No matching users.</div>
+                <div className="px-2.5 py-2 text-[11px] text-text-main">No matching users.</div>
               )}
               {results.map((u) => {
                 const already = people.some((p) => p.userId === u.user_id && !p.removed);
                 const name = displayNameOf(u);
+                const initials = (name || u.email).substring(0, 2).toUpperCase();
                 return (
                   <button
                     key={u.user_id}
                     disabled={already}
                     onClick={() => onAddPerson(u)}
-                    className="w-full text-left px-2.5 py-1.5 text-xs text-text-heading hover:bg-code-bg disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs font-medium border-none bg-transparent cursor-pointer transition text-text-main hover:bg-code-bg hover:text-text-heading disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
-                    {name ? (
-                      <>
-                        {name} <span className="text-text-main">· {u.email}</span>
-                      </>
-                    ) : (
-                      u.email
-                    )}{" "}
-                    {already && <span className="text-[10px] text-text-main">· already added</span>}
+                    <span className="w-6 h-6 min-w-6 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {initials}
+                    </span>
+                    <span className="flex-1 truncate text-text-heading">
+                      {name ? (
+                        <>
+                          {name} <span className="text-text-main font-normal">· {u.email}</span>
+                        </>
+                      ) : (
+                        u.email
+                      )}
+                    </span>
+                    {already && <span className="text-[10px] text-text-main shrink-0">Added</span>}
                   </button>
                 );
               })}

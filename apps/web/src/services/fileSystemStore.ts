@@ -327,8 +327,10 @@ const persist = (updated: FileItem[]) => {
   saveCache(updated);
 };
 
-// Metadata stamped into a new folder's folder_info (echoed back as resource_info).
-const buildCreationInfo = (parentFolderId: string | null): ResourceInfo => ({
+// Metadata stamped into a new folder's folder_info, or a new file's file_info
+// (echoed back as resource_info) — this is where the "Created By" column comes from
+// once the item round-trips through a listing.
+export const buildCreationInfo = (parentFolderId: string | null): ResourceInfo => ({
   creation_info: {
     user_id: authSnapshot.userId ?? undefined,
     user_name: userName,
@@ -896,6 +898,8 @@ export const addFile = (input: AddFileInput): FileItem => {
     storageKey: input.storageKey,
     fileId: input.fileId,
     version: input.version,
+    resourceInfo: buildCreationInfo(input.parentId),
+    createdBy: userName,
     origin: "local",
   };
 

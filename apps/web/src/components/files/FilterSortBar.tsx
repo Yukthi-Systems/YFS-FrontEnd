@@ -1,4 +1,6 @@
+import { SORT_FIELD_OPTIONS } from "../../types/file";
 import type { SidebarTab, SortField, SortOrder } from "../../types/file";
+import { Dropdown } from "../common/Dropdown";
 
 export function FilterSortBar({
   activeSidebarTab,
@@ -63,15 +65,7 @@ export function FilterSortBar({
       )}
 
       <div className="flex gap-2">
-        <select
-          value={sortField}
-          onChange={(e) => onSortFieldChange(e.target.value as SortField)}
-          className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer focus:outline-none"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="modifiedAt">Sort by Modified</option>
-          <option value="size">Sort by Size</option>
-        </select>
+        <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={onSortFieldChange} align="end" />
         <button
           onClick={onToggleSortOrder}
           className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
