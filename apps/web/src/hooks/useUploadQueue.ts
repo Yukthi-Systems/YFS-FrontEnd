@@ -160,15 +160,15 @@ export const useUploadQueue = () => {
 
       const { token: tk, versioningEnabled, files: existingFiles, refreshAccessToken: refresh } = ctxRef.current;
 
-      const resolved = resolveUploadStep(plan, existingFiles, versioningEnabled);
-      if ("blocked" in resolved) {
-        updateTask(taskId, { status: "error", error: uploadBlockMessage(resolved.blocked) });
-        return;
-      }
-      const { fileId, fileVersion } = resolved.step;
-
       updateTask(taskId, { status: "uploading" });
       try {
+        const resolved = await resolveUploadStep(plan, existingFiles, versioningEnabled, tk ?? "");
+        if ("blocked" in resolved) {
+          updateTask(taskId, { status: "error", error: uploadBlockMessage(resolved.blocked) });
+          return;
+        }
+        const { fileId, fileVersion } = resolved.step;
+
         const request: FileUploadRequest = {
           folder_id: plan.targetFolderId,
           file_id: fileId,

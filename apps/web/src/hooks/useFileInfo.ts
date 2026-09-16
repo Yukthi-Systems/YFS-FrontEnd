@@ -1,19 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { tokenAtom } from "../atoms/auth";
-import { getFileInfo } from "@yfs/service";
+import { getFileBasicInfo } from "@yfs/service";
+import type { FileItem } from "../types/file";
+import { useFileSystem } from "./useFileSystem";
 
-export const useFileInfo = (fileId: string | null, enabled = true) => {
+export const useFileInfo = (item: FileItem | null, enabled = true) => {
   const token = useAtomValue(tokenAtom);
-  
+  const { fileTypeGuess } = useFileSystem();
+  // Only own (non-shared) real files have a backend file_id/parent to look up.
+  const canQuery = !!item && !item.isFolder && !!item.fileId && !!item.parentId && item.origin === "server";
+
   return useQuery({
-    queryKey: ["fileInfo", fileId],
+    queryKey: ["fileInfo", item?.id],
     queryFn: () => {
-      if (!token || !fileId) throw new Error("Missing token or fileId");
-      return getFileInfo(token, fileId);
+      if (!token || !item?.fileId || !item.parentId) throw new Error("Missing token or file");
+      return getFileBasicInfo(token, {
+        folder_id: item.parentId,
+        file_id: item.fileId,
+        file_name: item.name,
+        file_info: item.resourceInfo ?? {},
+        file_type: fileTypeGuess(item),
+        file_version: 1, // always valid once a file has a first version — see getFileBasicInfo
+        expected_file_size: item.size,
+      });
     },
-    enabled: !!token && !!fileId && enabled,
-    // We don't have the exact shape of the response yet as the backend endpoint is commented out.
-    // It returns `unknown` from the service.
+    enabled: !!token && canQuery && enabled,
   });
 };

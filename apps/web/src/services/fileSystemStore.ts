@@ -331,7 +331,7 @@ const persist = (updated: FileItem[]) => {
 // MIME type — FileOpsRequest.file_type wants an actual MIME string. We don't track
 // the original one, so this is a best-guess fallback for anything not already a
 // real MIME-ish category name.
-const fileTypeGuess = (item: FileItem): string => (item.type === "other" ? "application/octet-stream" : item.type);
+export const fileTypeGuess = (item: FileItem): string => (item.type === "other" ? "application/octet-stream" : item.type);
 
 // Metadata stamped into a new folder's folder_info, or a new file's file_info
 // (echoed back as resource_info) — this is where the "Created By" column comes from
