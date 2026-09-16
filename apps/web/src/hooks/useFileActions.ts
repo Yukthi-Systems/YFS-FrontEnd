@@ -108,33 +108,21 @@ export function useFileActions({
     setCheckedItemIds([]);
   };
 
-  // Trash/restore only sync to the server for folders (YFS-Main-API has no file
-  // delete/move/restore endpoints yet — only folders::move_folder and
-  // folders::edit_folder_details are mounted). Letting a file through here would
-  // optimistically mark it deleted with no server call behind it — it'd vanish from
-  // My Drive, never actually land in Trash, and the merge logic that reconciles
-  // local state with a fresh listing keeps that stale isDeleted flag forever. Block
-  // client-side instead of faking a state the server never agrees with.
   const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
   const requestTrash = (ids: string[]) => {
     if (ids.length === 0) return;
-    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
-    const folderIds = targets.filter((f) => f.isFolder).map((f) => f.id);
-    const blocked = targets.length - folderIds.length;
-    if (blocked > 0) showToast(`${plural(blocked, "file")} can't be moved to Trash yet — not supported by the server`, "error");
-    if (folderIds.length === 0) return;
 
     setPendingConfirm({
       title: "Move to Trash",
-      description: `Are you sure you want to move ${folderIds.length > 1 ? `${folderIds.length} items` : "this item"} to the Trash? You can restore ${
-        folderIds.length > 1 ? "them" : "it"
+      description: `Are you sure you want to move ${ids.length > 1 ? `${ids.length} items` : "this item"} to the Trash? You can restore ${
+        ids.length > 1 ? "them" : "it"
       } later from the Trash tab.`,
       confirmLabel: "Move to Trash",
       destructive: true,
       onConfirm: () => {
-        fileSystem.trashItems(folderIds);
-        showToast(`Moved ${plural(folderIds.length, "item")} to Trash`, "success");
+        fileSystem.trashItems(ids);
+        showToast(`Moved ${plural(ids.length, "item")} to Trash`, "success");
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();

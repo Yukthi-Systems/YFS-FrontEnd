@@ -327,6 +327,12 @@ const persist = (updated: FileItem[]) => {
   saveCache(updated);
 };
 
+// FileItem.type is our own coarse category ("image", "video", "other", …), not a
+// MIME type — FileOpsRequest.file_type wants an actual MIME string. We don't track
+// the original one, so this is a best-guess fallback for anything not already a
+// real MIME-ish category name.
+const fileTypeGuess = (item: FileItem): string => (item.type === "other" ? "application/octet-stream" : item.type);
+
 // Metadata stamped into a new folder's folder_info, or a new file's file_info
 // (echoed back as resource_info) — this is where the "Created By" column comes from
 // once the item round-trips through a listing.
@@ -979,7 +985,7 @@ export const renameItem = (id: string, newName: string) => {
             shared_folder_id: shared?.sharedFolderId ?? null,
             file_name: safeName, 
             file_info: target.resourceInfo ?? {},
-            file_type: target.type === "other" ? "application/octet-stream" : target.type, // Best guess fallback
+            file_type: fileTypeGuess(target),
             file_version: target.version ?? 1,
             expected_file_size: target.size,
           })
@@ -1056,8 +1062,10 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
 };
 
 // Trashing = record where it came from in resource_info.trash_info AND move the
-// item into the Trash folder. For server folders both are real API calls
-// (PATCH /folders/edit then PUT /folders/move); the client mirrors them optimistically.
+// item into the Trash folder. For server folders/files both are real API calls
+// (PATCH /folders/edit or /files/update, then PUT /folders/move or /files/move); the
+// client mirrors them optimistically. Files need the full FileOpsRequest shape (see
+// renameItem/moveItems) rather than just {file_id, file_name, file_info}.
 export const trashItems = (ids: string[]) => {
   const trashId = store.get(trashFolderIdAtom);
   const targets = new Set(ids);
@@ -1106,6 +1114,30 @@ export const trashItems = (ids: string[]) => {
           notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
         );
       });
+
+    roots
+      .filter((f): f is FileItem & { fileId: string; parentId: string } => !f.isFolder && f.origin === "server" && !!f.fileId && !!f.parentId)
+      .forEach((f) => {
+        const fileInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) };
+        const opsShape = {
+          folder_id: f.parentId,
+          file_id: f.fileId,
+          file_name: f.name,
+          file_info: fileInfo,
+          file_type: fileTypeGuess(f),
+          file_version: f.version ?? 1,
+          expected_file_size: f.size,
+        };
+        runMutation(
+          () =>
+            withFreshToken(async (t) => {
+              await apiUpdateFileInfo(t, opsShape);
+              if (trashId) await apiMoveFile(t, trashId, opsShape);
+            }),
+          { id: f.id },
+          notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
+        );
+      });
   }
 };
 
@@ -1149,6 +1181,35 @@ export const restoreItems = (ids: string[]) => {
             withFreshToken(async (t) => {
               await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
               await apiMoveFolder(t, { folderId: f.id, newParentFolderId: restoreTo });
+            }),
+          { id: f.id },
+          notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
+        );
+      });
+
+    roots
+      .filter((f): f is FileItem & { fileId: string; parentId: string } => !f.isFolder && f.origin === "server" && !!f.fileId && !!f.parentId)
+      .forEach((f) => {
+        // Files can't be moved to root (no destination_folder_id to send) — trashing
+        // a file always records a real folder in trashedFrom, so this shouldn't
+        // trip, but skip the API sync rather than send an invalid move if it ever did.
+        const restoreTo = f.trashedFrom ?? null;
+        if (!restoreTo) return;
+        const fileInfo = withoutTrashInfo(f.resourceInfo);
+        const opsShape = {
+          folder_id: f.parentId,
+          file_id: f.fileId,
+          file_name: f.name,
+          file_info: fileInfo,
+          file_type: fileTypeGuess(f),
+          file_version: f.version ?? 1,
+          expected_file_size: f.size,
+        };
+        runMutation(
+          () =>
+            withFreshToken(async (t) => {
+              await apiUpdateFileInfo(t, opsShape);
+              await apiMoveFile(t, restoreTo, opsShape);
             }),
           { id: f.id },
           notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
@@ -1218,7 +1279,7 @@ export const moveItems = (
             sourceFolderId: item.parentId,
             fileName: item.name,
             fileInfo: item.resourceInfo ?? {},
-            fileType: item.type === "other" ? "application/octet-stream" : item.type,
+            fileType: fileTypeGuess(item),
             fileVersion: item.version ?? 1,
             expectedFileSize: item.size,
           });

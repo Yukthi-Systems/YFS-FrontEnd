@@ -25,7 +25,6 @@ import { useInfiniteScroll } from "./hooks/useInfiniteScroll";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
-import { Breadcrumbs } from "./components/layout/Breadcrumbs";
 import { FilterSortBar } from "./components/files/FilterSortBar";
 import { FileListTable } from "./components/files/FileListTable";
 import { FileGrid } from "./components/files/FileGrid";
@@ -102,6 +101,7 @@ function App() {
   const canvasFileInputRef = useRef<HTMLInputElement>(null);
   const canvasFolderInputRef = useRef<HTMLInputElement>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const sso = useSsoAutoLogin({ isAuthenticated, authLoading, loginWithSso, clearError });
   const menus = useContextMenuState();
@@ -178,6 +178,23 @@ function App() {
     loadSharedOut,
     loadSharedLinks,
   ]);
+
+  // Re-fetch whatever's currently showing, bypassing cache — mirrors the load
+  // effect above's per-tab branching.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const tab = nav.activeSidebarTab;
+      if (tab === "shared" && !nav.currentFolderId) await loadSharedFolders({ force: true });
+      else if (tab === "shared-out") await loadSharedOut({ force: true });
+      else if (tab === "shared-links") await loadSharedLinks({ force: true });
+      else if (tab === "trash") {
+        if (trashFolderId) await loadFolder(trashFolderId, { force: true });
+      } else await loadFolder(nav.currentFolderId, { force: true });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Infinite scroll — only the server-backed listings ("drive" folders, the
   // "shared with me" bucket, and folders opened inside a share) page; the other
@@ -429,15 +446,17 @@ function App() {
                 />
               ) : (
                 <>
-                  <Breadcrumbs segments={nav.getBreadcrumbSegments(files)} onNavigate={goToBreadcrumb} />
-
                   <FilterSortBar
+                    breadcrumbSegments={nav.getBreadcrumbSegments(files)}
+                    onBreadcrumbNavigate={goToBreadcrumb}
                     activeSidebarTab={nav.activeSidebarTab}
                     checkedCount={selection.checkedItemIds.length}
                     sortField={sortField}
                     onSortFieldChange={setSortField}
                     sortOrder={sortOrder}
                     onToggleSortOrder={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                    onRefresh={handleRefresh}
+                    refreshing={refreshing}
                     onClearSelection={() => selection.setCheckedItemIds([])}
                     onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
                     onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
@@ -538,6 +557,10 @@ function App() {
           }}
           onUploadFolder={() => {
             canvasFolderInputRef.current?.click();
+            menus.setCanvasContextMenu(null);
+          }}
+          onRefresh={() => {
+            handleRefresh();
             menus.setCanvasContextMenu(null);
           }}
         />
