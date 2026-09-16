@@ -84,3 +84,9 @@ export type SidebarTab =
 export type ViewMode = "list" | "grid";
 export type SortField = "name" | "modifiedAt" | "size";
 export type SortOrder = "asc" | "desc";
+
+export const SORT_FIELD_OPTIONS: { value: SortField; label: string }[] = [
+  { value: "name", label: "Sort by Name" },
+  { value: "modifiedAt", label: "Sort by Modified" },
+  { value: "size", label: "Sort by Size" },
+];

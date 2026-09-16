@@ -42,7 +42,7 @@ export function useFileActions({
     trashItems: (ids: string[]) => void;
     restoreItems: (ids: string[]) => void;
     permanentDeleteItems: (ids: string[]) => void;
-    moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number };
+    moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
     copyItem: (id: string, newParentId: string | null) => { copied: number; blocked: boolean };
     updateFileContent: (id: string, blob: Blob) => Promise<void>;
   };
@@ -108,33 +108,21 @@ export function useFileActions({
     setCheckedItemIds([]);
   };
 
-  // Trash/restore only sync to the server for folders (YFS-Main-API has no file
-  // delete/move/restore endpoints yet — only folders::move_folder and
-  // folders::edit_folder_details are mounted). Letting a file through here would
-  // optimistically mark it deleted with no server call behind it — it'd vanish from
-  // My Drive, never actually land in Trash, and the merge logic that reconciles
-  // local state with a fresh listing keeps that stale isDeleted flag forever. Block
-  // client-side instead of faking a state the server never agrees with.
   const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
   const requestTrash = (ids: string[]) => {
     if (ids.length === 0) return;
-    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
-    const folderIds = targets.filter((f) => f.isFolder).map((f) => f.id);
-    const blocked = targets.length - folderIds.length;
-    if (blocked > 0) showToast(`${plural(blocked, "file")} can't be moved to Trash yet — not supported by the server`, "error");
-    if (folderIds.length === 0) return;
 
     setPendingConfirm({
       title: "Move to Trash",
-      description: `Are you sure you want to move ${folderIds.length > 1 ? `${folderIds.length} items` : "this item"} to the Trash? You can restore ${
-        folderIds.length > 1 ? "them" : "it"
+      description: `Are you sure you want to move ${ids.length > 1 ? `${ids.length} items` : "this item"} to the Trash? You can restore ${
+        ids.length > 1 ? "them" : "it"
       } later from the Trash tab.`,
       confirmLabel: "Move to Trash",
       destructive: true,
       onConfirm: () => {
-        fileSystem.trashItems(folderIds);
-        showToast(`Moved ${plural(folderIds.length, "item")} to Trash`, "success");
+        fileSystem.trashItems(ids);
+        showToast(`Moved ${plural(ids.length, "item")} to Trash`, "success");
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
@@ -215,9 +203,10 @@ export function useFileActions({
   const handleMoveCopyConfirm = (destinationId: string | null) => {
     if (!moveCopyState) return;
     if (moveCopyState.mode === "move") {
-      const { moved, blocked } = fileSystem.moveItems(moveCopyState.ids, destinationId);
+      const { moved, blocked, unsupported } = fileSystem.moveItems(moveCopyState.ids, destinationId);
       if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""}`, "success");
       if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — can't move a folder into itself`, "error");
+      if (unsupported > 0) showToast(`Skipped ${unsupported} file${unsupported > 1 ? "s" : ""} — moving a file to My Drive root isn't supported yet`, "error");
     } else {
       let totalCopied = 0;
       let anyBlocked = false;
