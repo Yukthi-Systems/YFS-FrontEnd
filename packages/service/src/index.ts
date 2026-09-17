@@ -9,6 +9,7 @@ export {
   updateFileInfo,
   getFileBasicInfo,
   moveFile,
+  requestWopiSession,
   type FileUploadRequest,
   type FileDownloadRequest,
   type UploadSession,
@@ -16,6 +17,8 @@ export {
   type FileInfoEdit,
   type FileMoveRequest,
   type FileBasicInfo,
+  type FileWopiRequest,
+  type WopiSession,
 } from "./files";
 export * from "./users";
 export * from "./shares";
