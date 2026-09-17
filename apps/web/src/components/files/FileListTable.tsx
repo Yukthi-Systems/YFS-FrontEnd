@@ -105,7 +105,7 @@ export function FileListTable({
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main">
                   {item.isFolder ? (
-                    "—"
+                    item.size > 0 ? formatBytes(item.size) : "—"
                   ) : isItemProcessing(item) ? (
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                       <Loader2 className="w-3 h-3 animate-spin text-amber-500" />

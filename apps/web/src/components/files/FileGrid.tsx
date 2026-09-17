@@ -113,7 +113,7 @@ export function FileGrid({
           <span className="text-xs font-semibold text-text-heading truncate w-full px-1">{item.name}</span>
           <span className="text-[10px] text-text-main">
             {item.isFolder ? (
-              "Directory"
+              item.size > 0 ? formatBytes(item.size) : "Folder"
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center justify-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                 <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
