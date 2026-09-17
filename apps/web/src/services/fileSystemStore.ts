@@ -37,7 +37,11 @@ import {
   pageInfoAtom,
   trashFolderIdAtom,
   sharedOutAtom,
+  sharedOutLoadingAtom,
+  sharedOutLoadedAtom,
   sharedLinksAtom,
+  sharedLinksLoadingAtom,
+  sharedLinksLoadedAtom,
   type AddFileInput,
 } from "../atoms/fileSystem";
 
@@ -297,10 +301,14 @@ const mergeServerListing = (
 // wouldn't re-render callers when pagination state changes).
 export const pageKeyFor = (parentId: string | null, shared?: boolean) => (shared ? SHARED_ROOT_ID : (parentId ?? ROOT_KEY));
 
-const setPageLoading = (key: string, loading: boolean, hasMore?: boolean) =>
+const setPageLoading = (key: string, loading: boolean, hasMore?: boolean, loaded?: boolean) =>
   store.set(pageInfoAtom, (p) => ({
     ...p,
-    [key]: { hasMore: hasMore ?? p[key]?.hasMore ?? true, loading },
+    [key]: {
+      hasMore: hasMore ?? p[key]?.hasMore ?? true,
+      loading,
+      loaded: loaded ?? (loading ? p[key]?.loaded ?? false : true),
+    },
   }));
 
 const saveCache = (updated: FileItem[]) => {
@@ -572,6 +580,7 @@ const SHARED_LINKS_QUERY_KEY = ["sharedLinks"] as const;
 export const loadSharedOut = async (opts?: { force?: boolean }) => {
   if (!authSnapshot.token) return;
   if (opts?.force) await queryClient.invalidateQueries({ queryKey: SHARED_OUT_QUERY_KEY });
+  store.set(sharedOutLoadingAtom, true);
   try {
     const rows = await queryClient.fetchQuery({
       queryKey: SHARED_OUT_QUERY_KEY,
@@ -593,17 +602,22 @@ export const loadSharedOut = async (opts?: { force?: boolean }) => {
         return item;
       })
     );
+    store.set(sharedOutLoadedAtom, true);
     store.set(remoteErrorAtom, null);
   } catch (err) {
     if (err instanceof AuthUnavailableError) return;
     console.warn("Failed to load shared-out folders", err);
     showToast(err instanceof Error ? err.message : "Couldn't load folders you've shared", "error");
+    store.set(sharedOutLoadedAtom, true);
+  } finally {
+    store.set(sharedOutLoadingAtom, false);
   }
 };
 
 export const loadSharedLinks = async (opts?: { force?: boolean }) => {
   if (!authSnapshot.token) return;
   if (opts?.force) await queryClient.invalidateQueries({ queryKey: SHARED_LINKS_QUERY_KEY });
+  store.set(sharedLinksLoadingAtom, true);
   try {
     const rows = await queryClient.fetchQuery({
       queryKey: SHARED_LINKS_QUERY_KEY,
@@ -615,11 +629,15 @@ export const loadSharedLinks = async (opts?: { force?: boolean }) => {
       staleTime: Infinity,
     });
     store.set(sharedLinksAtom, rows);
+    store.set(sharedLinksLoadedAtom, true);
     store.set(remoteErrorAtom, null);
   } catch (err) {
     if (err instanceof AuthUnavailableError) return;
     console.warn("Failed to load public links", err);
     showToast(err instanceof Error ? err.message : "Couldn't load public links", "error");
+    store.set(sharedLinksLoadedAtom, true);
+  } finally {
+    store.set(sharedLinksLoadingAtom, false);
   }
 };
 
@@ -716,7 +734,11 @@ export const resetFileSystem = () => {
   store.set(isLoadingAtom, false);
   store.set(trashFolderIdAtom, null);
   store.set(sharedOutAtom, []);
+  store.set(sharedOutLoadingAtom, false);
+  store.set(sharedOutLoadedAtom, false);
   store.set(sharedLinksAtom, []);
+  store.set(sharedLinksLoadingAtom, false);
+  store.set(sharedLinksLoadedAtom, false);
   // Drop every cached page too — otherwise a later login (possibly as a different
   // user) would see this session's stale, never-expiring (staleTime: Infinity) pages.
   queryClient.removeQueries({ queryKey: ["folder"] });

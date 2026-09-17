@@ -6,7 +6,11 @@ import {
   pageInfoAtom,
   trashFolderIdAtom,
   sharedOutAtom,
+  sharedOutLoadingAtom,
+  sharedOutLoadedAtom,
   sharedLinksAtom,
+  sharedLinksLoadingAtom,
+  sharedLinksLoadedAtom,
   type PaginationInfo,
 } from "../atoms/fileSystem";
 import {
@@ -52,10 +56,14 @@ export const useFileSystem = () => {
   const pageInfo = useAtomValue(pageInfoAtom);
   const trashFolderId = useAtomValue(trashFolderIdAtom);
   const sharedOut = useAtomValue(sharedOutAtom);
+  const sharedOutLoading = useAtomValue(sharedOutLoadingAtom);
+  const sharedOutLoaded = useAtomValue(sharedOutLoadedAtom);
   const sharedLinks = useAtomValue(sharedLinksAtom);
+  const sharedLinksLoading = useAtomValue(sharedLinksLoadingAtom);
+  const sharedLinksLoaded = useAtomValue(sharedLinksLoadedAtom);
 
   const getPagination = (parentId: string | null, shared?: boolean): PaginationInfo =>
-    pageInfo[pageKeyFor(parentId, shared)] ?? { hasMore: false, loading: false };
+    pageInfo[pageKeyFor(parentId, shared)] ?? { hasMore: true, loading: true, loaded: false };
 
   return {
     files,
@@ -66,8 +74,12 @@ export const useFileSystem = () => {
     loadSharedFolders,
     loadMoreSharedFolders,
     sharedOut,
+    sharedOutLoading,
+    sharedOutLoaded,
     loadSharedOut,
     sharedLinks,
+    sharedLinksLoading,
+    sharedLinksLoaded,
     loadSharedLinks,
     revokeSharedLink,
     getPagination,

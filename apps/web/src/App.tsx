@@ -60,8 +60,12 @@ function App() {
     getSharedPermissions,
     trashFolderId,
     sharedOut,
+    sharedOutLoading,
+    sharedOutLoaded,
     loadSharedOut,
     sharedLinks,
+    sharedLinksLoading,
+    sharedLinksLoaded,
     loadSharedLinks,
     revokeSharedLink,
     createFolder,
@@ -195,13 +199,15 @@ function App() {
   };
 
   // Infinite scroll — only the server-backed listings ("drive" folders, the
-  // Infinite scroll — only the server-backed listings ("drive" folders, the
-  // "shared with me" bucket, and folders opened inside a share) page; the other
-  // tabs are client-side filters.
+  // "shared with me" bucket, and trash) page; the other tabs are client-side filters.
   const isSharedTab = nav.activeSidebarTab === "shared";
   const isSharedRoot = isSharedTab && !nav.currentFolderId;
-  const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive";
-  const pagination = getPagination(nav.currentFolderId, isSharedRoot);
+  const isTrashTab = nav.activeSidebarTab === "trash";
+  const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive" || isTrashTab;
+  const paginationParentId = isTrashTab ? trashFolderId : nav.currentFolderId;
+  const pagination = getPagination(paginationParentId, isSharedRoot);
+
+  const isSharedOutTab = nav.activeSidebarTab === "shared-out";
 
   const lastLoadTimeRef = useRef(0);
   useEffect(() => {
@@ -213,7 +219,9 @@ function App() {
       if (el.scrollHeight > el.clientHeight + 50 && el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
         lastLoadTimeRef.current = Date.now();
         if (isSharedRoot) loadMoreSharedFolders();
-        else loadMoreFolder(nav.currentFolderId);
+        else if (isTrashTab) {
+          if (trashFolderId) loadMoreFolder(trashFolderId);
+        } else loadMoreFolder(nav.currentFolderId);
       }
     };
     el.addEventListener("scroll", handleScroll, { passive: true });
@@ -224,6 +232,8 @@ function App() {
     pagination.hasMore,
     pagination.loading,
     isSharedRoot,
+    isTrashTab,
+    trashFolderId,
     loadMoreSharedFolders,
     loadMoreFolder,
     nav.currentFolderId,
@@ -250,6 +260,11 @@ function App() {
           sortOrder,
           trashFolderId,
         });
+
+  const isFolderLoading =
+    filesLoading ||
+    (isPaginatedTab && (!pagination.loaded || pagination.loading) && listItems.length === 0) ||
+    (isSharedOutTab && (!sharedOutLoaded || sharedOutLoading) && listItems.length === 0);
 
   // Prev/next in the full-screen viewer should step through whatever the user was actually
   // looking at — search results if a search is active, the current folder listing otherwise.
@@ -440,11 +455,15 @@ function App() {
               onContextMenu={menus.openCanvasContextMenu}
             >
               {nav.activeSidebarTab === "shared-links" ? (
-                <SharedLinksList 
-                  links={sharedLinks} 
-                  onRevoke={revokeSharedLink} 
-                  onOpenFolder={openSharedLinkFolder}
+                (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
+                  viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
+                ) : (
+                  <SharedLinksList 
+                    links={sharedLinks} 
+                    onRevoke={revokeSharedLink} 
+                    onOpenFolder={openSharedLinkFolder}
                   />
+                )
               ) : search.isSearching ? (
                 <SearchResultsList
                   results={search.results}
@@ -484,7 +503,7 @@ function App() {
                     onBatchDownload={() => fileActions.handleBatchDownload(selection.checkedItemIds)}
                   />
 
-                  {filesLoading ? (
+                  {isFolderLoading ? (
                     viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
                   ) : listItems.length === 0 ? (
                     <EmptyState />
@@ -525,7 +544,7 @@ function App() {
                     />
                   )}
 
-                  {isPaginatedTab && !filesLoading && pagination.loading && (
+                  {isPaginatedTab && !isFolderLoading && pagination.loading && (
                     <div className="flex justify-center py-4">
                       <div className="w-5 h-5 border-2 border-border-main border-t-accent rounded-full animate-spin" />
                     </div>
