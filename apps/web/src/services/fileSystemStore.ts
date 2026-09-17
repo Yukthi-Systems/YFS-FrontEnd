@@ -216,7 +216,7 @@ const mergeServerListing = (
   prev: FileItem[],
   parentId: string | null,
   incoming: FileItem[],
-  append = false
+  mode: "append" | "force" | "initial" = "initial"
 ): FileItem[] => {
   // 1. Match optimistic local rows (offline folders, just-uploaded files) to their
   //    server counterparts by kind + parent + name so the temp id is swapped for the
@@ -251,22 +251,12 @@ const mergeServerListing = (
     
     return {
       ...res,
-      // isStarred / color / icon now live in resource_info (carried by ...res).
-      // trash_info in resource_info (res) is authoritative. Folders keep a local
-      // optimistic flag too (trashItems syncs them, but the real edit may not have
-      // landed yet) — files never get a local one now (trash is blocked client-side
-      // for files, see useFileActions.ts), so always trust the server for them;
-      // otherwise a file trashed before that block existed would stay stuck
-      // "deleted" locally forever even once the server says otherwise.
       isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
       trashedFrom: f.trashedFrom ?? res.trashedFrom,
       share: f.share,
       versions: f.versions,
       blobUrl: f.blobUrl,
       storageKey: f.storageKey,
-      // fileId now comes from the server listing itself (mapResource) — prefer it,
-      // falling back to a locally-set one only if this particular row is missing it.
-      // version isn't in the listing at all yet, so keep whatever the upload set.
       fileId: res.fileId ?? f.fileId,
       version: f.version,
     };
@@ -275,9 +265,8 @@ const mergeServerListing = (
     if (!workingIds.has(res.id)) merged.push(res);
   }
 
-  // When appending a later page we only have a slice of the folder's children, so the
-  // "vanished server-side" check below would wrongly drop every earlier page. Skip it.
-  if (append) return merged;
+  // When appending or initially upserting a page, preserve other pages. Only a forced full refresh drops rows.
+  if (mode !== "force") return merged;
 
   // 3. Drop rows that are direct children of this folder but aren't in the fresh
   //    listing:
@@ -384,6 +373,8 @@ const notifySyncFailed = (context: string, fallback: string) => (err: unknown) =
   showToast(err instanceof Error ? err.message : fallback, "error");
 };
 
+const inFlightFolderPages = new Set<string>();
+
 // One folder page fetch. `mode` picks the intent:
 //   "initial" — first visit; a no-op if the page is already cached (staleTime: Infinity)
 //   "force"   — re-fetch page 1, resetting the scroll position
@@ -406,6 +397,10 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
 
   const state = pageState.get(key) ?? { loaded: 0, hasMore: true };
   if (mode === "append" && !state.hasMore) return;
+  if (mode === "initial" && state.loaded > 0) return;
+
+  if (inFlightFolderPages.has(key) && mode !== "force") return;
+  inFlightFolderPages.add(key);
 
   const offset = mode === "append" ? state.loaded : 0;
   const queryKey = folderQueryKey(key, offset);
@@ -417,8 +412,6 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
   setPageLoading(key, true, state.hasMore);
 
   try {
-    // queryClient dedupes identical in-flight (queryKey) fetches on its own — no
-    // manual in-flight guard needed here anymore.
     const resources = await queryClient.fetchQuery({
       queryKey,
       queryFn: async () => {
@@ -457,7 +450,7 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
       return item;
     });
     store.set(filesAtom, (prev) => {
-      const next = mergeServerListing(prev, parentId, mapped, mode === "append");
+      const next = mergeServerListing(prev, parentId, mapped, mode);
       saveCache(next);
       return next;
     });
@@ -471,6 +464,8 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     const message: string | null = err instanceof Error ? err.message : "Could not reach the file service";
     store.set(remoteErrorAtom, message);
     setPageLoading(key, false);
+  } finally {
+    inFlightFolderPages.delete(key);
   }
 };
 
@@ -479,6 +474,8 @@ export const loadFolder = (parentId: string | null, opts?: { force?: boolean }) 
 
 export const loadMoreFolder = (parentId: string | null) => fetchFolderPage(parentId, "append");
 
+let inFlightShared = false;
+
 // Shared-with-me folders, paged the same way. `mode` matches fetchFolderPage.
 const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
   if (!authSnapshot.token) return;
@@ -486,6 +483,10 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
 
   const state = pageState.get(key) ?? { loaded: 0, hasMore: true };
   if (mode === "append" && !state.hasMore) return;
+  if (mode === "initial" && state.loaded > 0) return;
+
+  if (inFlightShared && mode !== "force") return;
+  inFlightShared = true;
 
   const offset = mode === "append" ? state.loaded : 0;
   const queryKey = folderQueryKey(key, offset);
@@ -538,9 +539,8 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
       return item;
     });
     store.set(filesAtom, (prev) => {
-      // "force"/"initial" replace the whole bucket; "append" adds the new page,
-      // skipping any id already present.
-      const kept = mode === "append" ? prev : prev.filter((f) => f.origin !== "shared");
+      // "force" replaces the whole bucket; "append" and "initial" add/merge without dropping
+      const kept = mode === "force" ? prev.filter((f) => f.origin !== "shared") : prev;
       const seen = new Set(kept.map((f) => f.id));
       const next = [...kept, ...mapped.filter((m) => !seen.has(m.id))];
       saveCache(next);
@@ -556,6 +556,8 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
     const message: string | null = err instanceof Error ? err.message : "Could not reach the file service";
     store.set(remoteErrorAtom, message);
     setPageLoading(key, false);
+  } finally {
+    inFlightShared = false;
   }
 };
 
@@ -699,7 +701,7 @@ const ensureTrashFolder = async (): Promise<string | null> => {
 
   const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmail));
   store.set(filesAtom, (prev) => {
-    const next = mergeServerListing(prev, null, mapped, false);
+    const next = mergeServerListing(prev, null, mapped, "initial");
     saveCache(next);
     return next;
   });
@@ -874,7 +876,7 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
 
     const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmail));
     store.set(filesAtom, (prev) => {
-      const next = mergeServerListing(prev, listParentId, mapped, false);
+      const next = mergeServerListing(prev, listParentId, mapped, "initial");
       saveCache(next);
       return next;
     });

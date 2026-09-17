@@ -8,12 +8,26 @@ export function useScrollMargin<T extends HTMLElement>(scrollElement: HTMLElemen
     const measure = () => {
       const el = ref.current;
       if (!el || !scrollElement) return;
-      setMargin(el.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top + scrollElement.scrollTop);
+      const calculated = Math.round(
+        el.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top + scrollElement.scrollTop
+      );
+      setMargin((prev) => (Math.abs(prev - calculated) > 1 ? calculated : prev));
     };
+
     measure();
+
+    if (!scrollElement) return;
+
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(scrollElement);
+    if (ref.current) ro?.observe(ref.current);
+
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  });
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [scrollElement]);
 
   return { ref, margin };
 }

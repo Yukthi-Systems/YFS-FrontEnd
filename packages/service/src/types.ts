@@ -56,7 +56,7 @@ export interface PageQuery {
 
 // Default page size for every paginated GET endpoint. The web UI pages through
 // results with infinite scroll, one PAGE_SIZE-sized window at a time.
-export const PAGE_SIZE = 100;
+export const PAGE_SIZE = 50;
 
 // GET /user/user-by-id/{id} and one row of GET /user/search/user-by-email/{email}.
 // Only users who have signed in to YFS at least once exist here.

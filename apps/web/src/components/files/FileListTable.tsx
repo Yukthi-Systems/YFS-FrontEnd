@@ -1,19 +1,14 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { Loader2, MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
-import { useScrollMargin } from "../../hooks/useScrollMargin";
-
-const COLUMN_COUNT = 7;
 
 export function FileListTable({
   items,
-  scrollElement,
   selectedItemId,
   checkedItemIds,
   contextMenuId,
@@ -30,9 +25,6 @@ export function FileListTable({
   onDropOnFolder,
 }: {
   items: FileItem[];
-  // The scrollable ancestor this table renders inside — a folder can hold thousands
-  // of files, so rows are virtualized against this instead of all mounting at once.
-  scrollElement: HTMLElement | null;
   selectedItemId: string | null;
   checkedItemIds: string[];
   contextMenuId: string | null;
@@ -49,24 +41,6 @@ export function FileListTable({
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
-  // A zero-height marker row at the top of tbody — measuring it (rather than the
-  // table/wrapper) automatically accounts for thead's height too.
-  const { ref: marginRowRef, margin: scrollMargin } = useScrollMargin<HTMLTableRowElement>(scrollElement);
-
-  const rowVirtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => scrollElement,
-    estimateSize: () => 41,
-    overscan: 12,
-    scrollMargin,
-  });
-
-  // item.start/.end and getTotalSize() are all expressed relative to the scroll
-  // element (i.e. they already include scrollMargin) — subtract it back out to get
-  // spacer heights local to this table's own tbody.
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start - scrollMargin : 0;
-  const paddingBottom = virtualRows.length > 0 ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end : 0;
 
   return (
     <div className="w-full overflow-x-auto">
@@ -89,24 +63,13 @@ export function FileListTable({
           </tr>
         </thead>
         <tbody>
-          <tr ref={marginRowRef} aria-hidden style={{ lineHeight: 0 }}>
-            <td colSpan={COLUMN_COUNT} style={{ padding: 0, border: 0, height: 0 }} />
-          </tr>
-          {paddingTop > 0 && (
-            <tr aria-hidden>
-              <td colSpan={COLUMN_COUNT} style={{ padding: 0, border: 0, height: paddingTop }} />
-            </tr>
-          )}
-          {virtualRows.map((virtualRow) => {
-            const item = items[virtualRow.index];
+          {items.map((item) => {
             const isSel = selectedItemId === item.id;
             const isChecked = checkedItemIds.includes(item.id);
             const isDragOver = item.isFolder && dragOverFolderId === item.id;
             return (
               <tr
                 key={item.id}
-                ref={rowVirtualizer.measureElement}
-                data-index={virtualRow.index}
                 draggable
                 onDragStart={(e) => onDragStartItem(item, e)}
                 onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
@@ -172,11 +135,6 @@ export function FileListTable({
               </tr>
             );
           })}
-          {paddingBottom > 0 && (
-            <tr aria-hidden>
-              <td colSpan={COLUMN_COUNT} style={{ padding: 0, border: 0, height: paddingBottom }} />
-            </tr>
-          )}
         </tbody>
       </table>
     </div>
