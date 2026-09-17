@@ -80,18 +80,18 @@ export function SearchResultsList({
             </div>
             {matchType === "content" && snippet && <HighlightedSnippet snippet={snippet} />}
           </div>
-          {!item.isFolder && (
-            <span className="text-[11px] text-text-main shrink-0 hidden sm:inline">
-              {isItemProcessing(item) ? (
-                <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
-                  <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
-                  Processing
-                </span>
-              ) : (
-                formatBytes(item.size)
-              )}
-            </span>
-          )}
+          <span className="text-[11px] text-text-main shrink-0 hidden sm:inline">
+            {item.isFolder ? (
+              item.size > 0 ? formatBytes(item.size) : "—"
+            ) : isItemProcessing(item) ? (
+              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
+                Processing
+              </span>
+            ) : (
+              formatBytes(item.size)
+            )}
+          </span>
           <span className="text-[11px] text-text-main shrink-0 hidden sm:inline">{formatDate(item.modifiedAt)}</span>
           <div className="relative shrink-0">
             <button

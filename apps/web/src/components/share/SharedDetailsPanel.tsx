@@ -55,7 +55,7 @@ export function SharedDetailsPanel({
           </InfoRow>
           <InfoRow label="Size">
             {item.isFolder ? (
-              "—"
+              item.size > 0 ? formatBytes(item.size) : "0 B"
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
                 <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
