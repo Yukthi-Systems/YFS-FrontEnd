@@ -649,6 +649,7 @@ function App() {
           onNavigate={setViewerItem}
           onDownload={fileActions.handleDownload}
           onSaveContent={fileActions.handleSaveContent}
+          permissions={getSharedPermissions(viewerItem.id)}
         />
       )}
 

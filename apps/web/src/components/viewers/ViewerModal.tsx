@@ -10,9 +10,9 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import type { FileItem } from "../../types/file";
+import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { isItemProcessing } from "../../utils/format";
-import { isTextEditable } from "../../utils/fileType";
+import { isTextEditable, isCollaboraSupported } from "../../utils/fileType";
 import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
 
@@ -22,6 +22,9 @@ const PdfViewer = lazy(() => import("./PdfViewer").then((m) => ({ default: m.Pdf
 const SpreadsheetViewer = lazy(() => import("./SpreadsheetViewer").then((m) => ({ default: m.SpreadsheetViewer })));
 const CodeEditor = lazy(() => import("./CodeEditor").then((m) => ({ default: m.CodeEditor })));
 const DocViewer = lazy(() => import("./DocViewer").then((m) => ({ default: m.DocViewer })));
+const CollaboraViewer = lazy(() =>
+  import("./CollaboraViewer").then((m) => ({ default: m.CollaboraViewer }))
+);
 
 const WORD_EXTENSIONS = new Set(["doc", "docx"]);
 
@@ -34,6 +37,7 @@ export function ViewerModal({
   onNavigate,
   onDownload,
   onSaveContent,
+  permissions = null,
 }: {
   item: FileItem;
   siblings: FileItem[];
@@ -41,7 +45,11 @@ export function ViewerModal({
   onNavigate: (item: FileItem) => void;
   onDownload: (item: FileItem) => void;
   onSaveContent: (id: string, blob: Blob) => void;
+  // The caller's permissions when `item` lives in a "Shared with me" subtree; null
+  // for the user's own items (full control) — same convention as ItemContextMenu.
+  permissions?: InternalSharePermissions | null;
 }) {
+  const canEdit = !permissions || permissions.can_update;
   const [isPiPActive, setIsPiPActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
 
@@ -50,12 +58,14 @@ export function ViewerModal({
   const prevItem = index > 0 ? viewable[index - 1] : null;
   const nextItem = index >= 0 && index < viewable.length - 1 ? viewable[index + 1] : null;
 
-  // Office-suite documents (PDF/Word/Excel) get a near-fullscreen viewport instead of the
-  // narrower default box, since they're read as full pages rather than a quick preview.
+  // Office-suite documents (PDF/Word/Excel, plus anything rendered via Collabora) get a
+  // near-fullscreen viewport instead of the narrower default box, since they're read as
+  // full pages rather than a quick preview.
   const isOfficeDoc =
     item.type === "pdf" ||
     item.type === "spreadsheet" ||
-    (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension));
+    (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension)) ||
+    isCollaboraSupported(item);
 
   const handleClose = () => {
     if (isPiPActive && !isMinimized) {
@@ -116,6 +126,13 @@ export function ViewerModal({
       );
     }
     if (item.type === "image") return <ImageLightbox item={item} />;
+    if (isCollaboraSupported(item)) {
+      return (
+        <Suspense fallback={<ViewerLoading />}>
+          <CollaboraViewer item={item} canEdit={canEdit} />
+        </Suspense>
+      );
+    }
     if (item.type === "pdf") {
       return (
         <Suspense fallback={<ViewerLoading />}>

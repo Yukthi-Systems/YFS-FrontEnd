@@ -178,3 +178,38 @@ export const moveFile = async (
     body: JSON.stringify(req),
   });
 };
+
+// Same FileOpsRequest shape as FileDownloadRequest — Rust resolves the real storage
+// path server-side, same as download/upload — plus `can_edit`, which is only what the
+// UI *wants*; the server must independently verify real write permission and clamp to
+// view-only rather than trust this field as an authorization grant.
+export interface FileWopiRequest {
+  folder_id: string;
+  file_id: string;
+  shared_folder_id?: string | null;
+  file_name: string;
+  file_info: Record<string, unknown>;
+  file_type: string;
+  file_version: number;
+  expected_file_size: number;
+  can_edit: boolean;
+}
+
+// A single WOPI grant — not array-of-one like upload/download, matching the Storage
+// API's own single-object DownloadSession shape for /sessions/wopi.
+export interface WopiSession {
+  wopi_src: string; // the Storage API's `{base}/wopi/files/{fileID}` — hand this to Collabora as WOPISrc, don't fetch it directly
+  token: string;
+  expires_at: string; // RFC3339
+}
+
+// POST /sessions/wopi — mints a WOPI session for Collabora. YFS-Main-API is expected
+// to call the Storage API's internal POST /sessions/wopi to actually issue the token.
+export const requestWopiSession = async (accessToken: string, req: FileWopiRequest): Promise<WopiSession> => {
+  const { data } = await apiRequest<WopiSession>("/sessions/wopi", {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  return data;
+};
