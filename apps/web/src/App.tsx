@@ -303,9 +303,14 @@ function App() {
   }
 
   function handleItemDoubleClick(item: FileItem) {
-    // In "Shared by you", a row opens its sharing settings rather than navigating.
+    // In "Shared by you", double-clicking navigates into the folder (in My Drive) or previews the file,
+    // matching standard file manager behavior. Sharing remains accessible via context menu and details drawer.
     if (nav.activeSidebarTab === "shared-out") {
-      shareSettings.openShareModal(item);
+      if (item.isFolder) {
+        openSharedLinkFolder(item.id);
+      } else {
+        setViewerItem(item);
+      }
       return;
     }
     if (item.isFolder) {
