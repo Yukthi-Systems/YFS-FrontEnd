@@ -63,3 +63,21 @@ export const isTextEditable = (item: Pick<FileItem, "type" | "extension">): bool
   if (item.type === "document" && item.extension && TEXT_EXTENSIONS.has(item.extension)) return true;
   return false;
 };
+
+// Extensions Collabora's own discovery.xml lists an action for (confirmed against the
+// live discovery response). txt/csv are excluded — CodeEditor/SpreadsheetViewer already
+// handle those and don't need a round trip to Collabora.
+export const COLLABORA_EXTENSIONS = new Set([
+  "doc", "docx", "odt", "rtf",
+  "xls", "xlsx", "ods",
+  "ppt", "pptx", "odp",
+  "pdf",
+]);
+
+// Local-only/seeded items have no server file for WOPI to point at, so they keep using
+// the existing mammoth/xlsx/pdf.js viewers instead.
+export const isCollaboraSupported = (item: Pick<FileItem, "extension" | "fileId" | "origin">): boolean =>
+  !!item.extension &&
+  COLLABORA_EXTENSIONS.has(item.extension) &&
+  !!item.fileId &&
+  (item.origin === "server" || item.origin === "shared");
