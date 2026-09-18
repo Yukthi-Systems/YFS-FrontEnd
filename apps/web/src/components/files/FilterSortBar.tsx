@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Check, Download, RefreshCw, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { SORT_FIELD_OPTIONS } from "../../types/file";
 import type { SidebarTab, SortField, SortOrder } from "../../types/file";
 import { Dropdown } from "../common/Dropdown";
@@ -40,38 +40,84 @@ export function FilterSortBar({
   onBatchDownload: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 flex-wrap  pb-4 mb-3" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-3 flex-wrap pb-4 mb-3" onClick={(e) => e.stopPropagation()}>
       <div className="flex-1 min-w-0">
         <Breadcrumbs segments={breadcrumbSegments} onNavigate={onBreadcrumbNavigate} />
       </div>
 
       {checkedCount > 0 && (
-        <div className="flex items-center gap-3 bg-accent-bg border border-accent-border px-3.5 py-1.5 rounded-xl animate-fade-in">
-          <span className="text-xs font-semibold text-accent">{checkedCount} selected</span>
+        <div className="flex items-center gap-1.5 bg-bg-main border border-accent-border/70 shadow-lg shadow-black/10 dark:shadow-black/40 backdrop-blur-md px-2 py-1 rounded-full transition-all duration-200">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-accent-bg text-accent rounded-full text-xs font-semibold select-none">
+            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>{checkedCount.toLocaleString()} selected</span>
+          </div>
+
+          <div className="h-4 w-px bg-border-main my-auto mx-0.5" />
+
           {activeSidebarTab === "trash" ? (
-            <>
-              <button onClick={onBatchRestore} className="text-xs bg-transparent border-none text-text-heading hover:bg-black/5 dark:hover:bg-white/5 py-1 px-2 rounded font-medium cursor-pointer transition">
-                Restore
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={onBatchRestore}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent"
+                title="Restore selected items"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-accent" />
+                <span>Restore</span>
               </button>
-              <button onClick={onBatchPermanentDelete} className="text-xs bg-transparent border-none text-red-500 hover:bg-red-500/10 py-1 px-2 rounded font-medium cursor-pointer transition">
-                Delete Permanent
+              <button
+                type="button"
+                onClick={onBatchPermanentDelete}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent"
+                title="Permanently delete selected items"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
               </button>
-            </>
+            </div>
           ) : (
-            <>
-              <button onClick={onBatchDownload} className="text-xs bg-transparent border-none text-text-heading hover:bg-black/5 dark:hover:bg-white/5 py-1 px-2 rounded font-medium cursor-pointer transition">
-                ⬇ Download
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={onBatchDownload}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent"
+                title="Download selected"
+              >
+                <Download className="w-3.5 h-3.5 text-accent" />
+                <span>Download</span>
               </button>
-              <button onClick={onBatchStar} className="text-xs bg-transparent border-none text-text-heading hover:bg-black/5 dark:hover:bg-white/5 py-1 px-2 rounded font-medium cursor-pointer transition">
-                ★ Star
+              <button
+                type="button"
+                onClick={onBatchStar}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-amber-400 hover:bg-amber-400/10 rounded-full transition cursor-pointer border-none bg-transparent"
+                title="Star selected"
+              >
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+                <span>Star</span>
               </button>
-              <button onClick={onBatchTrash} className="text-xs bg-transparent border-none text-red-500 hover:bg-red-500/10 py-1 px-2 rounded font-medium cursor-pointer transition">
-                🗑️ Move to Trash
+              <button
+                type="button"
+                onClick={onBatchTrash}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent"
+                title="Move selected to trash"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Move to Trash</span>
               </button>
-            </>
+            </div>
           )}
-          <button onClick={onClearSelection} className="text-xs bg-transparent border-none text-text-heading hover:bg-black/5 dark:hover:bg-white/5 py-1 px-2 rounded font-medium cursor-pointer transition ml-2">
-            ✕ Clear
+
+          <div className="h-4 w-px bg-border-main my-auto mx-0.5" />
+
+          <button
+            type="button"
+            onClick={onClearSelection}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text-main hover:text-text-heading hover:bg-code-bg rounded-full transition cursor-pointer border-none bg-transparent"
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Clear</span>
           </button>
         </div>
       )}

@@ -138,7 +138,6 @@ export function SharedFileView() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
   const [contextMenuId, setContextMenuId] = useState<string | null>(null);
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
 
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
@@ -455,7 +454,6 @@ export function SharedFileView() {
 
       <div className="flex-1 flex overflow-hidden relative">
       <div
-        ref={setScrollContainer}
         className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"
         onClick={() => {
           setContextMenuId(null);
@@ -524,7 +522,6 @@ export function SharedFileView() {
         ) : viewMode === "list" ? (
           <FileListTable
             items={items}
-            scrollElement={scrollContainer}
             selectedItemId={selection.selectedItemId}
             checkedItemIds={selection.checkedItemIds}
             contextMenuId={contextMenuId}
@@ -546,7 +543,6 @@ export function SharedFileView() {
         ) : (
           <FileGrid
             items={items}
-            scrollElement={scrollContainer}
             selectedItemId={selection.selectedItemId}
             checkedItemIds={selection.checkedItemIds}
             contextMenuId={contextMenuId}

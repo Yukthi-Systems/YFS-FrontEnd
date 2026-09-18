@@ -20,7 +20,6 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
-import { useInfiniteScroll } from "./hooks/useInfiniteScroll";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -196,23 +195,39 @@ function App() {
   };
 
   // Infinite scroll — only the server-backed listings ("drive" folders, the
+  // Infinite scroll — only the server-backed listings ("drive" folders, the
   // "shared with me" bucket, and folders opened inside a share) page; the other
   // tabs are client-side filters.
   const isSharedTab = nav.activeSidebarTab === "shared";
   const isSharedRoot = isSharedTab && !nav.currentFolderId;
   const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive";
   const pagination = getPagination(nav.currentFolderId, isSharedRoot);
-  const loadMoreSentinelRef = useInfiniteScroll(
-    () => {
-      if (isSharedRoot) loadMoreSharedFolders();
-      else loadMoreFolder(nav.currentFolderId);
-    },
-    {
-      hasMore: isPaginatedTab && pagination.hasMore,
-      loading: pagination.loading,
-      root: scrollContainer,
-    }
-  );
+
+  const lastLoadTimeRef = useRef(0);
+  useEffect(() => {
+    const el = scrollContainer;
+    if (!el) return;
+    const handleScroll = () => {
+      if (!isPaginatedTab || !pagination.hasMore || pagination.loading) return;
+      if (Date.now() - lastLoadTimeRef.current < 800) return;
+      if (el.scrollHeight > el.clientHeight + 50 && el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+        lastLoadTimeRef.current = Date.now();
+        if (isSharedRoot) loadMoreSharedFolders();
+        else loadMoreFolder(nav.currentFolderId);
+      }
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [
+    scrollContainer,
+    isPaginatedTab,
+    pagination.hasMore,
+    pagination.loading,
+    isSharedRoot,
+    loadMoreSharedFolders,
+    loadMoreFolder,
+    nav.currentFolderId,
+  ]);
 
   // Surface a one-time notice if the file service can't be reached.
   useEffect(() => {
@@ -471,7 +486,6 @@ function App() {
                   ) : viewMode === "list" ? (
                     <FileListTable
                       items={listItems}
-                      scrollElement={scrollContainer}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
@@ -490,7 +504,6 @@ function App() {
                   ) : (
                     <FileGrid
                       items={listItems}
-                      scrollElement={scrollContainer}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
@@ -507,11 +520,9 @@ function App() {
                     />
                   )}
 
-                  {isPaginatedTab && !filesLoading && (pagination.hasMore || pagination.loading) && (
-                    <div ref={loadMoreSentinelRef} className="flex justify-center py-4">
-                      {pagination.loading && (
-                        <div className="w-5 h-5 border-2 border-border-main border-t-accent rounded-full animate-spin" />
-                      )}
+                  {isPaginatedTab && !filesLoading && pagination.loading && (
+                    <div className="flex justify-center py-4">
+                      <div className="w-5 h-5 border-2 border-border-main border-t-accent rounded-full animate-spin" />
                     </div>
                   )}
                 </>

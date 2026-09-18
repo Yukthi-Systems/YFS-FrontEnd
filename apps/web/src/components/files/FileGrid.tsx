@@ -1,14 +1,11 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { Loader2, MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
-import { useScrollMargin } from "../../hooks/useScrollMargin";
-import { useGridColumns } from "../../hooks/useGridColumns";
 
 const GRID_COLS_CLASS = "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
 
@@ -32,7 +29,6 @@ function Thumbnail({ item }: { item: FileItem }) {
 
 export function FileGrid({
   items,
-  scrollElement,
   selectedItemId,
   checkedItemIds,
   contextMenuId,
@@ -48,9 +44,6 @@ export function FileGrid({
   onDropOnFolder,
 }: {
   items: FileItem[];
-  // The scrollable ancestor this grid renders inside — a folder can hold thousands
-  // of files, so only visible rows of cards are mounted at once.
-  scrollElement: HTMLElement | null;
   selectedItemId: string | null;
   checkedItemIds: string[];
   contextMenuId: string | null;
@@ -66,22 +59,6 @@ export function FileGrid({
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
-  const { ref: marginRef, margin: scrollMargin } = useScrollMargin<HTMLDivElement>(scrollElement);
-  const columns = useGridColumns();
-
-  const rows = useMemo(() => {
-    const out: FileItem[][] = [];
-    for (let i = 0; i < items.length; i += columns) out.push(items.slice(i, i + columns));
-    return out;
-  }, [items, columns]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollElement,
-    estimateSize: () => 168,
-    overscan: 4,
-    scrollMargin,
-  });
 
   const renderCard = (item: FileItem) => {
     const isSel = selectedItemId === item.id;
@@ -151,24 +128,9 @@ export function FileGrid({
     );
   };
 
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start - scrollMargin : 0;
-  const paddingBottom = virtualRows.length > 0 ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end : 0;
-
   return (
-    <div ref={marginRef} className="flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-      {paddingTop > 0 && <div style={{ height: paddingTop }} />}
-      {virtualRows.map((virtualRow) => (
-        <div
-          key={virtualRow.key}
-          data-index={virtualRow.index}
-          ref={rowVirtualizer.measureElement}
-          className={`grid ${GRID_COLS_CLASS} gap-3`}
-        >
-          {rows[virtualRow.index].map(renderCard)}
-        </div>
-      ))}
-      {paddingBottom > 0 && <div style={{ height: paddingBottom }} />}
+    <div className={`grid ${GRID_COLS_CLASS} gap-3`} onClick={(e) => e.stopPropagation()}>
+      {items.map(renderCard)}
     </div>
   );
 }
