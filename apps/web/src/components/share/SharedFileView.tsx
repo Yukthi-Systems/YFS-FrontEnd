@@ -77,7 +77,6 @@ const mapPublicResource = (r: BackendResource): FileItem => {
 const sortItems = (items: FileItem[], field: SortField, order: SortOrder): FileItem[] => {
   const dir = order === "asc" ? 1 : -1;
   return [...items].sort((a, b) => {
-    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1; // folders first, always
     let cmp = 0;
     if (field === "name") cmp = a.name.localeCompare(b.name, undefined, { numeric: true });
     else if (field === "size") cmp = a.size - b.size;
