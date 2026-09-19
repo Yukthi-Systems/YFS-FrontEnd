@@ -13,7 +13,7 @@ export function UploadTray() {
   const allActivePaused = activeCount > 0 && tasks.filter((t) => isActive(t.status)).every((t) => t.status === "paused");
 
   return (
-    <div className="fixed bottom-5 left-5 z-[1900] w-full max-w-sm bg-bg-main border border-border-main rounded-2xl shadow-lg overflow-hidden animate-scale-in">
+    <div className="fixed bottom-5 right-5 z-[1900] w-full max-w-sm bg-bg-main border border-border-main rounded-2xl shadow-lg overflow-hidden animate-scale-in">
       <div
         className="flex items-center justify-between px-4 py-3 border-b border-border-main cursor-pointer"
         onClick={() => setCollapsed((v) => !v)}
