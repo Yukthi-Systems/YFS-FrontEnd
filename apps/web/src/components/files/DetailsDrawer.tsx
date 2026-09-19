@@ -280,7 +280,7 @@ export function DetailsDrawer({
               onClick={onOpenFull}
               disabled={isItemProcessing(item)}
               title={isItemProcessing(item) ? "File is still processing" : undefined}
-              className="flex items-center justify-center gap-2 w-full py-2 bg-gradient-to-br from-accent to-purple-600 text-white font-semibold rounded-xl hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
+              className="flex items-center justify-center gap-2 w-full py-2 bg-accent text-white font-semibold rounded-xl hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
             >
               <Expand className="w-4 h-4" /> Open
             </button>
