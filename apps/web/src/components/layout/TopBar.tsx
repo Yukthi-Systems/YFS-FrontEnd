@@ -79,7 +79,7 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
-        <SessionTimer expiresAt={sessionExpiresAt} />
+        {/* <SessionTimer expiresAt={sessionExpiresAt} /> */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => onViewModeChange("list")}

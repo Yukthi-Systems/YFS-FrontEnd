@@ -1,8 +1,9 @@
 import { useRef } from "react";
-import { HttpError, type FileWopiRequest } from "@yfs/service";
+import type { FileWopiRequest } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { collaboraClient, resolveCollaboraAction, buildCollaboraActionUrl } from "../services/collaboraClient";
+import { withAuthRetry } from "../utils/authRetry";
 import type { FileItem } from "../types/file";
 
 // POST /sessions/wopi wants a folder_id; the user's root isn't a folder row here, so
@@ -38,16 +39,8 @@ export function useCollabora() {
     can_edit: wantEdit,
   });
 
-  const requestWopi = async (request: FileWopiRequest) => {
-    try {
-      return await collaboraClient.requestSession(tokenRef.current ?? "", request);
-    } catch (err) {
-      if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 400)) throw err;
-      const fresh = await refreshAccessToken();
-      if (!fresh) throw err;
-      return collaboraClient.requestSession(fresh, request);
-    }
-  };
+  const requestWopi = (request: FileWopiRequest) =>
+    withAuthRetry(tokenRef.current, refreshAccessToken, (tk) => collaboraClient.requestSession(tk, request));
 
   const getEditorSession = async (item: FileItem, wantEdit: boolean): Promise<CollaboraEditorSession> => {
     if (!item.extension) throw new Error("This file has no extension for Collabora to match.");

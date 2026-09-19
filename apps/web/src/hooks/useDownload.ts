@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
-import { HttpError, getFileBasicInfo, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
+import { getFileBasicInfo, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { downloadClient } from "../services/downloadClient";
+import { withAuthRetry } from "../utils/authRetry";
 import type { FileItem } from "../types/file";
 
 // POST /files/download wants a folder_id; the user's root isn't a folder row here,
@@ -63,16 +64,8 @@ export function useDownload() {
     }
   };
 
-  const requestSession = async (request: FileDownloadRequest): Promise<DownloadSession> => {
-    try {
-      return await downloadClient.requestSession(tokenRef.current ?? "", request);
-    } catch (err) {
-      if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 400)) throw err;
-      const fresh = await refreshAccessToken();
-      if (!fresh) throw err;
-      return downloadClient.requestSession(fresh, request);
-    }
-  };
+  const requestSession = (request: FileDownloadRequest): Promise<DownloadSession> =>
+    withAuthRetry(tokenRef.current, refreshAccessToken, (tk) => downloadClient.requestSession(tk, request));
 
   const getStreamUrl = async (item: FileItem): Promise<string | null> => {
     if (item.blobUrl) return item.blobUrl;

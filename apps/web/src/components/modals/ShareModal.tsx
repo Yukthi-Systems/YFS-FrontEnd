@@ -16,6 +16,7 @@ import {
   deleteExternalShare,
 } from "@yfs/service";
 import { useAuth } from "../../hooks/useAuth";
+import { withAuthRetry } from "../../utils/authRetry";
 import { useToast } from "../../atoms/toast";
 import { ModalShell } from "./ModalShell";
 
@@ -136,7 +137,7 @@ function PermissionToggles({
 }
 
 export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => void }) {
-  const { token, user } = useAuth();
+  const { token, user, refreshAccessToken } = useAuth();
   const { showToast } = useToast();
 
   const sharingDisabled = user?.is_sharing_enabled === false;
@@ -159,11 +160,15 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     queryKey: shareQueryKey,
     queryFn: async () => {
       const [shareInfo, allLinks] = await Promise.all([
-        canShareInternally ? getFolderShareInfo(token!, item.id) : Promise.resolve([]),
+        canShareInternally
+          ? withAuthRetry(token, refreshAccessToken, (tk) => getFolderShareInfo(tk, item.id))
+          : Promise.resolve([]),
         (async () => {
           const out: ExternalShare[] = [];
           for (let offset = 0; offset < 2000; offset += 100) {
-            const page = await listExternalShares(token!, { limit: 100, offset });
+            const page = await withAuthRetry(token, refreshAccessToken, (tk) =>
+              listExternalShares(tk, { limit: 100, offset })
+            );
             out.push(...page);
             if (page.length < 100) break;
           }
@@ -176,7 +181,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
           let email = s.shared_with_user_id;
           let name: string | undefined;
           try {
-            const u = await getUserById(token!, s.shared_with_user_id);
+            const u = await withAuthRetry(token, refreshAccessToken, (tk) => getUserById(tk, s.shared_with_user_id));
             if (u) {
               email = u.email;
               name = displayNameOf(u);
@@ -231,7 +236,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
   const searchEnabled = !!token && debouncedEmailQuery.length >= 2;
   const searchQuery = useQuery({
     queryKey: ["userSearch", debouncedEmailQuery],
-    queryFn: () => searchUsersByEmail(token!, debouncedEmailQuery),
+    queryFn: () => withAuthRetry(token, refreshAccessToken, (tk) => searchUsersByEmail(tk, debouncedEmailQuery)),
     enabled: searchEnabled,
   });
   const results = searchEnabled ? (searchQuery.data ?? []) : [];
@@ -301,11 +306,16 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
 
       for (const p of people) {
         try {
-          if (p.base && p.removed) await deleteInternalShare(token, item.id, p.userId);
+          if (p.base && p.removed)
+            await withAuthRetry(token, refreshAccessToken, (tk) => deleteInternalShare(tk, item.id, p.userId));
           else if (!p.base && !p.removed)
-            await createInternalShare(token, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms });
+            await withAuthRetry(token, refreshAccessToken, (tk) =>
+              createInternalShare(tk, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms })
+            );
           else if (p.base && !p.removed && !permsEqual(p.base, p.perms))
-            await updateInternalShare(token, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms });
+            await withAuthRetry(token, refreshAccessToken, (tk) =>
+              updateInternalShare(tk, { folderId: item.id, sharedWithUserId: p.userId, permissions: p.perms })
+            );
         } catch (err) {
           errors.push(`${p.email}: ${errMsg(err)}`);
         }
@@ -315,7 +325,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
         const id = l.shareId.trim();
         try {
           if (l.base && l.removed) {
-            await deleteExternalShare(token, l.shareId);
+            await withAuthRetry(token, refreshAccessToken, (tk) => deleteExternalShare(tk, l.shareId));
           } else if (!l.base && !l.removed) {
             if (id.length < 3 || id.length > 36) {
               errors.push(`Link id "${id}" must be 3–36 characters`);
@@ -326,31 +336,35 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
               errors.push(`Link "${id}": ${expiryErr}`);
               continue;
             }
-            await createExternalShare(token, {
-              shareId: id,
-              fileTargetId: item.isFolder ? null : item.id,
-              folderTargetId: item.isFolder ? item.id : null,
-              permissions: l.perms,
-              rawPassword: l.password.trim() || null,
-              emailsForOtp: splitList(l.otpEmails),
-              phonesForOtp: splitList(l.otpPhones),
-              expiresAt: toExpiresIso(l.expiresAt),
-            });
+            await withAuthRetry(token, refreshAccessToken, (tk) =>
+              createExternalShare(tk, {
+                shareId: id,
+                fileTargetId: item.isFolder ? null : item.id,
+                folderTargetId: item.isFolder ? item.id : null,
+                permissions: l.perms,
+                rawPassword: l.password.trim() || null,
+                emailsForOtp: splitList(l.otpEmails),
+                phonesForOtp: splitList(l.otpPhones),
+                expiresAt: toExpiresIso(l.expiresAt),
+              })
+            );
           } else if (l.base && !l.removed && linkDirty(l)) {
             const expiryErr = expiryError(l.expiresAt);
             if (expiryErr) {
               errors.push(`Link "${id}": ${expiryErr}`);
               continue;
             }
-            await updateExternalShare(token, l.shareId, {
-              permissions: l.perms,
-              shareInfo: l.base.share_info,
-              updatePassword: l.changePassword,
-              rawPassword: l.changePassword ? l.password.trim() || null : null,
-              emailsForOtp: splitList(l.otpEmails),
-              phonesForOtp: splitList(l.otpPhones),
-              expiresAt: toExpiresIso(l.expiresAt),
-            });
+            await withAuthRetry(token, refreshAccessToken, (tk) =>
+              updateExternalShare(tk, l.shareId, {
+                permissions: l.perms,
+                shareInfo: l.base!.share_info,
+                updatePassword: l.changePassword,
+                rawPassword: l.changePassword ? l.password.trim() || null : null,
+                emailsForOtp: splitList(l.otpEmails),
+                phonesForOtp: splitList(l.otpPhones),
+                expiresAt: toExpiresIso(l.expiresAt),
+              })
+            );
           }
         } catch (err) {
           errors.push(`Link ${id}: ${errMsg(err)}`);
