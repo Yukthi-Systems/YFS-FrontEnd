@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtom, useSetAtom } from "jotai";
 import { getUserById, updateUserInfo } from "@yfs/service";
 import { useAuth } from "../hooks/useAuth";
+import { withAuthRetry } from "../utils/authRetry";
 import { useTheme } from "../atoms/theme";
 import { showToast } from "../atoms/toast";
 import {
@@ -45,7 +46,7 @@ interface PrivateBlob {
 }
 
 export function UserSettingsBridge() {
-  const { token, userId } = useAuth();
+  const { token, userId, refreshAccessToken } = useAuth();
   const { theme, setTheme } = useTheme();
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
   const [sortField, setSortField] = useAtom(sortFieldAtom);
@@ -56,7 +57,7 @@ export function UserSettingsBridge() {
 
   const query = useQuery({
     queryKey: ["userSettings", userId],
-    queryFn: () => getUserById(token!, userId!),
+    queryFn: () => withAuthRetry(token, refreshAccessToken, (tk) => getUserById(tk, userId!)),
     enabled: !!token && !!userId,
   });
 
@@ -124,12 +125,14 @@ export function UserSettingsBridge() {
     clearTimeout(privTimer.current);
     privTimer.current = setTimeout(() => {
       if (!token) return;
-      updateUserInfo(token, "private", privateBlobRef.current).catch((err) => {
-        console.warn("private_info save failed", err);
-        showToast(err instanceof Error ? err.message : "Couldn't save your preferences", "error");
-      });
+      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "private", privateBlobRef.current)).catch(
+        (err) => {
+          console.warn("private_info save failed", err);
+          showToast(err instanceof Error ? err.message : "Couldn't save your preferences", "error");
+        }
+      );
     }, SAVE_DEBOUNCE_MS);
-  }, [theme, viewMode, sortField, sortOrder, sidebarCollapsed, token]);
+  }, [theme, viewMode, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
 
   useEffect(() => {
     if (!initedRef.current) return;
@@ -144,14 +147,14 @@ export function UserSettingsBridge() {
         setSavingProfile(false);
         return;
       }
-      updateUserInfo(token, "public", publicBlobRef.current)
+      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "public", publicBlobRef.current))
         .catch((err) => {
           console.warn("public_info save failed", err);
           showToast(err instanceof Error ? err.message : "Couldn't save your profile", "error");
         })
         .finally(() => setSavingProfile(false));
     }, SAVE_DEBOUNCE_MS);
-  }, [publicProfile, token, setSavingProfile]);
+  }, [publicProfile, token, setSavingProfile, refreshAccessToken]);
 
   return null;
 }

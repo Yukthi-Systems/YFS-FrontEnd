@@ -86,6 +86,7 @@ const persistPayload = (payload: AuthPayload, profile?: SsoProfile) => {
   // Signed in — a future auto-SSO attempt (e.g. after the session later expires) is
   // allowed again.
   clearAutoSsoAttempt();
+  scheduleProactiveRefresh();
 };
 
 const clearSession = () => {
@@ -94,11 +95,33 @@ const clearSession = () => {
   store.set(userIdAtom, null);
   store.set(userAtom, null);
   store.set(sessionExpiresAtAtom, null);
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
   try {
     localStorage.removeItem("yfs_fs_cache");
   } catch {
     /* ignore */
   }
+};
+
+// Proactive refresh, ahead of actual expiry, so a normal request almost never has to
+// eat the failed-request-then-retry round trip that withAuthRetry/withFreshToken fall
+// back to — that reactive path stays in place as the safety net for a missed/late
+// timer (tab asleep through the deadline, clock skew, etc).
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+const REFRESH_SKEW_MS = 60_000;
+
+const scheduleProactiveRefresh = () => {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+  const expiresAt = store.get(sessionExpiresAtAtom);
+  if (!expiresAt) return;
+  const delay = Math.max(0, expiresAt - Date.now() - REFRESH_SKEW_MS);
+  refreshTimer = setTimeout(() => {
+    refreshAccessToken();
+  }, delay);
 };
 
 // Single-flight: concurrent 401s (e.g. several list calls firing at once on boot)
