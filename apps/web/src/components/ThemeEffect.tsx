@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { useAtomValue } from "jotai";
-import { themeAtom } from "../atoms/theme";
-import { applyTheme } from "../utils/theme";
+import { themeAtom, accentColorAtom } from "../atoms/theme";
+import { applyTheme, applyAccentColor } from "../utils/theme";
 
-// Applies the current theme to <html> and follows OS changes while on "system".
-// Mounted once at the app root, outside any route branch.
+// Applies the current theme (and any accent color override) to <html>, and follows
+// OS changes while on "system". Mounted once at the app root, outside any route branch.
 export function ThemeEffect() {
   const theme = useAtomValue(themeAtom);
+  const accentColor = useAtomValue(accentColorAtom);
 
   useEffect(() => {
     applyTheme(theme);
@@ -16,6 +17,10 @@ export function ThemeEffect() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, [theme]);
+
+  useEffect(() => {
+    applyAccentColor(accentColor);
+  }, [accentColor]);
 
   return null;
 }
