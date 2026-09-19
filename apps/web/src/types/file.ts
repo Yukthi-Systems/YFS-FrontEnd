@@ -81,7 +81,8 @@ export type SidebarTab =
   | "recent"
   | "starred"
   | "trash";
-export type ViewMode = "list" | "grid";
+export type ViewMode = "list" | "tiles" | "grid";
+export type GridSize = "small" | "medium" | "large";
 export type SortField = "name" | "modifiedAt" | "size";
 export type SortOrder = "asc" | "desc";
 

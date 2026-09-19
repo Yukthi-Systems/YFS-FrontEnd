@@ -27,13 +27,14 @@ import { TopBar } from "./components/layout/TopBar";
 import { FilterSortBar } from "./components/files/FilterSortBar";
 import { FileListTable } from "./components/files/FileListTable";
 import { FileGrid } from "./components/files/FileGrid";
+import { FileTiles } from "./components/files/FileTiles";
 import { SearchResultsList } from "./components/files/SearchResultsList";
 import { SharedLinksList } from "./components/files/SharedLinksList";
 import { ItemContextMenu } from "./components/files/ItemContextMenu";
 import { CanvasContextMenu } from "./components/files/CanvasContextMenu";
 import { DetailsDrawer } from "./components/files/DetailsDrawer";
 import { EmptyState } from "./components/common/EmptyState";
-import { ListSkeleton, GridSkeleton } from "./components/common/Skeletons";
+import { ListSkeleton, GridSkeleton, TilesSkeleton } from "./components/common/Skeletons";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { CreateFolderModal } from "./components/modals/CreateFolderModal";
 import { RenameModal } from "./components/modals/RenameModal";
@@ -46,8 +47,7 @@ import { UploadDropzone } from "./components/upload/UploadDropzone";
 import { UploadTray } from "./components/upload/UploadTray";
 
 function App() {
-  const { user, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError, sessionExpiresAt } =
-    useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError } = useAuth();
   const {
     files,
     isLoading: filesLoading,
@@ -87,10 +87,12 @@ function App() {
   // they follow the user across devices; they fall back to defaults until loaded.
   const {
     viewMode,
+    gridSize,
     sortField,
     sortOrder,
     sidebarCollapsed,
     setViewMode,
+    setGridSize,
     setSortField,
     setSortOrder,
     setSidebarCollapsed,
@@ -266,6 +268,9 @@ function App() {
     (isPaginatedTab && (!pagination.loaded || pagination.loading) && listItems.length === 0) ||
     (isSharedOutTab && (!sharedOutLoaded || sharedOutLoading) && listItems.length === 0);
 
+  const viewSkeleton =
+    viewMode === "list" ? <ListSkeleton /> : viewMode === "tiles" ? <TilesSkeleton /> : <GridSkeleton />;
+
   // Prev/next in the full-screen viewer should step through whatever the user was actually
   // looking at — search results if a search is active, the current folder listing otherwise.
   const viewerSiblings = search.isSearching ? search.results.map((r) => r.item) : listItems;
@@ -439,8 +444,9 @@ function App() {
           onSearchChange={search.setSearchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          gridSize={gridSize}
+          onGridSizeChange={setGridSize}
           onMenuClick={() => setMobileNavOpen(true)}
-          sessionExpiresAt={sessionExpiresAt}
         />
 
         <div className="flex-1 flex overflow-hidden relative">
@@ -456,7 +462,7 @@ function App() {
             >
               {nav.activeSidebarTab === "shared-links" ? (
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
-                  viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
+                  viewSkeleton
                 ) : (
                   <SharedLinksList 
                     links={sharedLinks} 
@@ -504,7 +510,7 @@ function App() {
                   />
 
                   {isFolderLoading ? (
-                    viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
+                    viewSkeleton
                   ) : listItems.length === 0 ? (
                     <EmptyState />
                   ) : viewMode === "list" ? (
@@ -525,9 +531,27 @@ function App() {
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
                       onDropOnFolder={dnd.handleDropOnFolder}
                     />
+                  ) : viewMode === "tiles" ? (
+                    <FileTiles
+                      items={listItems}
+                      selectedItemId={selection.selectedItemId}
+                      checkedItemIds={selection.checkedItemIds}
+                      contextMenuId={menus.contextMenuId}
+                      dragOverFolderId={dnd.dragOverFolderId}
+                      onItemClick={selection.handleItemClick}
+                      onCheckboxToggle={selection.handleCheckboxToggle}
+                      onContextMenuToggle={menus.setContextMenuId}
+                      onItemContextMenu={menus.openItemContextMenu}
+                      renderContextMenu={renderItemContextMenu}
+                      onDragStartItem={dnd.handleDragStartItem}
+                      onDragOverFolder={dnd.handleDragOverFolder}
+                      onDragLeaveFolder={dnd.handleDragLeaveFolder}
+                      onDropOnFolder={dnd.handleDropOnFolder}
+                    />
                   ) : (
                     <FileGrid
                       items={listItems}
+                      gridSize={gridSize}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
