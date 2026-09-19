@@ -8,13 +8,14 @@ import { useTheme, useAccentColor } from "../atoms/theme";
 import { showToast } from "../atoms/toast";
 import {
   viewModeAtom,
+  gridSizeAtom,
   sortFieldAtom,
   sortOrderAtom,
   sidebarCollapsedAtom,
   publicProfileAtom,
   savingProfileAtom,
 } from "../atoms/userSettings";
-import type { SortField, SortOrder, ViewMode } from "../types/file";
+import type { GridSize, SortField, SortOrder, ViewMode } from "../types/file";
 import type { Theme } from "../utils/theme";
 
 // Server-backed per-user settings, split across the two `users` blobs YFS-Main-API
@@ -29,7 +30,8 @@ import type { Theme } from "../utils/theme";
 const SAVE_DEBOUNCE_MS = 700;
 
 const THEMES: Theme[] = ["light", "dark", "system"];
-const VIEW_MODES: ViewMode[] = ["list", "grid"];
+const VIEW_MODES: ViewMode[] = ["list", "tiles", "grid"];
+const GRID_SIZES: GridSize[] = ["small", "medium", "large"];
 const SORT_FIELDS: SortField[] = ["name", "modifiedAt", "size"];
 const SORT_ORDERS: SortOrder[] = ["asc", "desc"];
 
@@ -40,6 +42,7 @@ interface PrivateBlob {
   theme?: Theme;
   accentColor?: string;
   viewMode?: ViewMode;
+  gridSize?: GridSize;
   sortField?: SortField;
   sortOrder?: SortOrder;
   sidebarCollapsed?: boolean;
@@ -51,6 +54,7 @@ export function UserSettingsBridge() {
   const { theme, setTheme } = useTheme();
   const { accentColor, setAccentColor } = useAccentColor();
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const [gridSize, setGridSize] = useAtom(gridSizeAtom);
   const [sortField, setSortField] = useAtom(sortFieldAtom);
   const [sortOrder, setSortOrder] = useAtom(sortOrderAtom);
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
@@ -95,10 +99,12 @@ export function UserSettingsBridge() {
     publicBlobRef.current = { ...pub };
 
     const vm = oneOf(VIEW_MODES, priv.viewMode);
+    const gs = oneOf(GRID_SIZES, priv.gridSize);
     const sf = oneOf(SORT_FIELDS, priv.sortField);
     const so = oneOf(SORT_ORDERS, priv.sortOrder);
     const th = oneOf(THEMES, priv.theme);
     if (vm) setViewMode(vm);
+    if (gs) setGridSize(gs);
     if (sf) setSortField(sf);
     if (so) setSortOrder(so);
     if (typeof priv.sidebarCollapsed === "boolean") setSidebarCollapsed(priv.sidebarCollapsed);
@@ -121,10 +127,20 @@ export function UserSettingsBridge() {
       prev.theme === theme &&
       prev.accentColor === (accentColor ?? undefined) &&
       prev.viewMode === viewMode &&
+      prev.gridSize === gridSize &&
       prev.sortField === sortField &&
       prev.sortOrder === sortOrder &&
       prev.sidebarCollapsed === sidebarCollapsed;
-    privateBlobRef.current = { ...prev, theme, accentColor: accentColor ?? undefined, viewMode, sortField, sortOrder, sidebarCollapsed };
+    privateBlobRef.current = {
+      ...prev,
+      theme,
+      accentColor: accentColor ?? undefined,
+      viewMode,
+      gridSize,
+      sortField,
+      sortOrder,
+      sidebarCollapsed,
+    };
     if (unchanged) return;
     clearTimeout(privTimer.current);
     privTimer.current = setTimeout(() => {
@@ -136,7 +152,7 @@ export function UserSettingsBridge() {
         }
       );
     }, SAVE_DEBOUNCE_MS);
-  }, [theme, accentColor, viewMode, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
+  }, [theme, accentColor, viewMode, gridSize, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
 
   useEffect(() => {
     if (!initedRef.current) return;

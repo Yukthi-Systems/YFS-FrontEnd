@@ -23,3 +23,19 @@ export function GridSkeleton() {
     </div>
   );
 }
+
+export function TilesSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-pulse">
+      {Array.from({ length: 9 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 bg-code-bg border border-border-main rounded-xl p-3 h-16">
+          <div className="w-10 h-10 rounded-lg bg-border-main shrink-0" />
+          <div className="flex flex-col gap-1.5 flex-1">
+            <div className="h-3 rounded bg-border-main w-2/3" />
+            <div className="h-2.5 rounded bg-border-main w-1/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
