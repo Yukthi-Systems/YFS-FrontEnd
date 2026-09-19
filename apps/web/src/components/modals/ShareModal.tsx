@@ -18,6 +18,7 @@ import {
 import { useAuth } from "../../hooks/useAuth";
 import { withAuthRetry } from "../../utils/authRetry";
 import { useToast } from "../../atoms/toast";
+import { Avatar } from "../common/Avatar";
 import { ModalShell } from "./ModalShell";
 
 const PERMISSION_FIELDS: { key: keyof InternalSharePermissions; label: string }[] = [
@@ -95,6 +96,12 @@ interface PersonRow {
 const displayNameOf = (u: BasicUserInfo): string | undefined => {
   const n = u.public_info?.display_name;
   return typeof n === "string" && n.trim() ? n.trim() : undefined;
+};
+
+// public_info.avatar_color if the user has chosen one, else undefined.
+const avatarColorOf = (u: BasicUserInfo): string | undefined => {
+  const c = u.public_info?.avatar_color;
+  return typeof c === "string" && c ? c : undefined;
 };
 
 interface LinkDraft {
@@ -609,7 +616,6 @@ function PeopleTab({
               {results.map((u) => {
                 const already = people.some((p) => p.userId === u.user_id && !p.removed);
                 const name = displayNameOf(u);
-                const initials = (name || u.email).substring(0, 2).toUpperCase();
                 return (
                   <button
                     key={u.user_id}
@@ -617,9 +623,7 @@ function PeopleTab({
                     onClick={() => onAddPerson(u)}
                     className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs font-medium border-none bg-transparent cursor-pointer transition text-text-main hover:bg-code-bg hover:text-text-heading disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
-                    <span className="w-6 h-6 min-w-6 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                      {initials}
-                    </span>
+                    <Avatar name={name} email={u.email} color={avatarColorOf(u)} className="w-6 h-6 min-w-6 text-[10px]" />
                     <span className="flex-1 truncate text-text-heading">
                       {name ? (
                         <>

@@ -5,6 +5,7 @@ import type { UserInfo } from "../../atoms/auth";
 import { useTheme } from "../../atoms/theme";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import type { Theme } from "../../utils/theme";
+import { Avatar } from "../common/Avatar";
 import { ProfileModal } from "../modals/ProfileModal";
 
 const THEME_OPTIONS: { value: Theme; label: string; Icon: typeof Sun }[] = [
@@ -49,10 +50,6 @@ export function UserMenu({
   }, [open]);
 
   const name = publicProfile.display_name?.trim() || capitalize(user?.username || "Guest User");
-  const initials = (publicProfile.display_name || user?.username || user?.email || "US")
-    .substring(0, 2)
-    .toUpperCase();
-  const avatarStyle = publicProfile.avatar_color ? { background: publicProfile.avatar_color } : undefined;
   const CurrentThemeIcon = (THEME_OPTIONS.find((o) => o.value === theme) ?? THEME_OPTIONS[1]).Icon;
 
   const rowClass =
@@ -67,12 +64,12 @@ export function UserMenu({
         }`}
         title="Account"
       >
-        <span
-          className="w-8 h-8 min-w-8 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center font-bold text-[11px]"
-          style={avatarStyle}
-        >
-          {initials}
-        </span>
+        <Avatar
+          name={publicProfile.display_name || user?.username}
+          email={user?.email}
+          color={publicProfile.avatar_color}
+          className="w-8 h-8 min-w-8 text-[11px]"
+        />
         {!compact && (
           <span className="flex flex-col overflow-hidden">
             <span className="text-[0.8rem] font-semibold text-text-heading truncate">{name}</span>

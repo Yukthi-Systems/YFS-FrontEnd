@@ -6,6 +6,7 @@ import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
+import { Avatar } from "../common/Avatar";
 
 export function FileListTable({
   items,
@@ -95,9 +96,7 @@ export function FileListTable({
                 </td>
                 <td className="px-3 py-2 border-b border-border-main max-[640px]:hidden">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[9px]">
-                      {item.owner.name.substring(0, 1).toUpperCase()}
-                    </div>
+                    <Avatar name={item.owner.name} email={item.owner.email} className="w-5 h-5 text-[9px]" />
                     <span className="text-[0.8rem] text-text-heading font-medium">{item.owner.name}</span>
                   </div>
                 </td>
