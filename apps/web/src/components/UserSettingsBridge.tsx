@@ -4,7 +4,7 @@ import { useAtom, useSetAtom } from "jotai";
 import { getUserById, updateUserInfo } from "@yfs/service";
 import { useAuth } from "../hooks/useAuth";
 import { withAuthRetry } from "../utils/authRetry";
-import { useTheme } from "../atoms/theme";
+import { useTheme, useAccentColor } from "../atoms/theme";
 import { showToast } from "../atoms/toast";
 import {
   viewModeAtom,
@@ -38,6 +38,7 @@ const oneOf = <T,>(allowed: readonly T[], v: unknown): T | undefined =>
 
 interface PrivateBlob {
   theme?: Theme;
+  accentColor?: string;
   viewMode?: ViewMode;
   sortField?: SortField;
   sortOrder?: SortOrder;
@@ -48,6 +49,7 @@ interface PrivateBlob {
 export function UserSettingsBridge() {
   const { token, userId, refreshAccessToken } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { accentColor, setAccentColor } = useAccentColor();
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
   const [sortField, setSortField] = useAtom(sortFieldAtom);
   const [sortOrder, setSortOrder] = useAtom(sortOrderAtom);
@@ -101,6 +103,7 @@ export function UserSettingsBridge() {
     if (so) setSortOrder(so);
     if (typeof priv.sidebarCollapsed === "boolean") setSidebarCollapsed(priv.sidebarCollapsed);
     if (th && th !== theme) setTheme(th);
+    if (typeof priv.accentColor === "string") setAccentColor(priv.accentColor);
     setPublicProfile({
       display_name: typeof pub.display_name === "string" ? pub.display_name : undefined,
       avatar_color: typeof pub.avatar_color === "string" ? pub.avatar_color : undefined,
@@ -116,11 +119,12 @@ export function UserSettingsBridge() {
     const prev = privateBlobRef.current;
     const unchanged =
       prev.theme === theme &&
+      prev.accentColor === (accentColor ?? undefined) &&
       prev.viewMode === viewMode &&
       prev.sortField === sortField &&
       prev.sortOrder === sortOrder &&
       prev.sidebarCollapsed === sidebarCollapsed;
-    privateBlobRef.current = { ...prev, theme, viewMode, sortField, sortOrder, sidebarCollapsed };
+    privateBlobRef.current = { ...prev, theme, accentColor: accentColor ?? undefined, viewMode, sortField, sortOrder, sidebarCollapsed };
     if (unchanged) return;
     clearTimeout(privTimer.current);
     privTimer.current = setTimeout(() => {
@@ -132,7 +136,7 @@ export function UserSettingsBridge() {
         }
       );
     }, SAVE_DEBOUNCE_MS);
-  }, [theme, viewMode, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
+  }, [theme, accentColor, viewMode, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
 
   useEffect(() => {
     if (!initedRef.current) return;
