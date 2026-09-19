@@ -85,6 +85,21 @@ export function setUserSnapshot(email: string | undefined, name: string | undefi
 // folderQueryKey below — this Map only tracks pagination bookkeeping for the UI.)
 const pageState = new Map<string, { loaded: number; hasMore: boolean }>();
 
+// Ids with an in-flight move/trash/restore API call (fired via runMutation, never
+// awaited by the caller). mergeServerListing must not let a listing fetched while
+// one of these is still pending clobber its optimistic parentId/isDeleted — the
+// fetch can easily land before the server has processed the move, and would
+// otherwise revert the local change (or, in "force" mode, drop the row outright,
+// since it looks like a server-origin item the fresh listing doesn't know about).
+// Cleared once the mutation settles, success or failure, so a later listing can
+// reconcile normally.
+const pendingSyncIds = new Set<string>();
+
+const trackPendingSync = <T,>(id: string, promise: Promise<T>): Promise<T> => {
+  pendingSyncIds.add(id);
+  return promise.finally(() => pendingSyncIds.delete(id));
+};
+
 // Thrown by a page queryFn when withFreshToken couldn't get a usable token (no
 // session, or a failed refresh). Distinguishes "silently abort, already handled by
 // authStore" from a real fetch failure that should surface to the user.
@@ -249,10 +264,14 @@ const mergeServerListing = (
   const incomingIds = new Set(incoming.map((f) => f.id));
 
   // 2. Upsert every incoming resource, keeping client-only fields on existing rows.
+  //    An id with a move/trash/restore mutation still in flight keeps its optimistic
+  //    fields untouched — a listing fetched mid-flight reflects the pre-move server
+  //    state and would otherwise stomp the local parentId/isDeleted right back.
   const merged: FileItem[] = working.map((f) => {
+    if (pendingSyncIds.has(f.id)) return f;
     const res = incoming.find((r) => r.id === f.id);
     if (!res) return f;
-    
+
     return {
       ...res,
       isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
@@ -280,11 +299,13 @@ const mergeServerListing = (
   //      permanent phantom. A just-created one (within the grace window) is spared
   //      in case its create call is still in flight.
   //    Rows carrying client-only state worth keeping (starred / trashed / shared)
-  //    are never dropped.
+  //    are never dropped, nor is one with a move/trash/restore still in flight —
+  //    a fresh listing that raced ahead of that mutation is not evidence the row
+  //    is really gone.
   return merged.filter((f) => {
     if (f.parentId !== parentId) return true;
     if (incomingIds.has(f.id)) return true;
-    if (f.isStarred || f.isDeleted || f.share) return true;
+    if (f.isStarred || f.isDeleted || f.share || pendingSyncIds.has(f.id)) return true;
     if (f.origin === "server") return false;
     // Optimistic folders from createFolder / ensureFolderPath carry a "folder-" id
     // (copied or offline-authored items use other schemes and stay put).
@@ -1130,10 +1151,13 @@ export const trashItems = (ids: string[]) => {
         const folderInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) };
         runMutation(
           () =>
-            withFreshToken(async (t) => {
-              await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
-              if (trashId) await apiMoveFolder(t, { folderId: f.id, newParentFolderId: trashId });
-            }),
+            trackPendingSync(
+              f.id,
+              withFreshToken(async (t) => {
+                await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
+                if (trashId) await apiMoveFolder(t, { folderId: f.id, newParentFolderId: trashId });
+              })
+            ),
           { id: f.id },
           notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
         );
@@ -1154,10 +1178,13 @@ export const trashItems = (ids: string[]) => {
         };
         runMutation(
           () =>
-            withFreshToken(async (t) => {
-              await apiUpdateFileInfo(t, opsShape);
-              if (trashId) await apiMoveFile(t, trashId, opsShape);
-            }),
+            trackPendingSync(
+              f.id,
+              withFreshToken(async (t) => {
+                await apiUpdateFileInfo(t, opsShape);
+                if (trashId) await apiMoveFile(t, trashId, opsShape);
+              })
+            ),
           { id: f.id },
           notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
         );
@@ -1202,10 +1229,13 @@ export const restoreItems = (ids: string[]) => {
         const restoreTo = f.trashedFrom ?? null;
         runMutation(
           () =>
-            withFreshToken(async (t) => {
-              await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
-              await apiMoveFolder(t, { folderId: f.id, newParentFolderId: restoreTo });
-            }),
+            trackPendingSync(
+              f.id,
+              withFreshToken(async (t) => {
+                await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
+                await apiMoveFolder(t, { folderId: f.id, newParentFolderId: restoreTo });
+              })
+            ),
           { id: f.id },
           notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
         );
@@ -1231,10 +1261,13 @@ export const restoreItems = (ids: string[]) => {
         };
         runMutation(
           () =>
-            withFreshToken(async (t) => {
-              await apiUpdateFileInfo(t, opsShape);
-              await apiMoveFile(t, restoreTo, opsShape);
-            }),
+            trackPendingSync(
+              f.id,
+              withFreshToken(async (t) => {
+                await apiUpdateFileInfo(t, opsShape);
+                await apiMoveFile(t, restoreTo, opsShape);
+              })
+            ),
           { id: f.id },
           notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
         );
@@ -1322,7 +1355,7 @@ export const moveItems = (
   if (tk) {
     folderMoves.forEach(({ id, sharedFolderId }) => {
       runMutation(
-        () => withFreshToken((t) => apiMoveFolder(t, { folderId: id, newParentFolderId: newParentId, sharedFolderId })),
+        () => trackPendingSync(id, withFreshToken((t) => apiMoveFolder(t, { folderId: id, newParentFolderId: newParentId, sharedFolderId }))),
         { id, sharedFolderId },
         notifySyncFailed("Folder move did not sync to API", "Couldn't move that folder")
       );
@@ -1332,17 +1365,20 @@ export const moveItems = (
     fileMoves.forEach(({ id, fileId, sharedFolderId, sourceFolderId, fileName, fileInfo, fileType, fileVersion, expectedFileSize }) => {
       runMutation(
         () =>
-          withFreshToken((t) =>
-            apiMoveFile(t, newParentId as string, {
-              folder_id: sourceFolderId,
-              file_id: fileId,
-              shared_folder_id: sharedFolderId,
-              file_name: fileName,
-              file_info: fileInfo,
-              file_type: fileType,
-              file_version: fileVersion,
-              expected_file_size: expectedFileSize,
-            })
+          trackPendingSync(
+            id,
+            withFreshToken((t) =>
+              apiMoveFile(t, newParentId as string, {
+                folder_id: sourceFolderId,
+                file_id: fileId,
+                shared_folder_id: sharedFolderId,
+                file_name: fileName,
+                file_info: fileInfo,
+                file_type: fileType,
+                file_version: fileVersion,
+                expected_file_size: expectedFileSize,
+              })
+            )
           ),
         { id, sharedFolderId },
         notifySyncFailed("File move did not sync to API", "Couldn't move that file")
