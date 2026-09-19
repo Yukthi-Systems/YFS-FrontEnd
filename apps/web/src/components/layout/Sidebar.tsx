@@ -34,6 +34,9 @@ const NAV_ITEMS_BOTTOM: NavItem[] = [
   { tab: "trash", label: "Trash", icon: Trash2 },
 ];
 
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-bg-main";
+
 function NavRow({
   label,
   Icon,
@@ -46,16 +49,18 @@ function NavRow({
   onClick: () => void;
 }) {
   return (
-    <li
-      onClick={onClick}
-      className={`flex items-center justify-between rounded-lg text-text-main font-medium text-[0.9rem] cursor-pointer transition hover:bg-code-bg hover:text-text-heading px-3 py-2 ${
-        active ? "bg-accent-bg text-accent font-semibold" : ""
-      }`}
-    >
-      <span className="flex items-center gap-3">
-        <Icon className="w-4 h-4" />
-        <span>{label}</span>
-      </span>
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-current={active ? "page" : undefined}
+        className={`w-full flex items-center gap-3 rounded-lg text-text-main font-medium text-[0.9rem] text-left cursor-pointer transition hover:bg-code-bg hover:text-text-heading px-3 py-2 border-none bg-transparent ${focusRing} ${
+          active ? "bg-accent-bg text-accent font-semibold" : ""
+        }`}
+      >
+        <Icon className="w-4 h-4 shrink-0" />
+        <span className="truncate">{label}</span>
+      </button>
     </li>
   );
 }
@@ -128,7 +133,7 @@ export function Sidebar({
   return (
     <aside
       className={`bg-bg-main border-r border-border-main flex flex-col p-4 box-border shrink-0 transition-all duration-300 ${
-        collapsed ? "w-16 min-w-16" : "w-60 min-w-60"
+        collapsed ? "w-[72px] min-w-[72px]" : "w-60 min-w-60"
       } max-[768px]:fixed max-[768px]:inset-y-0 max-[768px]:left-0 max-[768px]:z-50 max-[768px]:w-64! max-[768px]:min-w-0 max-[768px]:max-w-[85vw] max-[768px]:p-4 max-[768px]:shadow-2xl max-[768px]:transition-transform ${
         mobileOpen ? "max-[768px]:translate-x-0" : "max-[768px]:-translate-x-full"
       }`}
@@ -141,14 +146,16 @@ export function Sidebar({
           </div>
           <button
             onClick={onToggleCollapsed}
-            className="border-none bg-transparent p-1.5 rounded-lg cursor-pointer text-text-main hover:bg-code-bg flex items-center justify-center transition max-[768px]:hidden"
+            aria-label={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            className={`border-none bg-transparent p-1.5 rounded-lg cursor-pointer text-text-main hover:bg-code-bg flex items-center justify-center transition max-[768px]:hidden ${focusRing}`}
             title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
           <button
             onClick={onMobileClose}
-            className="hidden max-[768px]:flex border-none bg-transparent p-1.5 rounded-lg cursor-pointer text-text-main hover:bg-code-bg items-center justify-center transition"
+            aria-label="Close menu"
+            className={`hidden max-[768px]:flex border-none bg-transparent p-1.5 rounded-lg cursor-pointer text-text-main hover:bg-code-bg items-center justify-center transition ${focusRing}`}
             title="Close menu"
           >
             <X className="w-4 h-4" />
@@ -158,7 +165,9 @@ export function Sidebar({
         <div className="relative w-full flex justify-center" ref={dropdownRef}>
           <button
             onClick={() => setNewMenuOpen((v) => !v)}
-            className={`flex items-center justify-center bg-bg-main border border-border-main rounded-2xl shadow-sm hover:bg-code-bg active:translate-y-0 hover:-translate-y-0.5 text-text-heading font-semibold cursor-pointer transition-all duration-200 ${
+            aria-haspopup="menu"
+            aria-expanded={newMenuOpen}
+            className={`flex items-center justify-center bg-bg-main border border-border-main rounded-2xl shadow-sm hover:bg-code-bg active:translate-y-0 hover:-translate-y-0.5 text-text-heading font-semibold cursor-pointer transition-all duration-200 ${focusRing} ${
               collapsed ? "w-10 h-10 rounded-full p-0" : "gap-2 w-32 py-2 px-4"
             }`}
             title={collapsed ? "New" : undefined}
@@ -236,20 +245,31 @@ export function Sidebar({
           multiple
         />
 
-        <nav>
+        <nav aria-label="Sidebar">
           <ul className="flex flex-col gap-1 p-0 m-0 list-none">
             {collapsed ? (
-              // Collapsed rail: every tab as a flat icon.
-              [...NAV_ITEMS_TOP, ...SHARE_ITEMS, ...NAV_ITEMS_BOTTOM].map(({ tab, label, icon: Icon }) => (
-                <li
-                  key={tab}
-                  onClick={() => selectTab(tab)}
-                  title={label}
-                  className={`flex items-center justify-center p-2.5 rounded-lg text-text-main cursor-pointer transition hover:bg-code-bg hover:text-text-heading ${
-                    activeTab === tab ? "bg-accent-bg text-accent" : ""
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
+              // Collapsed rail: same three groups as the expanded view, kept visually
+              // separate (a divider between groups) instead of one flat icon soup.
+              [NAV_ITEMS_TOP, SHARE_ITEMS, NAV_ITEMS_BOTTOM].map((group, groupIndex) => (
+                <li key={groupIndex} className={groupIndex > 0 ? "mt-2 pt-2 border-t border-border-main" : undefined}>
+                  <ul className="flex flex-col items-center gap-1 p-0 m-0 list-none">
+                    {group.map(({ tab, label, icon: Icon }) => (
+                      <li key={tab}>
+                        <button
+                          type="button"
+                          onClick={() => selectTab(tab)}
+                          aria-label={label}
+                          aria-current={activeTab === tab ? "page" : undefined}
+                          title={label}
+                          className={`w-10 h-10 flex items-center justify-center rounded-xl text-text-main cursor-pointer transition hover:bg-code-bg hover:text-text-heading border-none bg-transparent ${focusRing} ${
+                            activeTab === tab ? "bg-accent-bg text-accent" : ""
+                          }`}
+                        >
+                          <Icon className="w-[18px] h-[18px]" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </li>
               ))
             ) : (
@@ -258,29 +278,36 @@ export function Sidebar({
                   <NavRow key={tab} label={label} Icon={Icon} active={activeTab === tab} onClick={() => selectTab(tab)} />
                 ))}
 
-                <li
-                  onClick={() => setSharesOpen((v) => !v)}
-                  className={`flex items-center justify-between rounded-lg font-medium text-[0.9rem] cursor-pointer transition px-3 py-2 hover:bg-code-bg hover:text-text-heading ${
-                    shareTabActive ? "text-accent font-semibold" : "text-text-main"
-                  }`}
-                >
-                  <span className="flex items-center gap-3">
-                    <Share2 className="w-4 h-4" />
-                    <span>Shares</span>
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${sharesOpen ? "rotate-180" : ""}`} />
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setSharesOpen((v) => !v)}
+                    aria-expanded={sharesOpen}
+                    className={`w-full flex items-center justify-between rounded-lg font-medium text-[0.9rem] text-left cursor-pointer transition px-3 py-2 border-none bg-transparent hover:bg-code-bg hover:text-text-heading ${focusRing} ${
+                      shareTabActive ? "text-accent font-semibold" : "text-text-main"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Share2 className="w-4 h-4" />
+                      <span>Shares</span>
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${sharesOpen ? "rotate-180" : ""}`} />
+                  </button>
                 </li>
                 {sharesOpen &&
                   SHARE_ITEMS.map(({ tab, label, icon: Icon }) => (
-                    <li
-                      key={tab}
-                      onClick={() => selectTab(tab)}
-                      className={`flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-lg text-[0.85rem] cursor-pointer transition hover:bg-code-bg hover:text-text-heading ${
-                        activeTab === tab ? "bg-accent-bg text-accent font-semibold" : "text-text-main font-medium"
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{label}</span>
+                    <li key={tab}>
+                      <button
+                        type="button"
+                        onClick={() => selectTab(tab)}
+                        aria-current={activeTab === tab ? "page" : undefined}
+                        className={`w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-lg text-[0.85rem] text-left cursor-pointer transition border-none bg-transparent hover:bg-code-bg hover:text-text-heading ${focusRing} ${
+                          activeTab === tab ? "bg-accent-bg text-accent font-semibold" : "text-text-main font-medium"
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{label}</span>
+                      </button>
                     </li>
                   ))}
 
@@ -325,7 +352,8 @@ export function Sidebar({
             <button
               onClick={onRequestLogout}
               title="Sign out"
-              className="shrink-0 p-2 rounded-lg text-text-main hover:bg-red-500/10 hover:text-red-500 border-none bg-transparent cursor-pointer flex items-center justify-center transition"
+              aria-label="Sign out"
+              className={`shrink-0 p-2 rounded-lg text-text-main hover:bg-red-500/10 hover:text-red-500 border-none bg-transparent cursor-pointer flex items-center justify-center transition ${focusRing}`}
             >
               <LogOut className="w-4 h-4" />
             </button>
