@@ -5,6 +5,7 @@ import {
   FileUp,
   FolderUp,
   Plus,
+  RefreshCw,
   Star,
   Trash2,
   LogOut,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import type { SidebarTab } from "../../types/file";
 import type { UserInfo } from "../../atoms/auth";
+import { useToast } from "../../atoms/toast";
 import { UserMenu } from "./UserMenu";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };
@@ -73,9 +75,12 @@ export function Sidebar({
   onCreateFolder,
   onUploadFiles,
   canCreateHere = true,
+  isRootFolder = false,
   storagePercentage,
   storageUsedLabel,
   storageTotalLabel,
+  onRefreshQuota,
+  refreshingQuota = false,
   user,
   onRequestLogout,
   mobileOpen = false,
@@ -89,9 +94,15 @@ export function Sidebar({
   onUploadFiles: (files: FileList) => void;
   // False inside a "Shared with me" folder the caller can't create in.
   canCreateHere?: boolean;
+  // My Drive root can't hold files directly — only folder uploads (they nest) are allowed here.
+  isRootFolder?: boolean;
   storagePercentage: number;
   storageUsedLabel: string;
   storageTotalLabel: string;
+  // Forces a live recalculation server-side — slow and not meant to be spammed,
+  // so this is gated behind an explicit confirm popover below.
+  onRefreshQuota?: () => void;
+  refreshingQuota?: boolean;
   user: UserInfo | null;
   onRequestLogout: () => void;
   mobileOpen?: boolean;
@@ -100,9 +111,12 @@ export function Sidebar({
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const shareTabActive = activeTab === "shared" || activeTab === "shared-out" || activeTab === "shared-links";
   const [sharesOpen, setSharesOpen] = useState(shareTabActive);
+  const [quotaConfirmOpen, setQuotaConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const quotaPopoverRef = useRef<HTMLDivElement>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!newMenuOpen) return;
@@ -115,7 +129,23 @@ export function Sidebar({
     return () => document.removeEventListener("click", handleOutsideClick);
   }, [newMenuOpen]);
 
+  useEffect(() => {
+    if (!quotaConfirmOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (quotaPopoverRef.current && !quotaPopoverRef.current.contains(e.target as Node)) {
+        setQuotaConfirmOpen(false);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [quotaConfirmOpen]);
+
   const triggerFileUpload = () => {
+    if (isRootFolder) {
+      showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
+      setNewMenuOpen(false);
+      return;
+    }
     fileInputRef.current?.click();
     setNewMenuOpen(false);
   };
@@ -323,8 +353,47 @@ export function Sidebar({
       <div className="flex flex-col gap-3">
         {!collapsed && (
           <div className="bg-code-bg p-3 rounded-xl border border-border-main text-[11px]">
-            <div className="flex justify-between font-semibold text-text-heading mb-1.5">
-              <span>Storage</span>
+            <div className="flex justify-between items-center font-semibold text-text-heading mb-1.5">
+              <span className="flex items-center gap-1">
+                Storage
+                {onRefreshQuota && (
+                  <div className="relative" ref={quotaPopoverRef}>
+                    <button
+                      onClick={() => setQuotaConfirmOpen((v) => !v)}
+                      disabled={refreshingQuota}
+                      title="Refresh storage usage"
+                      aria-label="Refresh storage usage"
+                      className="p-0.5 rounded text-text-main hover:text-accent hover:bg-accent-bg disabled:opacity-50 disabled:cursor-not-allowed border-none bg-transparent cursor-pointer inline-flex items-center justify-center transition"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${refreshingQuota ? "animate-spin" : ""}`} />
+                    </button>
+                    {quotaConfirmOpen && (
+                      <div className="absolute z-50 top-full left-0 mt-1.5 w-52 bg-bg-main border border-border-main rounded-xl p-2.5 shadow-lg animate-scale-in font-normal">
+                        <p className="text-text-main mb-2 leading-normal">
+                          This may take a moment. Refresh storage usage now?
+                        </p>
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => setQuotaConfirmOpen(false)}
+                            className="px-2 py-1 rounded-md text-text-main hover:bg-code-bg border-none bg-transparent cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              setQuotaConfirmOpen(false);
+                              onRefreshQuota();
+                            }}
+                            className="px-2 py-1 rounded-md bg-accent text-white border-none cursor-pointer"
+                          >
+                            Refresh
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </span>
               <span>{Math.round(storagePercentage)}% Used</span>
             </div>
             <div className="w-full h-1.5 bg-border-main rounded-full overflow-hidden mb-2.5">

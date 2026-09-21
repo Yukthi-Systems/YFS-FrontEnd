@@ -1,6 +1,6 @@
 import { Check, Download, RefreshCw, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { SORT_FIELD_OPTIONS } from "../../types/file";
-import type { SidebarTab, SortField, SortOrder } from "../../types/file";
+import type { SidebarTab, SortField, SortOrder, ViewMode } from "../../types/file";
 import { Dropdown } from "../common/Dropdown";
 import { Breadcrumbs, type BreadcrumbSegment } from "../layout/Breadcrumbs";
 
@@ -9,6 +9,7 @@ export function FilterSortBar({
   onBreadcrumbNavigate,
   activeSidebarTab,
   checkedCount,
+  viewMode,
   sortField,
   onSortFieldChange,
   sortOrder,
@@ -26,6 +27,9 @@ export function FilterSortBar({
   onBreadcrumbNavigate: (index: number) => void;
   activeSidebarTab: SidebarTab;
   checkedCount: number;
+  // The list view sorts via clickable column headers instead — this dropdown is
+  // only needed as a sort trigger for grid/tiles views, which have no headers.
+  viewMode: ViewMode;
   sortField: SortField;
   onSortFieldChange: (field: SortField) => void;
   sortOrder: SortOrder;
@@ -40,9 +44,18 @@ export function FilterSortBar({
   onBatchDownload: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 flex-wrap pb-4 mb-3" onClick={(e) => e.stopPropagation()}>
-      <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2 flex-1 min-w-0">
         <Breadcrumbs segments={breadcrumbSegments} onNavigate={onBreadcrumbNavigate} />
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          title="Refresh"
+          aria-label="Refresh"
+          className="p-1.5 bg-code-bg border border-border-main rounded-full text-text-main cursor-pointer hover:bg-border-main transition disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center shrink-0"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
       {checkedCount > 0 && (
@@ -123,23 +136,19 @@ export function FilterSortBar({
       )}
 
       <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
-          title="Refresh"
-          aria-label="Refresh"
-          className="p-1.5 bg-code-bg border border-border-main rounded-full text-text-main cursor-pointer hover:bg-border-main transition disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-        </button>
-        <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={onSortFieldChange} align="end" />
-        <button
-          onClick={onToggleSortOrder}
-          className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
-          title="Toggle Sort Direction"
-        >
-          {sortOrder === "asc" ? "▲" : "▼"}
-        </button>
+        {/* List view sorts via the table's column headers instead. */}
+        {viewMode !== "list" && (
+          <>
+            <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={onSortFieldChange} align="end" />
+            <button
+              onClick={onToggleSortOrder}
+              className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
+              title="Toggle Sort Direction"
+            >
+              {sortOrder === "asc" ? "▲" : "▼"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
