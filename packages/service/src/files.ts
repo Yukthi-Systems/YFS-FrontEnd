@@ -112,14 +112,19 @@ export interface DownloadSession {
 // POST /files/download — one file per call, mirrors /files/upload (including the
 // array-of-one response shape).
 export const requestFileDownload = async (accessToken: string, req: FileDownloadRequest): Promise<DownloadSession> => {
-  const { data } = await apiRequest<DownloadSession[]>("/files/download", {
-    accessToken,
-    method: "POST",
-    body: JSON.stringify(req),
-  });
+  const { data } = await apiRequest<(Omit<DownloadSession, "token"> & { token?: string; access_token?: string })[]>(
+    "/files/download",
+    {
+      accessToken,
+      method: "POST",
+      body: JSON.stringify(req),
+    }
+  );
   const session = data?.[0];
   if (!session) throw new Error("Download session response was empty");
-  return session;
+  // The Storage API's download session names the token `access_token` (upload sessions
+  // still use `token`) — accept either so a Storage build change can't leave it undefined.
+  return { ...session, token: session.access_token ?? session.token ?? "" };
 };
 
 // database::files::BasicFileInfo (YFS-Main-API) — what POST /files/get-info returns.
@@ -179,37 +184,47 @@ export const moveFile = async (
   });
 };
 
-// Same FileOpsRequest shape as FileDownloadRequest — Rust resolves the real storage
-// path server-side, same as download/upload — plus `can_edit`, which is only what the
-// UI *wants*; the server must independently verify real write permission and clamp to
-// view-only rather than trust this field as an authorization grant.
-export interface FileWopiRequest {
-  folder_id: string;
-  file_id: string;
-  shared_folder_id?: string | null;
-  file_name: string;
-  file_info: Record<string, unknown>;
-  file_type: string;
-  file_version: number;
-  expected_file_size: number;
-  can_edit: boolean;
-}
+// Same FileOpsRequest shape as FileDownloadRequest — Rust resolves the real storage path
+// server-side, same as download/upload. Whether the session is editable is a path
+// parameter (`to_write`), not a body field; the server checks real write permission
+// against it (shared folders need the "update" share permission).
+export type FileWopiRequest = FileDownloadRequest;
 
-// A single WOPI grant — not array-of-one like upload/download, matching the Storage
-// API's own single-object DownloadSession shape for /sessions/wopi.
+// Normalized WOPI grant. YFS-Main-API relays the Storage API's session object as-is:
+// `url` is the WOPI host URL for the file (hand it to Collabora as WOPISrc, don't fetch
+// it directly) and the token is `access_token` (older Storage builds call it `token`).
 export interface WopiSession {
-  wopi_src: string; // the Storage API's `{base}/wopi/files/{fileID}` — hand this to Collabora as WOPISrc, don't fetch it directly
+  wopi_src: string;
   token: string;
   expires_at: string; // RFC3339
+  access_token_ttl: number; // epoch ms — the value WOPI's access_token_ttl expects
 }
 
-// POST /sessions/wopi — mints a WOPI session for Collabora. YFS-Main-API is expected
-// to call the Storage API's internal POST /sessions/wopi to actually issue the token.
-export const requestWopiSession = async (accessToken: string, req: FileWopiRequest): Promise<WopiSession> => {
-  const { data } = await apiRequest<WopiSession>("/sessions/wopi", {
+interface RawWopiSession {
+  url: string;
+  access_token?: string;
+  token?: string;
+  expires_at: string;
+  access_token_ttl?: number;
+}
+
+// POST /files/wopi/session/create/{to_write} — mints a WOPI session for Collabora.
+export const requestWopiSession = async (
+  accessToken: string,
+  req: FileWopiRequest,
+  toWrite: boolean
+): Promise<WopiSession> => {
+  const { data } = await apiRequest<RawWopiSession>(`/files/wopi/session/create/${toWrite}`, {
     accessToken,
     method: "POST",
     body: JSON.stringify(req),
   });
-  return data;
+  const token = data.access_token ?? data.token;
+  if (!data.url || !token) throw new Error("WOPI session response was missing its url or token.");
+  return {
+    wopi_src: data.url,
+    token,
+    expires_at: data.expires_at,
+    access_token_ttl: data.access_token_ttl ?? new Date(data.expires_at).getTime(),
+  };
 };

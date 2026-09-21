@@ -4,7 +4,7 @@ import { requestWopiSession, type FileWopiRequest, type WopiSession } from "@yfs
 // endpoints Collabora needs (GET/POST /wopi/files/{fileID}...); this client only
 // resolves *which* Collabora action (edit/view) handles a given file extension via
 // Collabora's own discovery.xml, and relays the session YFS-Main-API mints
-// (POST /sessions/wopi — see files.ts FileWopiRequest for the agreed contract).
+// (POST /files/wopi/session/create/{to_write} — see files.ts).
 
 export const COLLABORA_BASE_URL = "https://collabora.your-domain.tld";
 const DISCOVERY_URL = `${COLLABORA_BASE_URL}/hosting/discovery`;
@@ -97,7 +97,7 @@ export const buildCollaboraActionUrl = (action: CollaboraAction, wopiSrc: string
 };
 
 export const collaboraClient = {
-  requestSession(token: string, req: FileWopiRequest): Promise<WopiSession> {
-    return requestWopiSession(token, req);
+  requestSession(token: string, req: FileWopiRequest, toWrite: boolean): Promise<WopiSession> {
+    return requestWopiSession(token, req, toWrite);
   },
 };
