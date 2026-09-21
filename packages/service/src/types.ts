@@ -72,6 +72,11 @@ export interface BasicUserInfo {
   last_seen_at: string; // RFC3339
 }
 
+export interface UserQuota {
+  used_storage_bytes: number;
+  used_file_count: number;
+}
+
 // The five per-user permissions on an internal folder share.
 export interface InternalSharePermissions {
   can_preview: boolean;

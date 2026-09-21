@@ -10,7 +10,7 @@ import "./App.css";
 import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
-import { getStorageQuota } from "./utils/format";
+import { getStorageQuota, GB } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
 import { useContextMenuState } from "./hooks/useContextMenuState";
@@ -21,6 +21,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
+import { useMyQuota, useRefreshUserQuota } from "./hooks/useUserQuota";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -374,7 +375,14 @@ function App() {
   });
 
   // --- Storage --- (from the API's account quota, not a client-side file tally)
-  const storage = getStorageQuota(user?.quota_allocated, user?.quota_utilized);
+  // GET /user/quota on load gives the real used-bytes; falls back to the SSO
+  // login snapshot until that request lands, and again if it fails.
+  const { quota } = useMyQuota();
+  const { refreshQuota, refreshing: refreshingQuota } = useRefreshUserQuota();
+  const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
+  const handleRefreshQuota = () => {
+    refreshQuota().catch(() => {});
+  };
 
   if (authLoading) {
     return (
@@ -436,6 +444,8 @@ function App() {
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
+        onRefreshQuota={handleRefreshQuota}
+        refreshingQuota={refreshingQuota}
         user={user}
         onRequestLogout={fileActions.requestLogout}
         mobileOpen={mobileNavOpen}
