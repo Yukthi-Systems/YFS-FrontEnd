@@ -102,6 +102,7 @@ export function FileGrid({
     return (
       <div
         key={item.id}
+        data-item-id={item.id}
         draggable
         onDragStart={(e) => onDragStartItem(item, e)}
         onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}

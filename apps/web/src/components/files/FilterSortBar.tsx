@@ -44,7 +44,7 @@ export function FilterSortBar({
   onBatchDownload: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <Breadcrumbs segments={breadcrumbSegments} onNavigate={onBreadcrumbNavigate} />
         <button
