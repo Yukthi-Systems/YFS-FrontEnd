@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Loader2, MoreVertical } from "lucide-react";
+import { AlertCircle, Loader2, MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -50,6 +50,7 @@ export function FileTiles({
     return (
       <div
         key={item.id}
+        data-item-id={item.id}
         draggable
         onDragStart={(e) => onDragStartItem(item, e)}
         onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
@@ -61,12 +62,13 @@ export function FileTiles({
           onItemContextMenu(item, e);
         }}
         className={`group relative bg-bg-main border border-border-main rounded-xl p-3 cursor-pointer flex items-center gap-3 transition-all duration-200 hover:border-accent-border hover:shadow-sm ${
-          isSel ? "bg-accent-bg! border-accent!" : ""
+          isSel ? "bg-accent-bg/70! border-accent!" : isChecked ? "bg-accent-bg/70! border-accent-border!" : ""
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
         <input
           type="checkbox"
           checked={isChecked}
+          onClick={(e) => e.stopPropagation()}
           onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
           className={`shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
         />
@@ -82,7 +84,12 @@ export function FileTiles({
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-text-heading truncate">{item.name}</div>
           <div className="text-[11px] text-text-main truncate">
-            {isItemProcessing(item) ? (
+            {isItemFailed(item) ? (
+              <span className="inline-flex items-center gap-1 text-red-500 font-medium">
+                <AlertCircle className="w-2.5 h-2.5" />
+                Failed
+              </span>
+            ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                 <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
                 Processing

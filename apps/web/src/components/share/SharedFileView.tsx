@@ -496,16 +496,19 @@ export function SharedFileView() {
             <div />
           )}
 
-          <div className="flex gap-2">
-            <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={(v) => setSortField(v)} align="end" />
-            <button
-              onClick={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
-              className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
-              title="Toggle sort direction"
-            >
-              {sortOrder === "asc" ? "▲" : "▼"}
-            </button>
-          </div>
+          {/* List view sorts via the table's column headers instead. */}
+          {viewMode !== "list" && (
+            <div className="flex gap-2">
+              <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={(v) => setSortField(v)} align="end" />
+              <button
+                onClick={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
+                className="px-3 py-1.5 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition"
+                title="Toggle sort direction"
+              >
+                {sortOrder === "asc" ? "▲" : "▼"}
+              </button>
+            </div>
+          )}
         </div>
 
         {listError && <div className="text-sm text-red-500">{listError}</div>}

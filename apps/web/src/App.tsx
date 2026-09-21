@@ -16,6 +16,7 @@ import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
 import { useContextMenuState } from "./hooks/useContextMenuState";
 import { useFileNavigation } from "./hooks/useFileNavigation";
 import { useFileSelection } from "./hooks/useFileSelection";
+import { useMarqueeSelection } from "./hooks/useMarqueeSelection";
 import { useFileActions } from "./hooks/useFileActions";
 import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
@@ -280,6 +281,12 @@ function App() {
 
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
 
+  const marquee = useMarqueeSelection({
+    container: scrollContainer,
+    checkedItemIds: selection.checkedItemIds,
+    onSelectionChange: selection.setCheckedItemIds,
+  });
+
   const fileActions = useFileActions({
     files,
     currentFolderId: nav.currentFolderId,
@@ -405,6 +412,7 @@ function App() {
     <ItemContextMenu
       item={item}
       permissions={getSharedPermissions(item.id)}
+      onOpen={() => handleItemDoubleClick(item)}
       onDownload={() => fileActions.handleDownload(item)}
       onToggleStar={() => fileActions.handleToggleStar(item.id)}
       onRename={() => fileActions.openRenameModal(item)}
@@ -473,6 +481,7 @@ function App() {
                 menus.closeContextMenu();
               }}
               onContextMenu={menus.openCanvasContextMenu}
+              onMouseDown={marquee.onMouseDown}
             >
               {nav.activeSidebarTab === "shared-links" ? (
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
@@ -597,6 +606,18 @@ function App() {
               )}
             </div>
         </UploadDropzone>
+
+        {marquee.marqueeRect && (
+          <div
+            className="fixed z-[80] border border-accent bg-accent-bg/60 pointer-events-none"
+            style={{
+              left: marquee.marqueeRect.left,
+              top: marquee.marqueeRect.top,
+              width: marquee.marqueeRect.width,
+              height: marquee.marqueeRect.height,
+            }}
+          />
+        )}
 
         {selectedItem && (
           <DetailsDrawer
