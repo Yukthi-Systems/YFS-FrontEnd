@@ -3,9 +3,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Expand,
   File as FileIcon,
   Maximize2,
   Minimize2,
+  Shrink,
   Video,
   X,
   Loader2,
@@ -52,13 +54,15 @@ export function ViewerModal({
   const canEdit = !permissions || permissions.can_update;
   const [isPiPActive, setIsPiPActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  // User-toggled "full view" for previews that default to a compact box (text, code, CSV, images).
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const viewable = siblings.filter((f) => !f.isFolder);
   const index = viewable.findIndex((f) => f.id === item.id);
   const prevItem = index > 0 ? viewable[index - 1] : null;
   const nextItem = index >= 0 && index < viewable.length - 1 ? viewable[index + 1] : null;
 
-  // Office-suite documents (PDF/Word/Excel, plus anything rendered via Collabora) get a
+  // PDFs and office-suite documents (rendered via Collabora when server-backed) get a
   // near-fullscreen viewport instead of the narrower default box, since they're read as
   // full pages rather than a quick preview.
   const isOfficeDoc =
@@ -66,6 +70,11 @@ export function ViewerModal({
     item.type === "spreadsheet" ||
     (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension)) ||
     isCollaboraSupported(item);
+
+  // PDFs/office docs are already near-fullscreen, and video/audio have their own player
+  // controls — the expand toggle only applies to the rest.
+  const canToggleExpand = !isOfficeDoc && item.type !== "video" && item.type !== "audio";
+  const isFullView = isOfficeDoc || (canToggleExpand && isExpanded);
 
   const handleClose = () => {
     if (isPiPActive && !isMinimized) {
@@ -168,7 +177,7 @@ export function ViewerModal({
     if (isTextEditable(item)) {
       return (
         <Suspense fallback={<ViewerLoading />}>
-          <CodeEditor item={item} onSave={(blob) => onSaveContent(item.id, blob)} />
+          <CodeEditor item={item} fill={isFullView} onSave={(blob) => onSaveContent(item.id, blob)} />
         </Suspense>
       );
     }
@@ -233,6 +242,15 @@ export function ViewerModal({
                   <Minimize2 className="w-4 h-4" />
                 </button>
               )}
+              {canToggleExpand && (
+                <button
+                  onClick={() => setIsExpanded((v) => !v)}
+                  className="border-none bg-white/10 hover:bg-white/20 p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
+                  title={isExpanded ? "Exit full view" : "Full view"}
+                >
+                  {isExpanded ? <Shrink className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
+                </button>
+              )}
               {!item.isFolder && (
                 <button
                   onClick={() => onDownload(item)}
@@ -276,7 +294,7 @@ export function ViewerModal({
             isMinimized
               ? "w-full h-full bg-black rounded-none shadow-none"
               : `bg-bg-main rounded-2xl shadow-lg ${
-                  isOfficeDoc ? "w-[97%] h-[95%]" : "w-full max-w-3xl max-h-full"
+                  isFullView ? "w-[97%] h-[95%]" : "w-full max-w-3xl max-h-full"
                 }`
           }`}
         >
