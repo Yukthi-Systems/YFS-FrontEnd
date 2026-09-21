@@ -500,6 +500,7 @@ function App() {
                     onBreadcrumbNavigate={goToBreadcrumb}
                     activeSidebarTab={nav.activeSidebarTab}
                     checkedCount={selection.checkedItemIds.length}
+                    viewMode={viewMode}
                     sortField={sortField}
                     onSortFieldChange={setSortField}
                     sortOrder={sortOrder}
@@ -525,6 +526,10 @@ function App() {
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
                       dragOverFolderId={dnd.dragOverFolderId}
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSortFieldChange={setSortField}
+                      onToggleSortOrder={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
                       onItemClick={selection.handleItemClick}
                       onCheckboxToggle={selection.handleCheckboxToggle}
                       onSelectAllToggle={selection.handleSelectAllToggle}
