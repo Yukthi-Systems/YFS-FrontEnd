@@ -13,6 +13,12 @@ import { generateStorageKey, putBlob } from "./blobStore";
 // need updating here if that default ever changes).
 const TUS_BASE_PATH = "/upload/tus/";
 
+// Storage API origin used when the upload session comes back without a usable base_url.
+// The Storage API derives base_url from the "<host>;<path>" prefix of file_location, so a
+// Main-API that sends the host separately (hosted_at) leaves it empty — and an empty
+// base_url makes the tus endpoint a relative URL that hits the app's own origin (404).
+const STORAGE_FALLBACK_URL = import.meta.env.VITE_STORAGE_URL || "https://store-1.files.test.yukthi.net";
+
 const TUS_RETRY_DELAYS = [0, 1000, 2000, 3000, 5000, 10000, 15000, 30000, 60000];
 
 // Send the file as a series of 100MB PATCH requests instead of tus-js-client's default
@@ -60,7 +66,7 @@ const startTusUpload = (
   });
 
   const upload = new tus.Upload(file, {
-    endpoint: `${session.base_url.replace(/\/$/, "")}${TUS_BASE_PATH}`,
+    endpoint: `${(session.base_url || STORAGE_FALLBACK_URL).replace(/\/$/, "")}${TUS_BASE_PATH}`,
     // The Storage API authorizes every tus request (POST create + HEAD/PATCH/
     // DELETE) with this per-file bearer token, not X-API-Token.
     headers: session.token ? { Authorization: `Bearer ${session.token}` } : undefined,

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import mammoth from "mammoth";
 import { FileText } from "lucide-react";
 import type { FileItem } from "../../types/file";
+import { useFileBlob } from "../../hooks/useFileBlob";
 
 const Placeholder = ({ message }: { message: string }) => (
   <div className="flex flex-col items-center gap-2 text-center text-text-main py-16">
@@ -11,13 +12,14 @@ const Placeholder = ({ message }: { message: string }) => (
 );
 
 export function DocViewer({ item }: { item: FileItem }) {
+  const { blob, loading, error: loadError } = useFileBlob(item);
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setHtml(null);
     setError(null);
-    if (!item.blobUrl) return;
+    if (!blob) return;
 
     // mammoth only understands the modern .docx (OOXML zip) format — legacy .doc is a
     // binary OLE format it can't parse, so surface that distinctly instead of a generic failure.
@@ -27,8 +29,8 @@ export function DocViewer({ item }: { item: FileItem }) {
     }
 
     let active = true;
-    fetch(item.blobUrl)
-      .then((res) => res.arrayBuffer())
+    blob
+      .arrayBuffer()
       .then((buf) => mammoth.convertToHtml({ arrayBuffer: buf }))
       .then((result) => {
         if (active) setHtml(result.value);
@@ -40,9 +42,10 @@ export function DocViewer({ item }: { item: FileItem }) {
     return () => {
       active = false;
     };
-  }, [item.id, item.blobUrl, item.extension]);
+  }, [blob, item.extension]);
 
-  if (!item.blobUrl) return <Placeholder message="Seeded demo item — no document content to open." />;
+  if (loading) return <div className="text-sm text-text-main text-center py-16">Loading document…</div>;
+  if (loadError) return <Placeholder message={loadError} />;
   if (error) return <Placeholder message={error} />;
   if (!html) return <div className="text-sm text-text-main text-center py-16">Loading document…</div>;
 
