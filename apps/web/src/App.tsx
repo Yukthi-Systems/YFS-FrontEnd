@@ -8,6 +8,7 @@ import { UserSettingsBridge } from "./components/UserSettingsBridge";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
+import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
 import { getStorageQuota } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -42,6 +43,7 @@ import { ConfirmModal } from "./components/modals/ConfirmModal";
 import { MoveCopyModal } from "./components/modals/MoveCopyModal";
 import { VersionHistoryModal } from "./components/modals/VersionHistoryModal";
 import { ShareModal } from "./components/modals/ShareModal";
+import { EditShareLinkModal } from "./components/modals/EditShareLinkModal";
 import { ViewerModal } from "./components/viewers/ViewerModal";
 import { UploadDropzone } from "./components/upload/UploadDropzone";
 import { UploadTray } from "./components/upload/UploadTray";
@@ -291,6 +293,7 @@ function App() {
 
   const versionHistory = useVersionHistory({ files, showToast, closeContextMenu: menus.closeContextMenu });
   const shareSettings = useShareSettings({ closeContextMenu: menus.closeContextMenu });
+  const [editingShareLink, setEditingShareLink] = useState<ExternalShare | null>(null);
 
   const dnd = useDragAndDrop({
     checkedItemIds: selection.checkedItemIds,
@@ -465,10 +468,11 @@ function App() {
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
                   viewSkeleton
                 ) : (
-                  <SharedLinksList 
-                    links={sharedLinks} 
-                    onRevoke={revokeSharedLink} 
+                  <SharedLinksList
+                    links={sharedLinks}
+                    onRevoke={revokeSharedLink}
                     onOpenFolder={openSharedLinkFolder}
+                    onEdit={setEditingShareLink}
                   />
                 )
               ) : search.isSearching ? (
@@ -694,6 +698,10 @@ function App() {
             <ShareModal item={shareItem} onClose={shareSettings.closeShareModal} />
           );
         })()}
+
+      {editingShareLink && (
+        <EditShareLinkModal share={editingShareLink} onClose={() => setEditingShareLink(null)} />
+      )}
 
       {fileActions.pendingConfirm && (
         <ConfirmModal
