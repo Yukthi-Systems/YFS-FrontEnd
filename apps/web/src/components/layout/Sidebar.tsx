@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { SidebarTab } from "../../types/file";
 import type { UserInfo } from "../../atoms/auth";
+import { useToast } from "../../atoms/toast";
 import { UserMenu } from "./UserMenu";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };
@@ -73,6 +74,7 @@ export function Sidebar({
   onCreateFolder,
   onUploadFiles,
   canCreateHere = true,
+  isRootFolder = false,
   storagePercentage,
   storageUsedLabel,
   storageTotalLabel,
@@ -89,6 +91,8 @@ export function Sidebar({
   onUploadFiles: (files: FileList) => void;
   // False inside a "Shared with me" folder the caller can't create in.
   canCreateHere?: boolean;
+  // My Drive root can't hold files directly — only folder uploads (they nest) are allowed here.
+  isRootFolder?: boolean;
   storagePercentage: number;
   storageUsedLabel: string;
   storageTotalLabel: string;
@@ -103,6 +107,7 @@ export function Sidebar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!newMenuOpen) return;
@@ -116,6 +121,11 @@ export function Sidebar({
   }, [newMenuOpen]);
 
   const triggerFileUpload = () => {
+    if (isRootFolder) {
+      showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
+      setNewMenuOpen(false);
+      return;
+    }
     fileInputRef.current?.click();
     setNewMenuOpen(false);
   };

@@ -429,6 +429,7 @@ function App() {
         onCreateFolder={fileActions.openCreateFolderModal}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
         canCreateHere={canCreateHere}
+        isRootFolder={nav.currentFolderId === null}
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
@@ -610,6 +611,11 @@ function App() {
             menus.setCanvasContextMenu(null);
           }}
           onUploadFile={() => {
+            if (nav.currentFolderId === null) {
+              showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
+              menus.setCanvasContextMenu(null);
+              return;
+            }
             canvasFileInputRef.current?.click();
             menus.setCanvasContextMenu(null);
           }}
