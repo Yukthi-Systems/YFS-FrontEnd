@@ -27,13 +27,14 @@ import { TopBar } from "./components/layout/TopBar";
 import { FilterSortBar } from "./components/files/FilterSortBar";
 import { FileListTable } from "./components/files/FileListTable";
 import { FileGrid } from "./components/files/FileGrid";
+import { FileTiles } from "./components/files/FileTiles";
 import { SearchResultsList } from "./components/files/SearchResultsList";
 import { SharedLinksList } from "./components/files/SharedLinksList";
 import { ItemContextMenu } from "./components/files/ItemContextMenu";
 import { CanvasContextMenu } from "./components/files/CanvasContextMenu";
 import { DetailsDrawer } from "./components/files/DetailsDrawer";
 import { EmptyState } from "./components/common/EmptyState";
-import { ListSkeleton, GridSkeleton } from "./components/common/Skeletons";
+import { ListSkeleton, GridSkeleton, TilesSkeleton } from "./components/common/Skeletons";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { CreateFolderModal } from "./components/modals/CreateFolderModal";
 import { RenameModal } from "./components/modals/RenameModal";
@@ -46,8 +47,7 @@ import { UploadDropzone } from "./components/upload/UploadDropzone";
 import { UploadTray } from "./components/upload/UploadTray";
 
 function App() {
-  const { user, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError, sessionExpiresAt } =
-    useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError } = useAuth();
   const {
     files,
     isLoading: filesLoading,
@@ -60,8 +60,12 @@ function App() {
     getSharedPermissions,
     trashFolderId,
     sharedOut,
+    sharedOutLoading,
+    sharedOutLoaded,
     loadSharedOut,
     sharedLinks,
+    sharedLinksLoading,
+    sharedLinksLoaded,
     loadSharedLinks,
     revokeSharedLink,
     createFolder,
@@ -83,10 +87,12 @@ function App() {
   // they follow the user across devices; they fall back to defaults until loaded.
   const {
     viewMode,
+    gridSize,
     sortField,
     sortOrder,
     sidebarCollapsed,
     setViewMode,
+    setGridSize,
     setSortField,
     setSortOrder,
     setSidebarCollapsed,
@@ -195,13 +201,15 @@ function App() {
   };
 
   // Infinite scroll — only the server-backed listings ("drive" folders, the
-  // Infinite scroll — only the server-backed listings ("drive" folders, the
-  // "shared with me" bucket, and folders opened inside a share) page; the other
-  // tabs are client-side filters.
+  // "shared with me" bucket, and trash) page; the other tabs are client-side filters.
   const isSharedTab = nav.activeSidebarTab === "shared";
   const isSharedRoot = isSharedTab && !nav.currentFolderId;
-  const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive";
-  const pagination = getPagination(nav.currentFolderId, isSharedRoot);
+  const isTrashTab = nav.activeSidebarTab === "trash";
+  const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive" || isTrashTab;
+  const paginationParentId = isTrashTab ? trashFolderId : nav.currentFolderId;
+  const pagination = getPagination(paginationParentId, isSharedRoot);
+
+  const isSharedOutTab = nav.activeSidebarTab === "shared-out";
 
   const lastLoadTimeRef = useRef(0);
   useEffect(() => {
@@ -213,7 +221,9 @@ function App() {
       if (el.scrollHeight > el.clientHeight + 50 && el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
         lastLoadTimeRef.current = Date.now();
         if (isSharedRoot) loadMoreSharedFolders();
-        else loadMoreFolder(nav.currentFolderId);
+        else if (isTrashTab) {
+          if (trashFolderId) loadMoreFolder(trashFolderId);
+        } else loadMoreFolder(nav.currentFolderId);
       }
     };
     el.addEventListener("scroll", handleScroll, { passive: true });
@@ -224,6 +234,8 @@ function App() {
     pagination.hasMore,
     pagination.loading,
     isSharedRoot,
+    isTrashTab,
+    trashFolderId,
     loadMoreSharedFolders,
     loadMoreFolder,
     nav.currentFolderId,
@@ -250,6 +262,14 @@ function App() {
           sortOrder,
           trashFolderId,
         });
+
+  const isFolderLoading =
+    filesLoading ||
+    (isPaginatedTab && (!pagination.loaded || pagination.loading) && listItems.length === 0) ||
+    (isSharedOutTab && (!sharedOutLoaded || sharedOutLoading) && listItems.length === 0);
+
+  const viewSkeleton =
+    viewMode === "list" ? <ListSkeleton /> : viewMode === "tiles" ? <TilesSkeleton /> : <GridSkeleton />;
 
   // Prev/next in the full-screen viewer should step through whatever the user was actually
   // looking at — search results if a search is active, the current folder listing otherwise.
@@ -303,9 +323,14 @@ function App() {
   }
 
   function handleItemDoubleClick(item: FileItem) {
-    // In "Shared by you", a row opens its sharing settings rather than navigating.
+    // In "Shared by you", double-clicking navigates into the folder (in My Drive) or previews the file,
+    // matching standard file manager behavior. Sharing remains accessible via context menu and details drawer.
     if (nav.activeSidebarTab === "shared-out") {
-      shareSettings.openShareModal(item);
+      if (item.isFolder) {
+        openSharedLinkFolder(item.id);
+      } else {
+        setViewerItem(item);
+      }
       return;
     }
     if (item.isFolder) {
@@ -419,8 +444,9 @@ function App() {
           onSearchChange={search.setSearchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          gridSize={gridSize}
+          onGridSizeChange={setGridSize}
           onMenuClick={() => setMobileNavOpen(true)}
-          sessionExpiresAt={sessionExpiresAt}
         />
 
         <div className="flex-1 flex overflow-hidden relative">
@@ -435,11 +461,15 @@ function App() {
               onContextMenu={menus.openCanvasContextMenu}
             >
               {nav.activeSidebarTab === "shared-links" ? (
-                <SharedLinksList 
-                  links={sharedLinks} 
-                  onRevoke={revokeSharedLink} 
-                  onOpenFolder={openSharedLinkFolder}
+                (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
+                  viewSkeleton
+                ) : (
+                  <SharedLinksList 
+                    links={sharedLinks} 
+                    onRevoke={revokeSharedLink} 
+                    onOpenFolder={openSharedLinkFolder}
                   />
+                )
               ) : search.isSearching ? (
                 <SearchResultsList
                   results={search.results}
@@ -479,8 +509,8 @@ function App() {
                     onBatchDownload={() => fileActions.handleBatchDownload(selection.checkedItemIds)}
                   />
 
-                  {filesLoading ? (
-                    viewMode === "list" ? <ListSkeleton /> : <GridSkeleton />
+                  {isFolderLoading ? (
+                    viewSkeleton
                   ) : listItems.length === 0 ? (
                     <EmptyState />
                   ) : viewMode === "list" ? (
@@ -501,9 +531,27 @@ function App() {
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
                       onDropOnFolder={dnd.handleDropOnFolder}
                     />
+                  ) : viewMode === "tiles" ? (
+                    <FileTiles
+                      items={listItems}
+                      selectedItemId={selection.selectedItemId}
+                      checkedItemIds={selection.checkedItemIds}
+                      contextMenuId={menus.contextMenuId}
+                      dragOverFolderId={dnd.dragOverFolderId}
+                      onItemClick={selection.handleItemClick}
+                      onCheckboxToggle={selection.handleCheckboxToggle}
+                      onContextMenuToggle={menus.setContextMenuId}
+                      onItemContextMenu={menus.openItemContextMenu}
+                      renderContextMenu={renderItemContextMenu}
+                      onDragStartItem={dnd.handleDragStartItem}
+                      onDragOverFolder={dnd.handleDragOverFolder}
+                      onDragLeaveFolder={dnd.handleDragLeaveFolder}
+                      onDropOnFolder={dnd.handleDropOnFolder}
+                    />
                   ) : (
                     <FileGrid
                       items={listItems}
+                      gridSize={gridSize}
                       selectedItemId={selection.selectedItemId}
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
@@ -520,7 +568,7 @@ function App() {
                     />
                   )}
 
-                  {isPaginatedTab && !filesLoading && pagination.loading && (
+                  {isPaginatedTab && !isFolderLoading && pagination.loading && (
                     <div className="flex justify-center py-4">
                       <div className="w-5 h-5 border-2 border-border-main border-t-accent rounded-full animate-spin" />
                     </div>

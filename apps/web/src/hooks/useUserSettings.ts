@@ -1,6 +1,7 @@
 import { useAtom, useAtomValue } from "jotai";
 import {
   viewModeAtom,
+  gridSizeAtom,
   sortFieldAtom,
   sortOrderAtom,
   sidebarCollapsedAtom,
@@ -16,6 +17,7 @@ export { AVATAR_COLORS } from "../atoms/userSettings";
 // back to defaults until the bridge finishes loading private_info/public_info.
 export const useUserSettings = () => {
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const [gridSize, setGridSize] = useAtom(gridSizeAtom);
   const [sortField, setSortField] = useAtom(sortFieldAtom);
   const [sortOrder, setSortOrder] = useAtom(sortOrderAtom);
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
@@ -26,10 +28,12 @@ export const useUserSettings = () => {
 
   return {
     viewMode,
+    gridSize,
     sortField,
     sortOrder,
     sidebarCollapsed,
     setViewMode,
+    setGridSize,
     setSortField,
     setSortOrder,
     setSidebarCollapsed,

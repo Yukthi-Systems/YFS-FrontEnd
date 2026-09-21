@@ -1,61 +1,29 @@
-import { useEffect, useState } from "react";
-import { Search, Grid, List, Menu, Clock } from "lucide-react";
-import type { ViewMode } from "../../types/file";
+import { Search, LayoutGrid, LayoutList, List, Menu } from "lucide-react";
+import type { GridSize, ViewMode } from "../../types/file";
+import { Dropdown } from "../common/Dropdown";
 
-// Countdown to the access-token expiry. Refreshes itself once a minute (every
-// 10s in the last few minutes) so it never drifts far.
-function SessionTimer({ expiresAt }: { expiresAt: number | null }) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!expiresAt) return;
-    const tick = () => setNow(Date.now());
-    const remaining = expiresAt - Date.now();
-    const interval = remaining > 5 * 60_000 ? 60_000 : 10_000;
-    const id = setInterval(tick, interval);
-    return () => clearInterval(id);
-  }, [expiresAt, now]);
-
-  if (!expiresAt) return null;
-
-  const ms = expiresAt - now;
-  const expired = ms <= 0;
-  const mins = Math.floor(ms / 60_000);
-  const label = expired
-    ? "Session expired"
-    : mins >= 60
-    ? `${Math.floor(mins / 60)}h ${mins % 60}m left`
-    : mins >= 1
-    ? `${mins}m left`
-    : `${Math.max(0, Math.floor(ms / 1000))}s left`;
-
-  const tone = expired || mins < 5 ? "text-red-500" : mins < 15 ? "text-amber-500" : "text-text-main";
-
-  return (
-    <span
-      className={`hidden min-[600px]:flex items-center gap-1.5 text-xs font-medium shrink-0 ${tone}`}
-      title={`Session expires ${new Date(expiresAt).toLocaleString()}`}
-    >
-      <Clock className="w-3.5 h-3.5" />
-      {label}
-    </span>
-  );
-}
+const GRID_SIZE_OPTIONS: { value: GridSize; label: string }[] = [
+  { value: "small", label: "Small icons" },
+  { value: "medium", label: "Medium icons" },
+  { value: "large", label: "Large icons" },
+];
 
 export function TopBar({
   searchQuery,
   onSearchChange,
   viewMode,
   onViewModeChange,
+  gridSize,
+  onGridSizeChange,
   onMenuClick,
-  sessionExpiresAt = null,
 }: {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  gridSize: GridSize;
+  onGridSizeChange: (size: GridSize) => void;
   onMenuClick?: () => void;
-  sessionExpiresAt?: number | null;
 }) {
   return (
     <header className="h-14 min-h-14 border-b border-border-main px-5 flex items-center justify-between gap-3 md:gap-6 box-border max-[768px]:px-3">
@@ -79,27 +47,47 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
-        <SessionTimer expiresAt={sessionExpiresAt} />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 bg-code-bg border border-border-main rounded-full p-0.5">
           <button
             onClick={() => onViewModeChange("list")}
-            className={`w-9 h-9 flex items-center justify-center rounded-full text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition ${
-              viewMode === "list" ? "bg-accent-bg text-accent! border border-accent-border!" : ""
+            aria-pressed={viewMode === "list"}
+            className={`w-8 h-8 flex items-center justify-center rounded-full text-text-main hover:text-text-heading cursor-pointer transition ${
+              viewMode === "list" ? "bg-bg-main text-accent! shadow-sm" : ""
             }`}
-            title="List View"
+            title="List view"
           >
             <List className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onViewModeChange("grid")}
-              className={`w-9 h-9 flex items-center justify-center rounded-full text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition ${
-                viewMode === "grid" ? "bg-accent-bg text-accent! border border-accent-border!" : ""
-              }`}
-              title="Grid View"
-            >
-              <Grid className="w-4 h-4" />
-            </button>
+          </button>
+          <button
+            onClick={() => onViewModeChange("tiles")}
+            aria-pressed={viewMode === "tiles"}
+            className={`w-8 h-8 flex items-center justify-center rounded-full text-text-main hover:text-text-heading cursor-pointer transition ${
+              viewMode === "tiles" ? "bg-bg-main text-accent! shadow-sm" : ""
+            }`}
+            title="Tiles view"
+          >
+            <LayoutList className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onViewModeChange("grid")}
+            aria-pressed={viewMode === "grid"}
+            className={`w-8 h-8 flex items-center justify-center rounded-full text-text-main hover:text-text-heading cursor-pointer transition ${
+              viewMode === "grid" ? "bg-bg-main text-accent! shadow-sm" : ""
+            }`}
+            title="Grid view"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
         </div>
+
+        {viewMode === "grid" && (
+          <Dropdown
+            value={gridSize}
+            options={GRID_SIZE_OPTIONS}
+            onChange={onGridSizeChange}
+            triggerClassName="px-3 h-9 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition inline-flex items-center gap-1.5"
+          />
+        )}
       </div>
     </header>
   );

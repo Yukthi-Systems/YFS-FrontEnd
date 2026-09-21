@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useAtom } from "jotai";
-import { HttpError, type FileUploadRequest, type UploadSession } from "@yfs/service";
+import { type FileUploadRequest, type UploadSession } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
 import { uploadClient, type UploadHandle } from "../services/uploadClient";
+import { withAuthRetry } from "../utils/authRetry";
 import {
   resolveUploadStep,
   uploadBlockMessage,
@@ -182,15 +183,7 @@ export const useUploadQueue = () => {
           expected_file_size: plan.file.size,
         };
 
-        let session: UploadSession;
-        try {
-          session = await uploadClient.requestUpload(tk ?? "", request);
-        } catch (err) {
-          if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 400)) throw err;
-          const fresh = await refresh();
-          if (!fresh) throw err;
-          session = await uploadClient.requestUpload(fresh, request);
-        }
+        const session: UploadSession = await withAuthRetry(tk, refresh, (t) => uploadClient.requestUpload(t, request));
 
         if (cancelledPending.delete(taskId)) return;
 

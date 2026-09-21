@@ -3,17 +3,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtom, useSetAtom } from "jotai";
 import { getUserById, updateUserInfo } from "@yfs/service";
 import { useAuth } from "../hooks/useAuth";
-import { useTheme } from "../atoms/theme";
+import { withAuthRetry } from "../utils/authRetry";
+import { useTheme, useAccentColor } from "../atoms/theme";
 import { showToast } from "../atoms/toast";
 import {
   viewModeAtom,
+  gridSizeAtom,
   sortFieldAtom,
   sortOrderAtom,
   sidebarCollapsedAtom,
   publicProfileAtom,
   savingProfileAtom,
 } from "../atoms/userSettings";
-import type { SortField, SortOrder, ViewMode } from "../types/file";
+import type { GridSize, SortField, SortOrder, ViewMode } from "../types/file";
 import type { Theme } from "../utils/theme";
 
 // Server-backed per-user settings, split across the two `users` blobs YFS-Main-API
@@ -28,7 +30,8 @@ import type { Theme } from "../utils/theme";
 const SAVE_DEBOUNCE_MS = 700;
 
 const THEMES: Theme[] = ["light", "dark", "system"];
-const VIEW_MODES: ViewMode[] = ["list", "grid"];
+const VIEW_MODES: ViewMode[] = ["list", "tiles", "grid"];
+const GRID_SIZES: GridSize[] = ["small", "medium", "large"];
 const SORT_FIELDS: SortField[] = ["name", "modifiedAt", "size"];
 const SORT_ORDERS: SortOrder[] = ["asc", "desc"];
 
@@ -37,7 +40,9 @@ const oneOf = <T,>(allowed: readonly T[], v: unknown): T | undefined =>
 
 interface PrivateBlob {
   theme?: Theme;
+  accentColor?: string;
   viewMode?: ViewMode;
+  gridSize?: GridSize;
   sortField?: SortField;
   sortOrder?: SortOrder;
   sidebarCollapsed?: boolean;
@@ -45,9 +50,11 @@ interface PrivateBlob {
 }
 
 export function UserSettingsBridge() {
-  const { token, userId } = useAuth();
+  const { token, userId, refreshAccessToken } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { accentColor, setAccentColor } = useAccentColor();
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const [gridSize, setGridSize] = useAtom(gridSizeAtom);
   const [sortField, setSortField] = useAtom(sortFieldAtom);
   const [sortOrder, setSortOrder] = useAtom(sortOrderAtom);
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
@@ -56,7 +63,7 @@ export function UserSettingsBridge() {
 
   const query = useQuery({
     queryKey: ["userSettings", userId],
-    queryFn: () => getUserById(token!, userId!),
+    queryFn: () => withAuthRetry(token, refreshAccessToken, (tk) => getUserById(tk, userId!)),
     enabled: !!token && !!userId,
   });
 
@@ -92,14 +99,17 @@ export function UserSettingsBridge() {
     publicBlobRef.current = { ...pub };
 
     const vm = oneOf(VIEW_MODES, priv.viewMode);
+    const gs = oneOf(GRID_SIZES, priv.gridSize);
     const sf = oneOf(SORT_FIELDS, priv.sortField);
     const so = oneOf(SORT_ORDERS, priv.sortOrder);
     const th = oneOf(THEMES, priv.theme);
     if (vm) setViewMode(vm);
+    if (gs) setGridSize(gs);
     if (sf) setSortField(sf);
     if (so) setSortOrder(so);
     if (typeof priv.sidebarCollapsed === "boolean") setSidebarCollapsed(priv.sidebarCollapsed);
     if (th && th !== theme) setTheme(th);
+    if (typeof priv.accentColor === "string") setAccentColor(priv.accentColor);
     setPublicProfile({
       display_name: typeof pub.display_name === "string" ? pub.display_name : undefined,
       avatar_color: typeof pub.avatar_color === "string" ? pub.avatar_color : undefined,
@@ -115,21 +125,34 @@ export function UserSettingsBridge() {
     const prev = privateBlobRef.current;
     const unchanged =
       prev.theme === theme &&
+      prev.accentColor === (accentColor ?? undefined) &&
       prev.viewMode === viewMode &&
+      prev.gridSize === gridSize &&
       prev.sortField === sortField &&
       prev.sortOrder === sortOrder &&
       prev.sidebarCollapsed === sidebarCollapsed;
-    privateBlobRef.current = { ...prev, theme, viewMode, sortField, sortOrder, sidebarCollapsed };
+    privateBlobRef.current = {
+      ...prev,
+      theme,
+      accentColor: accentColor ?? undefined,
+      viewMode,
+      gridSize,
+      sortField,
+      sortOrder,
+      sidebarCollapsed,
+    };
     if (unchanged) return;
     clearTimeout(privTimer.current);
     privTimer.current = setTimeout(() => {
       if (!token) return;
-      updateUserInfo(token, "private", privateBlobRef.current).catch((err) => {
-        console.warn("private_info save failed", err);
-        showToast(err instanceof Error ? err.message : "Couldn't save your preferences", "error");
-      });
+      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "private", privateBlobRef.current)).catch(
+        (err) => {
+          console.warn("private_info save failed", err);
+          showToast(err instanceof Error ? err.message : "Couldn't save your preferences", "error");
+        }
+      );
     }, SAVE_DEBOUNCE_MS);
-  }, [theme, viewMode, sortField, sortOrder, sidebarCollapsed, token]);
+  }, [theme, accentColor, viewMode, gridSize, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
 
   useEffect(() => {
     if (!initedRef.current) return;
@@ -144,14 +167,14 @@ export function UserSettingsBridge() {
         setSavingProfile(false);
         return;
       }
-      updateUserInfo(token, "public", publicBlobRef.current)
+      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "public", publicBlobRef.current))
         .catch((err) => {
           console.warn("public_info save failed", err);
           showToast(err instanceof Error ? err.message : "Couldn't save your profile", "error");
         })
         .finally(() => setSavingProfile(false));
     }, SAVE_DEBOUNCE_MS);
-  }, [publicProfile, token, setSavingProfile]);
+  }, [publicProfile, token, setSavingProfile, refreshAccessToken]);
 
   return null;
 }

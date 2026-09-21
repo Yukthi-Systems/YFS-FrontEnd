@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-react";
+import { ChevronRight, LogOut, Monitor, Moon, Palette, RotateCcw, Sun, UserRound } from "lucide-react";
 import { capitalize } from "@yfs/utils";
 import type { UserInfo } from "../../atoms/auth";
-import { useTheme } from "../../atoms/theme";
-import { useUserSettings } from "../../hooks/useUserSettings";
+import { useTheme, useAccentColor } from "../../atoms/theme";
+import { useUserSettings, AVATAR_COLORS } from "../../hooks/useUserSettings";
 import type { Theme } from "../../utils/theme";
+import { Avatar } from "../common/Avatar";
 import { ProfileModal } from "../modals/ProfileModal";
 
 const THEME_OPTIONS: { value: Theme; label: string; Icon: typeof Sun }[] = [
@@ -29,9 +30,11 @@ export function UserMenu({
   onLogout: () => void;
 }) {
   const { theme, setTheme } = useTheme();
+  const { accentColor, setAccentColor } = useAccentColor();
   const { publicProfile } = useUserSettings();
   const [open, setOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,14 +48,13 @@ export function UserMenu({
   }, [open]);
 
   useEffect(() => {
-    if (!open) setThemeOpen(false);
+    if (!open) {
+      setThemeOpen(false);
+      setColorOpen(false);
+    }
   }, [open]);
 
   const name = publicProfile.display_name?.trim() || capitalize(user?.username || "Guest User");
-  const initials = (publicProfile.display_name || user?.username || user?.email || "US")
-    .substring(0, 2)
-    .toUpperCase();
-  const avatarStyle = publicProfile.avatar_color ? { background: publicProfile.avatar_color } : undefined;
   const CurrentThemeIcon = (THEME_OPTIONS.find((o) => o.value === theme) ?? THEME_OPTIONS[1]).Icon;
 
   const rowClass =
@@ -67,12 +69,12 @@ export function UserMenu({
         }`}
         title="Account"
       >
-        <span
-          className="w-8 h-8 min-w-8 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center font-bold text-[11px]"
-          style={avatarStyle}
-        >
-          {initials}
-        </span>
+        <Avatar
+          name={publicProfile.display_name || user?.username}
+          email={user?.email}
+          color={publicProfile.avatar_color}
+          className="w-8 h-8 min-w-8 text-[11px]"
+        />
         {!compact && (
           <span className="flex flex-col overflow-hidden">
             <span className="text-[0.8rem] font-semibold text-text-heading truncate">{name}</span>
@@ -112,6 +114,36 @@ export function UserMenu({
                   <Icon className="w-3.5 h-3.5" />
                   {label}
                 </button>
+              ))}
+            </div>
+          )}
+
+          <button onClick={() => setColorOpen((v) => !v)} className={rowClass}>
+            <Palette className="w-4 h-4" />
+            <span className="flex-1">Accent color</span>
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${colorOpen ? "rotate-90" : ""}`} />
+          </button>
+          {colorOpen && (
+            <div className="flex flex-wrap items-center gap-2 pl-2 py-1">
+              <button
+                onClick={() => setAccentColor(null)}
+                title="Reset to default"
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition bg-code-bg cursor-pointer ${
+                  !accentColor ? "border-text-heading" : "border-transparent"
+                }`}
+              >
+                <RotateCcw className="w-2.5 h-2.5 text-text-main" />
+              </button>
+              {AVATAR_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setAccentColor(c)}
+                  style={{ background: c }}
+                  className={`w-5 h-5 rounded-full border-2 transition cursor-pointer ${
+                    accentColor === c ? "border-text-heading" : "border-transparent"
+                  }`}
+                  title={c}
+                />
               ))}
             </div>
           )}
