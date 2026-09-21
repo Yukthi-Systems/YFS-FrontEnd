@@ -6,6 +6,7 @@ import { useFileSystem } from "./useFileSystem";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
 import { uploadClient, type UploadHandle } from "../services/uploadClient";
 import { withAuthRetry } from "../utils/authRetry";
+import { showToast } from "../atoms/toast";
 import {
   resolveUploadStep,
   uploadBlockMessage,
@@ -255,6 +256,7 @@ export const useUploadQueue = () => {
       const rejected = items.filter((it) => !hasSubfolder(it));
       accepted = items.filter(hasSubfolder);
       if (rejected.length > 0) {
+        showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
         setTasks((prev) => [
           ...prev,
           ...rejected.map((it) => {
