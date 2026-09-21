@@ -55,7 +55,7 @@ export function SharedDetailsPanel({
           </InfoRow>
           <InfoRow label="Size">
             {item.isFolder ? (
-              "—"
+              item.size > 0 ? formatBytes(item.size) : "0 B"
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
                 <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
@@ -73,7 +73,7 @@ export function SharedDetailsPanel({
           {item.isFolder && (
             <button
               onClick={onOpenFolder}
-              className="flex items-center justify-center gap-2 w-full py-2 bg-gradient-to-br from-accent to-purple-600 text-white font-semibold rounded-xl hover:shadow-md cursor-pointer transition-all"
+              className="flex items-center justify-center gap-2 w-full py-2 bg-accent text-white font-semibold rounded-xl hover:shadow-md cursor-pointer transition-all"
             >
               <FolderInput className="w-4 h-4" /> Open
             </button>

@@ -1,34 +1,71 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Loader2, MoreVertical } from "lucide-react";
-import type { FileItem } from "../../types/file";
-import { formatBytes, isItemProcessing } from "../../utils/format";
+import type { FileItem, GridSize } from "../../types/file";
+import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
-const GRID_COLS_CLASS = "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
+// Windows-style icon size presets for grid view — column count, thumbnail height and
+// icon/text scale all move together per size.
+const GRID_SIZE_CONFIG: Record<
+  GridSize,
+  { cols: string; gap: string; thumbHeight: string; iconSize: string; padding: string; nameSize: string; metaSize: string; showModified: boolean }
+> = {
+  small: {
+    cols: "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8",
+    gap: "gap-2",
+    thumbHeight: "h-12",
+    iconSize: "w-5 h-5",
+    padding: "p-2",
+    nameSize: "text-[11px]",
+    metaSize: "text-[9px]",
+    showModified: false,
+  },
+  medium: {
+    cols: "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5",
+    gap: "gap-3",
+    thumbHeight: "h-20",
+    iconSize: "w-8 h-8",
+    padding: "p-3",
+    nameSize: "text-xs",
+    metaSize: "text-[10px]",
+    showModified: false,
+  },
+  large: {
+    cols: "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
+    gap: "gap-4",
+    thumbHeight: "h-40",
+    iconSize: "w-12 h-12",
+    padding: "p-4",
+    nameSize: "text-sm",
+    metaSize: "text-[11px]",
+    showModified: true,
+  },
+};
 
-function Thumbnail({ item }: { item: FileItem }) {
+function Thumbnail({ item, config }: { item: FileItem; config: (typeof GRID_SIZE_CONFIG)[GridSize] }) {
   if (item.type === "image" && item.blobUrl) {
     return (
-      <div className="w-full h-20 rounded-lg overflow-hidden bg-code-bg flex items-center justify-center">
+      <div className={`w-full ${config.thumbHeight} rounded-lg overflow-hidden bg-code-bg flex items-center justify-center`}>
         <img src={item.blobUrl} alt={item.name} className="w-full h-full object-cover" />
       </div>
     );
   }
   if (item.type === "video" && item.blobUrl) {
     return (
-      <div className="w-full h-20 rounded-lg overflow-hidden bg-code-bg flex items-center justify-center">
+      <div className={`w-full ${config.thumbHeight} rounded-lg overflow-hidden bg-code-bg flex items-center justify-center`}>
         <video src={item.blobUrl} className="w-full h-full object-cover" muted />
       </div>
     );
   }
-  return <div className="flex justify-center py-2">{getItemIcon(item, "w-8 h-8")}</div>;
+  return <div className="flex justify-center py-2">{getItemIcon(item, config.iconSize)}</div>;
 }
 
 export function FileGrid({
   items,
+  gridSize = "medium",
   selectedItemId,
   checkedItemIds,
   contextMenuId,
@@ -44,6 +81,7 @@ export function FileGrid({
   onDropOnFolder,
 }: {
   items: FileItem[];
+  gridSize?: GridSize;
   selectedItemId: string | null;
   checkedItemIds: string[];
   contextMenuId: string | null;
@@ -59,6 +97,7 @@ export function FileGrid({
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
+  const config = GRID_SIZE_CONFIG[gridSize];
 
   const renderCard = (item: FileItem) => {
     const isSel = selectedItemId === item.id;
@@ -77,7 +116,7 @@ export function FileGrid({
           setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
           onItemContextMenu(item, e);
         }}
-        className={`group relative bg-bg-main border border-border-main rounded-xl p-3 cursor-pointer flex flex-col gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-border hover:shadow-sm ${
+        className={`group relative bg-bg-main border border-border-main rounded-xl ${config.padding} cursor-pointer flex flex-col gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-border hover:shadow-sm ${
           isSel ? "bg-accent-bg! border-accent!" : ""
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
@@ -107,13 +146,13 @@ export function FileGrid({
           </div>
         </div>
 
-        <Thumbnail item={item} />
+        <Thumbnail item={item} config={config} />
 
         <div className="flex flex-col gap-0.5 text-center mt-2">
-          <span className="text-xs font-semibold text-text-heading truncate w-full px-1">{item.name}</span>
-          <span className="text-[10px] text-text-main">
+          <span className={`${config.nameSize} font-semibold text-text-heading truncate w-full px-1`}>{item.name}</span>
+          <span className={`${config.metaSize} text-text-main`}>
             {item.isFolder ? (
-              "Directory"
+              item.size > 0 ? formatBytes(item.size) : "Folder"
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center justify-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                 <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
@@ -123,13 +162,14 @@ export function FileGrid({
               formatBytes(item.size)
             )}
           </span>
+          {config.showModified && <span className={`${config.metaSize} text-text-main`}>{formatDate(item.modifiedAt)}</span>}
         </div>
       </div>
     );
   };
 
   return (
-    <div className={`grid ${GRID_COLS_CLASS} gap-3`} onClick={(e) => e.stopPropagation()}>
+    <div className={`grid ${config.cols} ${config.gap}`} onClick={(e) => e.stopPropagation()}>
       {items.map(renderCard)}
     </div>
   );

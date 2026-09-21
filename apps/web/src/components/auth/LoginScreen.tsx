@@ -43,7 +43,7 @@ export function LoginScreen({
         <button
           onClick={onLogin}
           disabled={ssoPending}
-          className="flex items-center justify-center w-full py-3.5 px-6 rounded-2xl bg-gradient-to-br from-accent to-purple-600 text-white font-semibold shadow-md shadow-accent/20 hover:shadow-lg hover:shadow-accent/30 hover:-translate-y-0.5 active:translate-y-0 disabled:bg-border-main disabled:text-text-main disabled:shadow-none disabled:transform-none cursor-pointer transition-all"
+          className="flex items-center justify-center w-full py-3.5 px-6 rounded-2xl bg-accent text-white font-semibold shadow-md shadow-accent/20 hover:shadow-lg hover:shadow-accent/30 hover:-translate-y-0.5 active:translate-y-0 disabled:bg-border-main disabled:text-text-main disabled:shadow-none disabled:transform-none cursor-pointer transition-all"
         >
           {ssoPending ? "Awaiting SSO Verification..." : "Continue with Yukthi SSO"}
         </button>

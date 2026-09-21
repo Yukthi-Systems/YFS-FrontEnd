@@ -80,7 +80,7 @@ input {
   justify-content: center;
   width: 100%;
   padding: 0.6rem 1.1rem;
-  background: linear-gradient(135deg, var(--accent) 0%, #8b2cf5 100%);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -88,12 +88,12 @@ input {
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(170, 59, 255, 0.25);
+  box-shadow: 0 4px 12px var(--accent-border);
 }
 
 .btn-primary:hover {
   opacity: 0.95;
-  box-shadow: 0 6px 16px rgba(170, 59, 255, 0.35);
+  box-shadow: 0 6px 16px var(--accent-border);
   transform: translateY(-1px);
 }
 

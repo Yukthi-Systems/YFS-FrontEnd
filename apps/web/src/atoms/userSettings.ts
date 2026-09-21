@@ -1,5 +1,5 @@
 import { atom } from "jotai";
-import type { SortField, SortOrder, ViewMode } from "../types/file";
+import type { GridSize, SortField, SortOrder, ViewMode } from "../types/file";
 
 export interface PublicProfile {
   display_name?: string;
@@ -21,6 +21,8 @@ export const AVATAR_COLORS = [
 // View preferences — seeded from private_info by UserSettingsBridge once loaded,
 // written through on change (also by UserSettingsBridge, debounced).
 export const viewModeAtom = atom<ViewMode>("list");
+// Icon size for the "grid" view mode only — Windows-style small/medium/large icons.
+export const gridSizeAtom = atom<GridSize>("medium");
 export const sortFieldAtom = atom<SortField>("name");
 export const sortOrderAtom = atom<SortOrder>("asc");
 export const sidebarCollapsedAtom = atom<boolean>(false);

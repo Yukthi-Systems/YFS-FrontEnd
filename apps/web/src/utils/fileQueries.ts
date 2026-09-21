@@ -45,9 +45,6 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
   }
 
   result.sort((a, b) => {
-    if (a.isFolder && !b.isFolder) return -1;
-    if (!a.isFolder && b.isFolder) return 1;
-
     let comparison = 0;
     if (sortField === "name") comparison = a.name.localeCompare(b.name);
     else if (sortField === "modifiedAt") comparison = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();

@@ -3,6 +3,7 @@ import { Building2, Check, Globe, HardDrive, Pencil, Phone, RefreshCcw, ShieldCh
 import type { UserInfo } from "../../atoms/auth";
 import { AVATAR_COLORS, useUserSettings } from "../../hooks/useUserSettings";
 import { capitalize } from "@yfs/utils";
+import { Avatar } from "../common/Avatar";
 import { ModalShell } from "./ModalShell";
 
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
@@ -34,10 +35,6 @@ export function ProfileModal({
 
   const ssoName = capitalize(user?.username || "Guest User");
   const displayName = publicProfile.display_name?.trim() || ssoName;
-  const initials = (publicProfile.display_name || user?.username || user?.email || "US")
-    .substring(0, 2)
-    .toUpperCase();
-  const avatarStyle = publicProfile.avatar_color ? { background: publicProfile.avatar_color } : undefined;
   const twoFa = user?.two_factor_methods?.length ? user.two_factor_methods.join(", ") : "Off";
 
   const [editing, setEditing] = useState(false);
@@ -57,12 +54,12 @@ export function ProfileModal({
   return (
     <ModalShell onClose={onClose}>
       <div className="flex items-center gap-3 mb-4">
-        <span
-          className="w-11 h-11 rounded-full bg-gradient-to-tr from-accent to-indigo-500 text-white flex items-center justify-center font-bold text-sm shrink-0"
-          style={editing && colorDraft ? { background: colorDraft } : avatarStyle}
-        >
-          {initials}
-        </span>
+        <Avatar
+          name={publicProfile.display_name || user?.username}
+          email={user?.email}
+          color={editing ? colorDraft : publicProfile.avatar_color}
+          className="w-11 h-11 text-sm"
+        />
         <div className="min-w-0 flex-1">
           {editing ? (
             <input
@@ -113,11 +110,11 @@ export function ProfileModal({
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setColorDraft(undefined)}
-              className={`w-6 h-6 rounded-full bg-gradient-to-tr from-accent to-indigo-500 border-2 transition ${
-                colorDraft ? "border-transparent" : "border-text-heading"
-              }`}
+              className={`rounded-full border-2 transition ${colorDraft ? "border-transparent" : "border-text-heading"}`}
               title="Default"
-            />
+            >
+              <Avatar name={publicProfile.display_name || user?.username} email={user?.email} className="w-6 h-6 text-[9px]" />
+            </button>
             {AVATAR_COLORS.map((c) => (
               <button
                 key={c}

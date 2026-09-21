@@ -19,6 +19,7 @@ export interface AddFileInput {
 export interface PaginationInfo {
   hasMore: boolean;
   loading: boolean;
+  loaded: boolean;
 }
 
 // Written by services/fileSystemStore.ts; read via hooks/useFileSystem.ts.
@@ -32,4 +33,8 @@ export const remoteErrorAtom = atom(null as string | null);
 export const pageInfoAtom = atom<Record<string, PaginationInfo>>({});
 export const trashFolderIdAtom = atom(null as string | null);
 export const sharedOutAtom = atom<FileItem[]>([]);
+export const sharedOutLoadingAtom = atom<boolean>(false);
+export const sharedOutLoadedAtom = atom<boolean>(false);
 export const sharedLinksAtom = atom<ExternalShare[]>([]);
+export const sharedLinksLoadingAtom = atom<boolean>(false);
+export const sharedLinksLoadedAtom = atom<boolean>(false);
