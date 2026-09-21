@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import {
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -13,7 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import { isItemProcessing } from "../../utils/format";
+import { isItemFailed, isItemProcessing } from "../../utils/format";
 import { isTextEditable, isCollaboraSupported } from "../../utils/fileType";
 import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
@@ -118,6 +119,20 @@ export function ViewerModal({
   }, [onClose, onNavigate, prevItem, nextItem, isPiPActive, isMinimized]);
 
   const renderContent = () => {
+    if (isItemFailed(item)) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 text-center text-text-main py-16">
+          <div className="relative flex items-center justify-center">
+            <FileIcon className="w-12 h-12 text-neutral-400" />
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-bg-main">
+              <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+            </span>
+          </div>
+          <div className="text-sm font-semibold text-text-heading">File failed to process</div>
+          <div className="text-xs text-text-main max-w-sm">This file never finished processing on the server.</div>
+        </div>
+      );
+    }
     if (isItemProcessing(item)) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 text-center text-text-main py-16">
@@ -254,8 +269,8 @@ export function ViewerModal({
               {!item.isFolder && (
                 <button
                   onClick={() => onDownload(item)}
-                  disabled={isItemProcessing(item)}
-                  title={isItemProcessing(item) ? "File is still processing" : "Download"}
+                  disabled={isItemProcessing(item) || isItemFailed(item)}
+                  title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : "Download"}
                   className="border-none bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition"
                 >
                   <Download className="w-4 h-4" />

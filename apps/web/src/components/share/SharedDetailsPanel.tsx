@@ -1,6 +1,6 @@
-import { Download, FolderInput, Pencil, X, Loader2 } from "lucide-react";
+import { AlertCircle, Download, FolderInput, Pencil, X, Loader2 } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { CompactPreview, InfoRow, KIND_LABEL } from "../files/DetailsDrawer";
 
 // Read-only counterpart to DetailsDrawer for the anonymous /share/<id> view: same
@@ -56,6 +56,11 @@ export function SharedDetailsPanel({
           <InfoRow label="Size">
             {item.isFolder ? (
               item.size > 0 ? formatBytes(item.size) : "0 B"
+            ) : isItemFailed(item) ? (
+              <span className="inline-flex items-center gap-1.5 text-red-500 font-medium text-xs">
+                <AlertCircle className="w-3 h-3" />
+                Failed
+              </span>
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
                 <Loader2 className="w-3 h-3 animate-spin text-amber-500" />

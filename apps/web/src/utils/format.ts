@@ -1,5 +1,27 @@
-export const isItemProcessing = (item: { isFolder?: boolean; size?: number | null }): boolean => {
-  return !item.isFolder && (!item.size || item.size <= 0);
+// A file's size comes back 0/unset until the Storage API's server-side callback
+// confirms the upload to YFS-Main-API — that's "processing". If it's been stuck
+// that way since longer than this ago, the callback almost certainly never landed
+// (a dropped connection, a crashed worker, ...), so it's treated as failed instead
+// of showing "Processing" forever.
+const PROCESSING_TIMEOUT_SECONDS = 65536;
+
+type ProcessingCheckItem = { isFolder?: boolean; size?: number | null; createdAt?: string };
+
+const isStuckAtZeroBytes = (item: ProcessingCheckItem): boolean => !item.isFolder && (!item.size || item.size <= 0);
+
+const secondsSinceCreated = (item: ProcessingCheckItem): number | null =>
+  item.createdAt ? (Date.now() - new Date(item.createdAt).getTime()) / 1000 : null;
+
+export const isItemProcessing = (item: ProcessingCheckItem): boolean => {
+  if (!isStuckAtZeroBytes(item)) return false;
+  const elapsed = secondsSinceCreated(item);
+  return elapsed === null || elapsed <= PROCESSING_TIMEOUT_SECONDS;
+};
+
+export const isItemFailed = (item: ProcessingCheckItem): boolean => {
+  if (!isStuckAtZeroBytes(item)) return false;
+  const elapsed = secondsSinceCreated(item);
+  return elapsed !== null && elapsed > PROCESSING_TIMEOUT_SECONDS;
 };
 
 export const formatBytes = (bytes: number): string => {
