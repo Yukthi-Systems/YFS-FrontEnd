@@ -10,8 +10,13 @@ export const downloadClient = {
   },
 
   async fetchBytes(session: DownloadSession, signal?: AbortSignal): Promise<Blob> {
+    // session.url already carries the grant as ?token=…, which the Storage API accepts on
+    // its own. Only add an Authorization header when the URL lacks it: a header makes the
+    // browser send a CORS preflight, and the server prefers the header over the query
+    // string, so a wrong/missing header value would 401 an otherwise valid URL.
+    const hasUrlToken = new URL(session.url, window.location.href).searchParams.has("token");
     const res = await fetch(session.url, {
-      headers: { Authorization: `Bearer ${session.token}` },
+      headers: hasUrlToken || !session.token ? undefined : { Authorization: `Bearer ${session.token}` },
       signal,
     });
     if (!res.ok) throw new Error(`Download failed with status ${res.status}`);

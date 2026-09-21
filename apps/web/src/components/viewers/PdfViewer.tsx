@@ -4,10 +4,12 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import type { FileItem } from "../../types/file";
+import { useFileBlob } from "../../hooks/useFileBlob";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 export function PdfViewer({ item }: { item: FileItem }) {
+  const { blob, loading, error } = useFileBlob(item);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [failed, setFailed] = useState(false);
@@ -27,11 +29,12 @@ export function PdfViewer({ item }: { item: FileItem }) {
     return () => observer.disconnect();
   }, []);
 
-  if (!item.blobUrl) {
+  if (loading) return <div className="text-sm text-text-main text-center py-16">Loading PDF…</div>;
+  if (error) {
     return (
       <div className="flex flex-col items-center gap-2 text-center text-text-main py-16">
         <FileText className="w-12 h-12 text-red-400" />
-        <div className="text-sm font-medium">Seeded demo item — no PDF content to render.</div>
+        <div className="text-sm font-medium">{error}</div>
       </div>
     );
   }
@@ -48,7 +51,7 @@ export function PdfViewer({ item }: { item: FileItem }) {
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-3 w-full">
       <Document
-        file={item.blobUrl}
+        file={blob}
         onLoadSuccess={({ numPages }) => {
           setNumPages(numPages);
           setPageNumber(1);
