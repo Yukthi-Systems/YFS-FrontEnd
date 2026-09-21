@@ -61,12 +61,13 @@ export function FileTiles({
           onItemContextMenu(item, e);
         }}
         className={`group relative bg-bg-main border border-border-main rounded-xl p-3 cursor-pointer flex items-center gap-3 transition-all duration-200 hover:border-accent-border hover:shadow-sm ${
-          isSel ? "bg-accent-bg! border-accent!" : ""
+          isSel ? "bg-accent-bg/70! border-accent!" : isChecked ? "bg-accent-bg/70! border-accent-border!" : ""
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
         <input
           type="checkbox"
           checked={isChecked}
+          onClick={(e) => e.stopPropagation()}
           onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
           className={`shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
         />
