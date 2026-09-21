@@ -26,7 +26,7 @@ function SortableHeader({
   const active = sortField === field;
   return (
     <th
-      className={`sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-text-heading transition ${className}`}
+      className={`sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:bg-code-bg hover:text-text-heading transition ${className}`}
       aria-sort={active ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
       onClick={() => onSort(field)}
     >
