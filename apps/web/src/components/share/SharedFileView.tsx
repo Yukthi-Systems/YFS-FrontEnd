@@ -525,6 +525,10 @@ export function SharedFileView() {
             checkedItemIds={selection.checkedItemIds}
             contextMenuId={contextMenuId}
             dragOverFolderId={null}
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSortFieldChange={setSortField}
+            onToggleSortOrder={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
             onItemClick={selection.handleItemClick}
             onCheckboxToggle={selection.handleCheckboxToggle}
             onSelectAllToggle={selection.handleSelectAllToggle}
