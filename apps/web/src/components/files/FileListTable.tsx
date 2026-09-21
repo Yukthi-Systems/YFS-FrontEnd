@@ -131,9 +131,9 @@ export function FileListTable({
                 onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
                 onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
                 onDrop={(e) => item.isFolder && onDropOnFolder(item, e)}
-                className={`cursor-pointer transition duration-150 ${isSel ? "bg-accent-bg!" : "hover:bg-code-bg"} ${
-                  isDragOver ? "bg-accent-bg! outline-2 outline-accent -outline-offset-2" : ""
-                }`}
+                className={`cursor-pointer transition duration-150 ${
+                  isSel ? "bg-accent-bg/70!" : isChecked ? "bg-accent-bg/70!" : "hover:bg-code-bg"
+                } ${isDragOver ? "bg-accent-bg! outline-2 outline-accent -outline-offset-2" : ""}`}
                 onClick={(e) => onItemClick(item, e)}
                 onContextMenu={(e) => {
                   setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
