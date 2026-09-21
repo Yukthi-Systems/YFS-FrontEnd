@@ -7,41 +7,37 @@ import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
-// Windows-style icon size presets for grid view — column count, thumbnail height and
-// icon/text scale all move together per size.
+// Windows Explorer-style icon size presets for grid view — column count, icon size
+// and text scale all move together per size. No card border/shadow by default (see
+// renderCard below) — just a big icon, a name underneath, and a flat highlight on
+// hover/selection, the way Explorer's icon views look rather than a bordered card grid.
 const GRID_SIZE_CONFIG: Record<
   GridSize,
-  { cols: string; gap: string; thumbHeight: string; iconSize: string; padding: string; nameSize: string; metaSize: string; showModified: boolean }
+  { cols: string; gap: string; thumbHeight: string; iconSize: string; padding: string; nameSize: string }
 > = {
   small: {
-    cols: "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8",
-    gap: "gap-2",
-    thumbHeight: "h-12",
-    iconSize: "w-5 h-5",
+    cols: "grid-cols-[repeat(auto-fill,minmax(72px,1fr))]",
+    gap: "gap-1",
+    thumbHeight: "h-10",
+    iconSize: "w-8 h-8",
     padding: "p-2",
     nameSize: "text-[11px]",
-    metaSize: "text-[9px]",
-    showModified: false,
   },
   medium: {
-    cols: "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5",
-    gap: "gap-3",
-    thumbHeight: "h-20",
-    iconSize: "w-8 h-8",
+    cols: "grid-cols-[repeat(auto-fill,minmax(100px,1fr))]",
+    gap: "gap-2",
+    thumbHeight: "h-16",
+    iconSize: "w-14 h-14",
     padding: "p-3",
     nameSize: "text-xs",
-    metaSize: "text-[10px]",
-    showModified: false,
   },
   large: {
-    cols: "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
-    gap: "gap-4",
-    thumbHeight: "h-40",
-    iconSize: "w-12 h-12",
+    cols: "grid-cols-[repeat(auto-fill,minmax(140px,1fr))]",
+    gap: "gap-3",
+    thumbHeight: "h-24",
+    iconSize: "w-20 h-20",
     padding: "p-4",
     nameSize: "text-sm",
-    metaSize: "text-[11px]",
-    showModified: true,
   },
 };
 
@@ -60,7 +56,7 @@ function Thumbnail({ item, config }: { item: FileItem; config: (typeof GRID_SIZE
       </div>
     );
   }
-  return <div className="flex justify-center py-2">{getItemIcon(item, config.iconSize)}</div>;
+  return <div className={`flex items-center justify-center ${config.thumbHeight}`}>{getItemIcon(item, config.iconSize)}</div>;
 }
 
 export function FileGrid({
@@ -116,11 +112,11 @@ export function FileGrid({
           setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
           onItemContextMenu(item, e);
         }}
-        className={`group relative bg-bg-main border border-border-main rounded-xl ${config.padding} cursor-pointer flex flex-col gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-border hover:shadow-sm ${
-          isSel ? "bg-accent-bg/70! border-accent!" : isChecked ? "bg-accent-bg/70! border-accent-border!" : ""
+        className={`group relative hover:z-20 rounded-lg ${config.padding} cursor-pointer flex flex-col items-center gap-1.5 transition-colors duration-150 ${
+          isSel ? "bg-accent-bg/70!" : isChecked ? "bg-accent-bg/70!" : "hover:bg-code-bg"
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
-        <div className="flex items-center justify-between">
+        <div className="absolute top-1 left-1 right-1 flex items-center justify-between z-10">
           <input
             type="checkbox"
             checked={isChecked}
@@ -135,7 +131,7 @@ export function FileGrid({
                 setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
                 onContextMenuToggle(opening ? item.id : null);
               }}
-              className="row-actions-trigger border-none bg-transparent p-1 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
+              className="row-actions-trigger opacity-0 group-hover:opacity-100 focus:opacity-100 border-none bg-transparent p-1 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
             >
               <MoreVertical className="w-3.5 h-3.5" />
             </button>
@@ -147,23 +143,41 @@ export function FileGrid({
           </div>
         </div>
 
-        <Thumbnail item={item} config={config} />
+        <div className="relative">
+          <Thumbnail item={item} config={config} />
+          {!item.isFolder && isItemProcessing(item) && (
+            <span
+              title="Processing"
+              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-bg-main border border-border-main flex items-center justify-center"
+            >
+              <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
+            </span>
+          )}
+        </div>
 
-        <div className="flex flex-col gap-0.5 text-center mt-2">
-          <span className={`${config.nameSize} font-semibold text-text-heading truncate w-full px-1`}>{item.name}</span>
-          <span className={`${config.metaSize} text-text-main`}>
-            {item.isFolder ? (
-              item.size > 0 ? formatBytes(item.size) : "Folder"
-            ) : isItemProcessing(item) ? (
-              <span className="inline-flex items-center justify-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
-                <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
-                Processing
-              </span>
-            ) : (
-              formatBytes(item.size)
-            )}
+        <span className={`${config.nameSize} font-medium text-text-heading text-center line-clamp-2 break-words w-full px-0.5`}>
+          {item.name}
+        </span>
+
+        {/* Explorer-style hover details — grid tiles drop the metadata line for the
+            icon-only look, so this is the only place size/date/owner show. */}
+        <div className="hidden group-hover:flex absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 w-52 flex-col gap-1 bg-bg-main border border-border-main rounded-lg shadow-lg p-2.5 text-[11px] text-left pointer-events-none">
+          <span className="font-semibold text-text-heading break-words">{item.name}</span>
+          <span className="text-text-main">
+            {item.isFolder ? "Folder" : item.extension ? `${item.extension.toUpperCase()} file` : "File"}
           </span>
-          {config.showModified && <span className={`${config.metaSize} text-text-main`}>{formatDate(item.modifiedAt)}</span>}
+          <span className="text-text-main">
+            {item.isFolder
+              ? item.size > 0
+                ? formatBytes(item.size)
+                : "Empty"
+              : isItemProcessing(item)
+                ? "Processing…"
+                : formatBytes(item.size)}
+          </span>
+          <span className="text-text-main">Modified {formatDate(item.modifiedAt)}</span>
+          {item.owner?.name && <span className="text-text-main">Owner: {item.owner.name}</span>}
+          {item.createdBy && <span className="text-text-main">Created by: {item.createdBy}</span>}
         </div>
       </div>
     );
