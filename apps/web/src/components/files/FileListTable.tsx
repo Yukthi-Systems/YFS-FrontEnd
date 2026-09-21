@@ -95,7 +95,7 @@ export function FileListTable({
     <div className="w-full overflow-x-auto">
       <table className="w-full border-collapse text-left">
         <thead>
-          <tr>
+          <tr onMouseDown={(e) => e.stopPropagation()}>
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
@@ -126,6 +126,7 @@ export function FileListTable({
             return (
               <tr
                 key={item.id}
+                data-item-id={item.id}
                 draggable
                 onDragStart={(e) => onDragStartItem(item, e)}
                 onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
