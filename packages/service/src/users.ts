@@ -1,6 +1,6 @@
 import { apiRequest } from "./apiClient";
 import { HttpError } from "./http";
-import type { BasicUserInfo } from "./types";
+import type { BasicUserInfo, UserQuota } from "./types";
 
 // GET /user/search/user-by-email/{email} — up to 10 same-organization users whose
 // email contains the query. Used to pick a share recipient. Only returns users who
@@ -42,4 +42,18 @@ export const updateUserInfo = async (
     parseJson: false,
     body: JSON.stringify(info),
   });
+};
+
+// GET /user/quota — the cached used_storage_bytes/used_file_count row, cheap.
+export const getMyQuota = async (accessToken: string): Promise<UserQuota> => {
+  const { data } = await apiRequest<UserQuota>("/user/quota", { accessToken });
+  return data;
+};
+
+export const refreshMyQuota = async (accessToken: string): Promise<UserQuota> => {
+  const { data } = await apiRequest<UserQuota>("/user/quota/refresh", {
+    accessToken,
+    method: "PATCH",
+  });
+  return data;
 };

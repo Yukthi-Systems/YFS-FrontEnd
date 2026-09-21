@@ -8,8 +8,9 @@ import { UserSettingsBridge } from "./components/UserSettingsBridge";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
+import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
-import { getStorageQuota } from "./utils/format";
+import { getStorageQuota, GB } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
 import { useContextMenuState } from "./hooks/useContextMenuState";
@@ -20,6 +21,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
+import { useMyQuota, useRefreshUserQuota } from "./hooks/useUserQuota";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -42,6 +44,7 @@ import { ConfirmModal } from "./components/modals/ConfirmModal";
 import { MoveCopyModal } from "./components/modals/MoveCopyModal";
 import { VersionHistoryModal } from "./components/modals/VersionHistoryModal";
 import { ShareModal } from "./components/modals/ShareModal";
+import { EditShareLinkModal } from "./components/modals/EditShareLinkModal";
 import { ViewerModal } from "./components/viewers/ViewerModal";
 import { UploadDropzone } from "./components/upload/UploadDropzone";
 import { UploadTray } from "./components/upload/UploadTray";
@@ -291,6 +294,7 @@ function App() {
 
   const versionHistory = useVersionHistory({ files, showToast, closeContextMenu: menus.closeContextMenu });
   const shareSettings = useShareSettings({ closeContextMenu: menus.closeContextMenu });
+  const [editingShareLink, setEditingShareLink] = useState<ExternalShare | null>(null);
 
   const dnd = useDragAndDrop({
     checkedItemIds: selection.checkedItemIds,
@@ -371,7 +375,14 @@ function App() {
   });
 
   // --- Storage --- (from the API's account quota, not a client-side file tally)
-  const storage = getStorageQuota(user?.quota_allocated, user?.quota_utilized);
+  // GET /user/quota on load gives the real used-bytes; falls back to the SSO
+  // login snapshot until that request lands, and again if it fails.
+  const { quota } = useMyQuota();
+  const { refreshQuota, refreshing: refreshingQuota } = useRefreshUserQuota();
+  const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
+  const handleRefreshQuota = () => {
+    refreshQuota().catch(() => {});
+  };
 
   if (authLoading) {
     return (
@@ -429,9 +440,12 @@ function App() {
         onCreateFolder={fileActions.openCreateFolderModal}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
         canCreateHere={canCreateHere}
+        isRootFolder={nav.currentFolderId === null}
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
+        onRefreshQuota={handleRefreshQuota}
+        refreshingQuota={refreshingQuota}
         user={user}
         onRequestLogout={fileActions.requestLogout}
         mobileOpen={mobileNavOpen}
@@ -464,10 +478,11 @@ function App() {
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
                   viewSkeleton
                 ) : (
-                  <SharedLinksList 
-                    links={sharedLinks} 
-                    onRevoke={revokeSharedLink} 
+                  <SharedLinksList
+                    links={sharedLinks}
+                    onRevoke={revokeSharedLink}
                     onOpenFolder={openSharedLinkFolder}
+                    onEdit={setEditingShareLink}
                   />
                 )
               ) : search.isSearching ? (
@@ -495,6 +510,7 @@ function App() {
                     onBreadcrumbNavigate={goToBreadcrumb}
                     activeSidebarTab={nav.activeSidebarTab}
                     checkedCount={selection.checkedItemIds.length}
+                    viewMode={viewMode}
                     sortField={sortField}
                     onSortFieldChange={setSortField}
                     sortOrder={sortOrder}
@@ -520,6 +536,10 @@ function App() {
                       checkedItemIds={selection.checkedItemIds}
                       contextMenuId={menus.contextMenuId}
                       dragOverFolderId={dnd.dragOverFolderId}
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSortFieldChange={setSortField}
+                      onToggleSortOrder={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
                       onItemClick={selection.handleItemClick}
                       onCheckboxToggle={selection.handleCheckboxToggle}
                       onSelectAllToggle={selection.handleSelectAllToggle}
@@ -610,6 +630,11 @@ function App() {
             menus.setCanvasContextMenu(null);
           }}
           onUploadFile={() => {
+            if (nav.currentFolderId === null) {
+              showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
+              menus.setCanvasContextMenu(null);
+              return;
+            }
             canvasFileInputRef.current?.click();
             menus.setCanvasContextMenu(null);
           }}
@@ -688,6 +713,10 @@ function App() {
             <ShareModal item={shareItem} onClose={shareSettings.closeShareModal} />
           );
         })()}
+
+      {editingShareLink && (
+        <EditShareLinkModal share={editingShareLink} onClose={() => setEditingShareLink(null)} />
+      )}
 
       {fileActions.pendingConfirm && (
         <ConfirmModal

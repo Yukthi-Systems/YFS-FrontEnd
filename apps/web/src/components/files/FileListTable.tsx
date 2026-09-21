@@ -1,12 +1,47 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Loader2, MoreVertical } from "lucide-react";
-import type { FileItem } from "../../types/file";
+import { ChevronDown, ChevronUp, Loader2, MoreVertical } from "lucide-react";
+import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 import { Avatar } from "../common/Avatar";
+
+function SortableHeader({
+  label,
+  field,
+  sortField,
+  sortOrder,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  field: SortField;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onSort: (field: SortField) => void;
+  className?: string;
+}) {
+  const active = sortField === field;
+  return (
+    <th
+      className={`sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:bg-code-bg hover:text-text-heading transition ${className}`}
+      aria-sort={active ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active &&
+          (sortOrder === "asc" ? (
+            <ChevronUp className="w-3 h-3" />
+          ) : (
+            <ChevronDown className="w-3 h-3" />
+          ))}
+      </span>
+    </th>
+  );
+}
 
 export function FileListTable({
   items,
@@ -14,6 +49,10 @@ export function FileListTable({
   checkedItemIds,
   contextMenuId,
   dragOverFolderId,
+  sortField,
+  sortOrder,
+  onSortFieldChange,
+  onToggleSortOrder,
   onItemClick,
   onCheckboxToggle,
   onSelectAllToggle,
@@ -30,6 +69,10 @@ export function FileListTable({
   checkedItemIds: string[];
   contextMenuId: string | null;
   dragOverFolderId: string | null;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onSortFieldChange: (field: SortField) => void;
+  onToggleSortOrder: () => void;
   onItemClick: (item: FileItem, e: React.MouseEvent) => void;
   onCheckboxToggle: (id: string, e: React.MouseEvent) => void;
   onSelectAllToggle: () => void;
@@ -43,6 +86,11 @@ export function FileListTable({
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
 
+  const handleSort = (field: SortField) => {
+    if (field === sortField) onToggleSortOrder();
+    else onSortFieldChange(field);
+  };
+
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full border-collapse text-left">
@@ -55,11 +103,18 @@ export function FileListTable({
                 onChange={onSelectAllToggle}
               />
             </th>
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Name</th>
+            <SortableHeader label="Name" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[980px]:hidden">Created By</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[860px]:hidden">Last Modified</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider">Size</th>
+            <SortableHeader
+              label="Last Modified"
+              field="modifiedAt"
+              sortField={sortField}
+              sortOrder={sortOrder}
+              onSort={handleSort}
+              className="max-[860px]:hidden"
+            />
+            <SortableHeader label="Size" field="size" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-12"></th>
           </tr>
         </thead>

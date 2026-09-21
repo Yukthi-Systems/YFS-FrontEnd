@@ -23,7 +23,7 @@ export const formatSize = (bytes: number): string => {
 // YFS-Main-API returns quota_allocated / quota_utilized in GB (from the SSO file
 // service). This is the single source of truth for the storage widget — the client
 // never sums file sizes itself (it only ever holds a partial view of the tree).
-const GB = 1024 * 1024 * 1024;
+export const GB = 1024 * 1024 * 1024;
 
 export interface StorageQuota {
   usedBytes: number;

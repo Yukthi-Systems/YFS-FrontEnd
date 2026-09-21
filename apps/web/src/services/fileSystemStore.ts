@@ -8,6 +8,7 @@ import type {
   InternalSharePermissions,
   ResourceInfo,
   ResourceUiInfo,
+  UpdateExternalShareInput,
 } from "@yfs/service";
 import {
   HttpError,
@@ -22,6 +23,7 @@ import {
   listSharedFolderChildren,
   listExternalShares,
   deleteExternalShare,
+  updateExternalShare,
   updateFileInfo as apiUpdateFileInfo,
   moveFile as apiMoveFile,
   getUserById,
@@ -665,6 +667,26 @@ export const loadSharedLinks = async (opts?: { force?: boolean }) => {
 export const revokeSharedLink = async (shareId: string) => {
   await withFreshToken((tk) => deleteExternalShare(tk, shareId));
   store.set(sharedLinksAtom, (prev) => prev.filter((s) => s.share_id !== shareId));
+};
+
+export const updateSharedLink = async (shareId: string, input: UpdateExternalShareInput) => {
+  await withFreshToken((tk) => updateExternalShare(tk, shareId, input));
+  store.set(sharedLinksAtom, (prev) =>
+    prev.map((s) =>
+      s.share_id !== shareId
+        ? s
+        : {
+            ...s,
+            permission_set: input.permissions,
+            share_info: input.shareInfo ?? s.share_info,
+            // Presence-only sentinel — the real hash never lives client-side.
+            password_hash: input.updatePassword ? (input.rawPassword ? "set" : null) : s.password_hash,
+            phones_for_otp: input.phonesForOtp ?? [],
+            emails_for_otp: input.emailsForOtp ?? [],
+            expires_at: input.expiresAt ?? null,
+          }
+    )
+  );
 };
 
 export const getSharedFolderId = (folderId: string | null): string | null =>

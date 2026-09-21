@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Clock, Copy, FileText, Folder, KeyRound, Link2, Mail, Share2, Trash2 } from "lucide-react";
+import { Check, Clock, Copy, FileText, Folder, KeyRound, Link2, Mail, Pencil, Share2, Trash2 } from "lucide-react";
 import type { ExternalShare, InternalSharePermissions } from "@yfs/service";
 import { formatDate } from "../../utils/format";
 
@@ -19,11 +19,13 @@ export function SharedLinksList({
   links,
   onRevoke,
   onOpenFolder,
+  onEdit,
 }: {
   links: ExternalShare[];
   onRevoke: (shareId: string) => Promise<void>;
   // Folder-target links only — jumps to that folder in My Drive.
   onOpenFolder?: (folderId: string) => void;
+  onEdit: (share: ExternalShare) => void;
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -175,6 +177,13 @@ export function SharedLinksList({
                   className="p-1.5 rounded-lg text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition"
                 >
                   {copiedId === s.share_id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => onEdit(s)}
+                  title="Edit link"
+                  className="p-1.5 rounded-lg text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition"
+                >
+                  <Pencil className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => revoke(s.share_id)}
