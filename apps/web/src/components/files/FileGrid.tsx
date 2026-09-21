@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Loader2, MoreVertical } from "lucide-react";
+import { AlertCircle, Loader2, MoreVertical } from "lucide-react";
 import type { FileItem, GridSize } from "../../types/file";
-import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -145,6 +145,14 @@ export function FileGrid({
 
         <div className="relative">
           <Thumbnail item={item} config={config} />
+          {!item.isFolder && isItemFailed(item) && (
+            <span
+              title="Failed"
+              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-bg-main border border-border-main flex items-center justify-center"
+            >
+              <AlertCircle className="w-2.5 h-2.5 text-red-500" />
+            </span>
+          )}
           {!item.isFolder && isItemProcessing(item) && (
             <span
               title="Processing"
@@ -171,9 +179,11 @@ export function FileGrid({
               ? item.size > 0
                 ? formatBytes(item.size)
                 : "Empty"
-              : isItemProcessing(item)
-                ? "Processing…"
-                : formatBytes(item.size)}
+              : isItemFailed(item)
+                ? "Failed to process"
+                : isItemProcessing(item)
+                  ? "Processing…"
+                  : formatBytes(item.size)}
           </span>
           <span className="text-text-main">Modified {formatDate(item.modifiedAt)}</span>
           {item.owner?.name && <span className="text-text-main">Owner: {item.owner.name}</span>}

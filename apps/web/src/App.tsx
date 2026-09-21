@@ -405,6 +405,7 @@ function App() {
     <ItemContextMenu
       item={item}
       permissions={getSharedPermissions(item.id)}
+      onOpen={() => handleItemDoubleClick(item)}
       onDownload={() => fileActions.handleDownload(item)}
       onToggleStar={() => fileActions.handleToggleStar(item.id)}
       onRename={() => fileActions.openRenameModal(item)}

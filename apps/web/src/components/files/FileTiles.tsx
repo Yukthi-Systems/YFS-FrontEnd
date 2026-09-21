@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Loader2, MoreVertical } from "lucide-react";
+import { AlertCircle, Loader2, MoreVertical } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -83,7 +83,12 @@ export function FileTiles({
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-text-heading truncate">{item.name}</div>
           <div className="text-[11px] text-text-main truncate">
-            {isItemProcessing(item) ? (
+            {isItemFailed(item) ? (
+              <span className="inline-flex items-center gap-1 text-red-500 font-medium">
+                <AlertCircle className="w-2.5 h-2.5" />
+                Failed
+              </span>
+            ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                 <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
                 Processing

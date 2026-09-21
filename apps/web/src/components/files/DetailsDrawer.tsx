@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2, Loader2, Copy, Check } from "lucide-react";
+import { AlertCircle, Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2, Loader2, Copy, Check } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import { formatBytes, formatDate, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 import { useStreamUrl } from "../../hooks/useDownload";
@@ -20,6 +20,16 @@ export function CompactPreview({ item, openable = true }: { item: FileItem; open
       <div className="flex flex-col items-center gap-2 text-center text-text-main">
         {getItemIcon(item, "w-12 h-12")}
         <div className="text-xs font-medium">Folder containing directory contents</div>
+      </div>
+    );
+  }
+
+  if (isItemFailed(item)) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-center text-text-main py-4">
+        <AlertCircle className="w-10 h-10 text-red-500" />
+        <div className="text-xs font-semibold text-text-heading">Failed to Process</div>
+        <div className="text-[11px] text-text-main max-w-[200px]">This file never finished processing on the server.</div>
       </div>
     );
   }
@@ -216,6 +226,11 @@ export function DetailsDrawer({
           <InfoRow label="Size">
             {item.isFolder ? (
               item.size > 0 ? formatBytes(item.size) : "0 B"
+            ) : isItemFailed(item) ? (
+              <span className="inline-flex items-center gap-1.5 text-red-500 font-medium text-xs">
+                <AlertCircle className="w-3 h-3" />
+                Failed
+              </span>
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
                 <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
@@ -264,7 +279,15 @@ export function DetailsDrawer({
             </div>
           </div>
 
-          {!item.isFolder && (fileInfo?.is_locked || isItemProcessing(item)) && (
+          {!item.isFolder && isItemFailed(item) && (
+            <InfoRow label="Status">
+              <span className="inline-flex items-center gap-1.5 text-red-500 font-medium text-xs">
+                <AlertCircle className="w-3 h-3" />
+                Failed to process
+              </span>
+            </InfoRow>
+          )}
+          {!item.isFolder && !isItemFailed(item) && (fileInfo?.is_locked || isItemProcessing(item)) && (
             <InfoRow label="Status">
               <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
                 <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
@@ -278,8 +301,8 @@ export function DetailsDrawer({
           {!item.isFolder && (
             <button
               onClick={onOpenFull}
-              disabled={isItemProcessing(item)}
-              title={isItemProcessing(item) ? "File is still processing" : undefined}
+              disabled={isItemProcessing(item) || isItemFailed(item)}
+              title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
               className="flex items-center justify-center gap-2 w-full py-2 bg-accent text-white font-semibold rounded-xl hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
             >
               <Expand className="w-4 h-4" /> Open
@@ -288,8 +311,8 @@ export function DetailsDrawer({
           {allowDownload && (
             <button
               onClick={onDownload}
-              disabled={isItemProcessing(item)}
-              title={isItemProcessing(item) ? "File is still processing" : undefined}
+              disabled={isItemProcessing(item) || isItemFailed(item)}
+              title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
               className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs"
             >
               <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}

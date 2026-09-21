@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Download, Star, RotateCcw, Trash2, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check } from "lucide-react";
+import { Download, FolderOpen, Star, RotateCcw, Trash2, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import { isItemProcessing } from "../../utils/format";
+import { isItemFailed, isItemProcessing } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 
 export function ItemContextMenu({
   item,
   permissions = null,
+  onOpen,
   onDownload,
   onToggleStar,
   onRename,
@@ -25,6 +26,8 @@ export function ItemContextMenu({
   // The caller's permissions when `item` lives in a "Shared with me" subtree; null
   // for the user's own items (full control).
   permissions?: InternalSharePermissions | null;
+  // Folders only — opens the folder (same as double-click).
+  onOpen?: () => void;
   onDownload: () => void;
   onToggleStar: () => void;
   onRename: () => void;
@@ -58,12 +61,17 @@ export function ItemContextMenu({
 
   return (
     <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
+      {item.isFolder && !item.isDeleted && onOpen && (
+        <button onClick={onOpen} className={itemClass}>
+          <FolderOpen className="w-3.5 h-3.5" /> Open
+        </button>
+      )}
       {allowDownload && (
         <button
           onClick={onDownload}
-          disabled={isItemProcessing(item)}
-          title={isItemProcessing(item) ? "File is still processing" : undefined}
-          className={`${itemClass} ${isItemProcessing(item) ? "opacity-50 cursor-not-allowed" : ""}`}
+          disabled={isItemProcessing(item) || isItemFailed(item)}
+          title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
+          className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
         </button>
