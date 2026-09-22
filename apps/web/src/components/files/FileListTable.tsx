@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Star } from "lucide-react";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
@@ -60,6 +60,7 @@ export function FileListTable({
   onItemContextMenu,
   renderContextMenu,
   onShare,
+  onToggleStar,
   onDragStartItem,
   onDragOverFolder,
   onDragLeaveFolder,
@@ -81,6 +82,7 @@ export function FileListTable({
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
   onShare?: (item: FileItem) => void;
+  onToggleStar?: (id: string) => void;
   onDragStartItem: (item: FileItem, e: React.DragEvent) => void;
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
@@ -134,7 +136,7 @@ export function FileListTable({
                 onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
                 onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
                 onDrop={(e) => item.isFolder && onDropOnFolder(item, e)}
-                className={`cursor-pointer transition duration-150 ${
+                className={`cursor-pointer group transition duration-150 ${
                   isSel ? "bg-accent-bg/70!" : isChecked ? "bg-accent-bg/70!" : "hover:bg-code-bg"
                 } ${isDragOver ? "bg-accent-bg! outline-2 outline-accent -outline-offset-2" : ""}`}
                 onClick={(e) => onItemClick(item, e)}
@@ -185,6 +187,22 @@ export function FileListTable({
                 </td>
                 <td className="px-3 py-2 border-b border-border-main text-right relative whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
+                    {onToggleStar && !item.isDeleted && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleStar(item.id);
+                        }}
+                        title={item.isStarred ? "Remove from Starred" : "Add to Starred"}
+                        className={`border-none bg-transparent p-1.5 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 cursor-pointer inline-flex items-center justify-center transition ${
+                          item.isStarred
+                            ? "text-amber-500 opacity-100"
+                            : "text-text-main opacity-0 group-hover:opacity-100 hover:text-amber-500"
+                        }`}
+                      >
+                        <Star className={`w-4 h-4 ${item.isStarred ? "fill-amber-400 text-amber-500" : ""}`} />
+                      </button>
+                    )}
                     {onShare && !item.isDeleted && item.origin !== "shared" && !item.sharedIn && (
                       <button
                         onClick={(e) => {
