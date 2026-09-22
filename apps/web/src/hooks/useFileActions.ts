@@ -14,7 +14,7 @@ interface PendingConfirm {
 }
 
 interface MoveCopyState {
-  mode: "move" | "copy";
+  mode: "move" | "copy" | "restore";
   ids: string[];
 }
 
@@ -40,7 +40,7 @@ export function useFileActions({
     toggleStar: (id: string) => void;
     starItems: (ids: string[]) => void;
     trashItems: (ids: string[]) => void;
-    restoreItems: (ids: string[]) => void;
+    restoreItems: (ids: string[], destinationId: string | null) => { moved: number; blocked: number; unsupported: number };
     permanentDeleteItems: (ids: string[]) => void;
     moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
     copyItem: (id: string, newParentId: string | null) => { copied: number; blocked: boolean };
@@ -159,17 +159,13 @@ export function useFileActions({
     });
   };
 
+  // Restore no longer auto-returns an item to where it was trashed from — it opens
+  // the same destination-picker modal "Move to…" uses (see MoveCopyModal's
+  // "restore" mode / handleMoveCopyConfirm below), so the user always chooses where
+  // it lands.
   const handleRestore = (ids: string[]) => {
     if (ids.length === 0) return;
-    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
-    const folderIds = targets.filter((f) => f.isFolder).map((f) => f.id);
-    const blocked = targets.length - folderIds.length;
-    if (blocked > 0) showToast(`${plural(blocked, "file")} can't be restored yet — not supported by the server`, "error");
-    if (folderIds.length === 0) return;
-
-    fileSystem.restoreItems(folderIds);
-    showToast(`Restored ${plural(folderIds.length, "item")}`, "success");
-    setCheckedItemIds([]);
+    setMoveCopyState({ mode: "restore", ids });
     closeContextMenu();
   };
 
@@ -207,6 +203,11 @@ export function useFileActions({
       if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""}`, "success");
       if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — can't move a folder into itself`, "error");
       if (unsupported > 0) showToast(`Skipped ${unsupported} file${unsupported > 1 ? "s" : ""} — moving a file to My Drive root isn't supported yet`, "error");
+    } else if (moveCopyState.mode === "restore") {
+      const { moved, blocked, unsupported } = fileSystem.restoreItems(moveCopyState.ids, destinationId);
+      if (moved > 0) showToast(`Restored ${plural(moved, "item")}`, "success");
+      if (blocked > 0) showToast(`Skipped ${plural(blocked, "item")} — can't restore a folder into itself`, "error");
+      if (unsupported > 0) showToast(`Skipped ${plural(unsupported, "file")} — restoring to My Drive root isn't supported yet`, "error");
     } else {
       let totalCopied = 0;
       let anyBlocked = false;
