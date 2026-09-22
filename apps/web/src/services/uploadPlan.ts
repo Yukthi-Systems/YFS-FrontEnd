@@ -69,7 +69,7 @@ export const uploadBlockMessage = (reason: UploadBlockReason): string =>
 export const fileTypeOf = (file: File): string => file.type || DEFAULT_MIME;
 
 // Cap concurrent uploads so a big folder drop doesn't open hundreds of sockets.
-export const UPLOAD_CONCURRENCY = 4;
+export const UPLOAD_CONCURRENCY = 6;
 
 // Run `worker` over every item, at most `limit` in flight at once. Never rejects —
 // per-item failures are the worker's own concern (it updates task state).

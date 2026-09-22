@@ -35,7 +35,7 @@ import { isItemLocked } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
-import { starredIdsAtom } from "../atoms/userSettings";
+import { starredIdsAtom, setStoredStarredIds } from "../atoms/userSettings";
 import {
   filesAtom,
   isLoadingAtom,
@@ -328,6 +328,7 @@ const mergeServerListing = (
 
     return {
       ...res,
+      isStarred: f.isStarred || res.isStarred || store.get(starredIdsAtom).includes(f.id),
       isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
       share: f.share,
       versions: f.versions,
@@ -1182,6 +1183,7 @@ export const starItems = (ids: string[]) => {
 // mapped with isStarred defaulted to false).
 store.sub(starredIdsAtom, () => {
   const ids = store.get(starredIdsAtom);
+  setStoredStarredIds(ids);
   const current = store.get(filesAtom);
   const next = current.map((f) => (f.isStarred === ids.includes(f.id) ? f : { ...f, isStarred: ids.includes(f.id) }));
   if (next.some((f, i) => f !== current[i])) persist(next);

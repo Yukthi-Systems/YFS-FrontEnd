@@ -370,12 +370,14 @@ export function DetailsDrawer({
             </InfoRow>
           )}
 
-          {/* Permissions */}
-          <InfoRow label="Permissions">
-            <span title={getPermissionsTooltip(effectivePermissions)}>
-              {getPermissionsLabel(effectivePermissions)}
-            </span>
-          </InfoRow>
+          {/* Permissions — only shown for shared items ("Shared with you") */}
+          {(shared || item.origin === "shared" || effectivePermissions !== null) && (
+            <InfoRow label="Permissions">
+              <span title={getPermissionsTooltip(effectivePermissions)}>
+                {getPermissionsLabel(effectivePermissions)}
+              </span>
+            </InfoRow>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 mt-2">
