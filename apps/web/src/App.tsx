@@ -452,6 +452,7 @@ function App() {
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
+        storageFileCount={quota?.used_file_count}
         onRefreshQuota={handleRefreshQuota}
         refreshingQuota={refreshingQuota}
         user={user}

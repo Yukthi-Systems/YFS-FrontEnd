@@ -23,12 +23,14 @@ export function ProfileModal({
   storagePercentage,
   storageUsedLabel,
   storageTotalLabel,
+  storageFileCount,
   onClose,
 }: {
   user: UserInfo | null;
   storagePercentage: number;
   storageUsedLabel: string;
   storageTotalLabel: string;
+  storageFileCount?: number;
   onClose: () => void;
 }) {
   const { publicProfile, savePublicProfile, savingProfile } = useUserSettings();
@@ -157,6 +159,13 @@ export function ProfileModal({
             </span>
           }
         />
+        {storageFileCount !== undefined && (
+          <Row
+            icon={<span className="text-[10px] font-mono font-bold">#</span>}
+            label="Files"
+            value={storageFileCount.toLocaleString()}
+          />
+        )}
         {user?.user_id && (
           <Row
             icon={<span className="text-[10px] font-mono font-bold">ID</span>}
