@@ -3,6 +3,7 @@ import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
 import type { FileWithRelativePath } from "../atoms/uploadQueue";
 import { downloadAsZip } from "../utils/zipDownload";
+import { isItemLocked } from "../utils/format";
 import { useDownload } from "./useDownload";
 
 interface PendingConfirm {
@@ -14,7 +15,7 @@ interface PendingConfirm {
 }
 
 interface MoveCopyState {
-  mode: "move" | "copy";
+  mode: "move" | "copy" | "restore";
   ids: string[];
 }
 
@@ -40,7 +41,7 @@ export function useFileActions({
     toggleStar: (id: string) => void;
     starItems: (ids: string[]) => void;
     trashItems: (ids: string[]) => void;
-    restoreItems: (ids: string[]) => void;
+    restoreItems: (ids: string[], destinationId: string | null) => { moved: number; blocked: number; unsupported: number };
     permanentDeleteItems: (ids: string[]) => Promise<{ deleted: number; blocked: number }>;
     deleteFileVersion: (item: FileItem, version: number) => Promise<boolean>;
     moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
@@ -84,6 +85,11 @@ export function useFileActions({
   };
 
   const openRenameModal = (item: FileItem) => {
+    if (isItemLocked(item)) {
+      showToast(`"${item.name}" is locked and cannot be renamed`, "error");
+      closeContextMenu();
+      return;
+    }
     setRenameTarget({ id: item.id, name: item.name });
     closeContextMenu();
   };
@@ -113,17 +119,29 @@ export function useFileActions({
 
   const requestTrash = (ids: string[]) => {
     if (ids.length === 0) return;
+    const unlockedIds = ids.filter((id) => {
+      const item = files.find((f) => f.id === id);
+      return !isItemLocked(item);
+    });
+    if (unlockedIds.length === 0) {
+      showToast("Locked items cannot be moved to Trash", "error");
+      closeContextMenu();
+      return;
+    }
+    if (unlockedIds.length < ids.length) {
+      showToast(`Skipping ${ids.length - unlockedIds.length} locked item(s)`, "error");
+    }
 
     setPendingConfirm({
       title: "Move to Trash",
-      description: `Are you sure you want to move ${ids.length > 1 ? `${ids.length} items` : "this item"} to the Trash? You can restore ${
-        ids.length > 1 ? "them" : "it"
+      description: `Are you sure you want to move ${unlockedIds.length > 1 ? `${unlockedIds.length} items` : "this item"} to the Trash? You can restore ${
+        unlockedIds.length > 1 ? "them" : "it"
       } later from the Trash tab.`,
       confirmLabel: "Move to Trash",
       destructive: true,
       onConfirm: () => {
-        fileSystem.trashItems(ids);
-        showToast(`Moved ${plural(ids.length, "item")} to Trash`, "success");
+        fileSystem.trashItems(unlockedIds);
+        showToast(`Moved ${plural(unlockedIds.length, "item")} to Trash`, "success");
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
@@ -191,17 +209,13 @@ export function useFileActions({
     });
   };
 
+  // Restore no longer auto-returns an item to where it was trashed from — it opens
+  // the same destination-picker modal "Move to…" uses (see MoveCopyModal's
+  // "restore" mode / handleMoveCopyConfirm below), so the user always chooses where
+  // it lands.
   const handleRestore = (ids: string[]) => {
     if (ids.length === 0) return;
-    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
-    const folderIds = targets.filter((f) => f.isFolder).map((f) => f.id);
-    const blocked = targets.length - folderIds.length;
-    if (blocked > 0) showToast(`${plural(blocked, "file")} can't be restored yet — not supported by the server`, "error");
-    if (folderIds.length === 0) return;
-
-    fileSystem.restoreItems(folderIds);
-    showToast(`Restored ${plural(folderIds.length, "item")}`, "success");
-    setCheckedItemIds([]);
+    setMoveCopyState({ mode: "restore", ids });
     closeContextMenu();
   };
 
@@ -221,11 +235,49 @@ export function useFileActions({
   };
 
   const openMoveModal = (ids: string[]) => {
+    const lockedItems = ids
+      .map((id) => files.find((f) => f.id === id))
+      .filter((f): f is FileItem => !!f && isItemLocked(f));
+    if (lockedItems.length > 0) {
+      if (ids.length === 1) {
+        showToast(`"${lockedItems[0].name}" is locked and cannot be moved`, "error");
+        closeContextMenu();
+        return;
+      }
+      showToast(`Skipping ${lockedItems.length} locked item${lockedItems.length > 1 ? "s" : ""}`, "error");
+      const unlockedIds = ids.filter((id) => !lockedItems.some((item) => item.id === id));
+      if (unlockedIds.length === 0) {
+        closeContextMenu();
+        return;
+      }
+      setMoveCopyState({ mode: "move", ids: unlockedIds });
+      closeContextMenu();
+      return;
+    }
     setMoveCopyState({ mode: "move", ids });
     closeContextMenu();
   };
 
   const openCopyModal = (ids: string[]) => {
+    const lockedItems = ids
+      .map((id) => files.find((f) => f.id === id))
+      .filter((f): f is FileItem => !!f && isItemLocked(f));
+    if (lockedItems.length > 0) {
+      if (ids.length === 1) {
+        showToast(`"${lockedItems[0].name}" is locked and cannot be copied`, "error");
+        closeContextMenu();
+        return;
+      }
+      showToast(`Skipping ${lockedItems.length} locked item${lockedItems.length > 1 ? "s" : ""}`, "error");
+      const unlockedIds = ids.filter((id) => !lockedItems.some((item) => item.id === id));
+      if (unlockedIds.length === 0) {
+        closeContextMenu();
+        return;
+      }
+      setMoveCopyState({ mode: "copy", ids: unlockedIds });
+      closeContextMenu();
+      return;
+    }
     setMoveCopyState({ mode: "copy", ids });
     closeContextMenu();
   };
@@ -237,8 +289,13 @@ export function useFileActions({
     if (moveCopyState.mode === "move") {
       const { moved, blocked, unsupported } = fileSystem.moveItems(moveCopyState.ids, destinationId);
       if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""}`, "success");
-      if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — can't move a folder into itself`, "error");
+      if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — locked or cannot move into itself`, "error");
       if (unsupported > 0) showToast(`Skipped ${unsupported} file${unsupported > 1 ? "s" : ""} — moving a file to My Drive root isn't supported yet`, "error");
+    } else if (moveCopyState.mode === "restore") {
+      const { moved, blocked, unsupported } = fileSystem.restoreItems(moveCopyState.ids, destinationId);
+      if (moved > 0) showToast(`Restored ${plural(moved, "item")}`, "success");
+      if (blocked > 0) showToast(`Skipped ${plural(blocked, "item")} — locked or cannot restore into itself`, "error");
+      if (unsupported > 0) showToast(`Skipped ${plural(unsupported, "file")} — restoring to My Drive root isn't supported yet`, "error");
     } else {
       let totalCopied = 0;
       let anyBlocked = false;
@@ -248,7 +305,7 @@ export function useFileActions({
         if (blocked) anyBlocked = true;
       });
       if (totalCopied > 0) showToast(`Copied ${totalCopied} item${totalCopied > 1 ? "s" : ""}`, "success");
-      if (anyBlocked) showToast("Skipped an item — can't copy a folder into itself", "error");
+      if (anyBlocked) showToast("Skipped items — locked or cannot copy into itself", "error");
     }
     setMoveCopyState(null);
     setCheckedItemIds([]);

@@ -79,6 +79,7 @@ export function Sidebar({
   storagePercentage,
   storageUsedLabel,
   storageTotalLabel,
+  storageFileCount,
   onRefreshQuota,
   refreshingQuota = false,
   user,
@@ -99,6 +100,8 @@ export function Sidebar({
   storagePercentage: number;
   storageUsedLabel: string;
   storageTotalLabel: string;
+  // From GET /user/quota — undefined until that request resolves.
+  storageFileCount?: number;
   // Forces a live recalculation server-side — slow and not meant to be spammed,
   // so this is gated behind an explicit confirm popover below.
   onRefreshQuota?: () => void;
@@ -170,9 +173,16 @@ export function Sidebar({
     >
       <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mr-3 pr-3">
         <div className={`flex items-center gap-2 px-1 py-1 ${collapsed ? "justify-center" : "justify-between"}`}>
-          <div className="flex items-center gap-2">
-            <span className="text-xl text-accent flex items-center justify-center">⚡</span>
-            {!collapsed && <span className="text-lg font-bold text-text-heading tracking-tight">YFS</span>}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl text-accent flex items-center justify-center shrink-0">⚡</span>
+            {!collapsed && (
+              <span
+                className="text-lg font-bold text-text-heading tracking-tight truncate"
+                title={user?.organization_name || "YFS"}
+              >
+                {user?.organization_name || "YFS"}
+              </span>
+            )}
           </div>
           <button
             onClick={onToggleCollapsed}
@@ -404,6 +414,7 @@ export function Sidebar({
             </div>
             <span className="text-text-main text-[11px]">
               {storageUsedLabel} of {storageTotalLabel} used
+              {storageFileCount !== undefined && ` · ${storageFileCount.toLocaleString()} file${storageFileCount === 1 ? "" : "s"}`}
             </span>
           </div>
         )}
@@ -415,6 +426,7 @@ export function Sidebar({
             storagePercentage={storagePercentage}
             storageUsedLabel={storageUsedLabel}
             storageTotalLabel={storageTotalLabel}
+            storageFileCount={storageFileCount}
             onLogout={onRequestLogout}
           />
           {!collapsed && (

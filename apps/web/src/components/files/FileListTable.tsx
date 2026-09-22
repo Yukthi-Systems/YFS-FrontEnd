@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -123,11 +123,12 @@ export function FileListTable({
             const isSel = selectedItemId === item.id;
             const isChecked = checkedItemIds.includes(item.id);
             const isDragOver = item.isFolder && dragOverFolderId === item.id;
+            const locked = isItemLocked(item);
             return (
               <tr
                 key={item.id}
                 data-item-id={item.id}
-                draggable
+                draggable={!locked}
                 onDragStart={(e) => onDragStartItem(item, e)}
                 onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
                 onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
@@ -148,6 +149,11 @@ export function FileListTable({
                   <div className="flex items-center gap-2.5 text-[0.85rem] font-medium text-text-heading overflow-hidden whitespace-nowrap">
                     {getItemIcon(item, "w-4 h-4")}
                     <span className="truncate">{item.name}</span>
+                    {!item.isFolder && locked && (
+                      <span title="File is locked" className="inline-flex items-center p-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+                        <Lock className="w-3 h-3" />
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-3 py-2 border-b border-border-main max-[640px]:hidden">
@@ -165,6 +171,11 @@ export function FileListTable({
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/10 text-red-500 border border-red-500/20">
                       <AlertCircle className="w-3 h-3" />
                       Failed
+                    </span>
+                  ) : !item.isFolder && locked ? (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      <Lock className="w-3 h-3 text-amber-500" />
+                      Locked
                     </span>
                   ) : isItemProcessing(item) ? (
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">

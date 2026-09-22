@@ -47,6 +47,7 @@ export interface BackendResource {
   created_at: string; // RFC3339
   updated_at: string; // RFC3339
   deleted_at: string; // RFC3339 (sentinel timestamp when not deleted)
+  is_locked?: boolean;
 }
 
 export interface PageQuery {
@@ -100,6 +101,7 @@ export interface InternalSharedResource {
   permission_set: InternalSharePermissions;
   created_at: string; // RFC3339
   updated_at: string; // RFC3339
+  is_locked?: boolean;
 }
 
 // One row from GET /share/internal/info/sharing-out/{folder_id} — every user a

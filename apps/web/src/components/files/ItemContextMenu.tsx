@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check } from "lucide-react";
+import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import { isItemFailed, isItemProcessing } from "../../utils/format";
+import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 
 export function ItemContextMenu({
@@ -45,15 +45,18 @@ export function ItemContextMenu({
   const [customizing, setCustomizing] = useState(false);
 
   const itemClass =
-    "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-code-bg hover:text-text-heading transition";
+    "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-code-bg hover:text-text-heading transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main";
   const destructiveClass =
-    "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-red-500 rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-red-500/10 transition";
+    "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-red-500 rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-red-500";
+
+  const effectivePermissions = permissions ?? item.sharedIn?.permissions ?? null;
+  const locked = isItemLocked(item);
 
   // In a shared subtree, only offer what the share grants. Own items: everything.
-  const shared = permissions !== null;
-  const allowDownload = !shared || permissions.can_download;
-  const allowEdit = !shared || permissions.can_update; // rename, colour/icon, star
-  const allowMove = !shared || (permissions.can_update && permissions.can_create);
+  const shared = effectivePermissions !== null;
+  const allowDownload = !shared || effectivePermissions.can_download;
+  const allowEdit = !shared || effectivePermissions.can_update; // rename, colour/icon, star
+  const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
   // Move to Trash is client-only (see fileSystemStore.ts trashItems) — deliberately not
   // offered for shared items regardless of permission, unrelated to whether a real
   // delete endpoint exists server-side (it does now, for both files and folders).
@@ -64,6 +67,11 @@ export function ItemContextMenu({
 
   return (
     <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
+      {locked && (
+        <div className="px-3 py-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg flex items-center gap-1.5 border border-amber-500/20 mb-0.5">
+          <Lock className="w-3 h-3 text-amber-500" /> File is locked
+        </div>
+      )}
       {item.isFolder && !item.isDeleted && onOpen && (
         <button onClick={onOpen} className={itemClass}>
           <FolderOpen className="w-3.5 h-3.5" /> Open
@@ -86,24 +94,44 @@ export function ItemContextMenu({
         </button>
       )}
       {allowEdit && (
-        <button onClick={onRename} className={itemClass}>
+        <button
+          onClick={onRename}
+          disabled={locked}
+          title={locked ? "File is locked and cannot be renamed" : undefined}
+          className={itemClass}
+        >
           <Pencil className="w-3.5 h-3.5" /> Rename
         </button>
       )}
       {!item.isFolder && (
-        <button onClick={onVersionHistory} className={itemClass}>
+        <button
+          onClick={onVersionHistory}
+          disabled={locked}
+          title={locked ? "File is locked" : undefined}
+          className={itemClass}
+        >
           <History className="w-3.5 h-3.5" /> Version History
         </button>
       )}
       {!item.isDeleted && (
         <>
           {allowMove && (
-            <button onClick={onMove} className={itemClass}>
+            <button
+              onClick={onMove}
+              disabled={locked}
+              title={locked ? "File is locked and cannot be moved" : undefined}
+              className={itemClass}
+            >
               <FolderInput className="w-3.5 h-3.5" /> Move to…
             </button>
           )}
           {!item.isFolder && (
-            <button onClick={onCopy} className={itemClass}>
+            <button
+              onClick={onCopy}
+              disabled={locked}
+              title={locked ? "File is locked and cannot be copied" : undefined}
+              className={itemClass}
+            >
               <CopyPlus className="w-3.5 h-3.5" /> Copy to…
             </button>
           )}
@@ -163,24 +191,44 @@ export function ItemContextMenu({
 
       {item.isDeleted ? (
         <>
-          <button onClick={onRestore} className={itemClass}>
+          <button
+            onClick={onRestore}
+            disabled={locked}
+            title={locked ? "File is locked" : undefined}
+            className={itemClass}
+          >
             <RotateCcw className="w-3.5 h-3.5" /> Restore
           </button>
-          <button onClick={onPermanentDelete} className={destructiveClass}>
+          <button
+            onClick={onPermanentDelete}
+            disabled={locked}
+            title={locked ? "File is locked" : undefined}
+            className={destructiveClass}
+          >
             <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
           </button>
         </>
       ) : (
         allowDelete && (
           <>
-            <button onClick={onTrash} className={destructiveClass}>
+            <button
+              onClick={onTrash}
+              disabled={locked}
+              title={locked ? "File is locked and cannot be moved to trash" : undefined}
+              className={destructiveClass}
+            >
               <Trash2 className="w-3.5 h-3.5" /> Move to Trash
             </button>
             {/* Skips Trash entirely — DELETE /files/delete/file or /folders/delete
                 straight away, same confirm dialog as the Trash-tab version above. A
                 different icon from "Move to Trash" so two destructive actions in a
                 row don't read as duplicates of each other. */}
-            <button onClick={onPermanentDelete} className={destructiveClass}>
+            <button
+              onClick={onPermanentDelete}
+              disabled={locked}
+              title={locked ? "File is locked and cannot be deleted" : undefined}
+              className={destructiveClass}
+            >
               <XCircle className="w-3.5 h-3.5" /> Delete Permanently
             </button>
           </>

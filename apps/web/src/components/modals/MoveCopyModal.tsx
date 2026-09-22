@@ -89,7 +89,7 @@ export function MoveCopyModal({
   onConfirm,
 }: {
   files: FileItem[];
-  mode: "move" | "copy";
+  mode: "move" | "copy" | "restore";
   sourceIds: string[];
   currentParentId: string | null;
   trashFolderId?: string | null;
@@ -121,12 +121,15 @@ export function MoveCopyModal({
   }, [sourceIds, files, folders]);
 
   const isNoOp = mode === "move" && sourceIds.length === 1 && selectedId === currentParentId;
+  const title = mode === "move" ? "Move to…" : mode === "copy" ? "Copy to…" : "Restore to…";
+  const confirmLabel = mode === "move" ? "Move Here" : mode === "copy" ? "Copy Here" : "Restore Here";
 
   return (
     <ModalShell onClose={onCancel}>
-      <h3 className="modal-title">{mode === "move" ? "Move to…" : "Copy to…"}</h3>
+      <h3 className="modal-title">{title}</h3>
       <p className="modal-description">
-        Choose a destination folder for {sourceIds.length > 1 ? `${sourceIds.length} items` : "this item"}.
+        Choose a destination folder for {sourceIds.length > 1 ? `${sourceIds.length} items` : "this item"}
+        {mode === "restore" ? ` — where should ${sourceIds.length > 1 ? "they" : "it"} go?` : "."}
       </p>
       <div className="max-h-72 overflow-y-auto border border-border-main rounded-xl p-2 mb-5">
         <FolderRow
@@ -147,7 +150,7 @@ export function MoveCopyModal({
           className="btn-primary"
           style={{ width: "auto" }}
         >
-          {mode === "move" ? "Move Here" : "Copy Here"}
+          {confirmLabel}
         </button>
       </div>
     </ModalShell>

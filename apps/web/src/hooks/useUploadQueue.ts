@@ -176,9 +176,9 @@ export const useUploadQueue = () => {
           file_id: fileId,
           shared_folder_id: plan.sharedFolderId,
           file_name: plan.fileName,
-          // Stamps creation_info.user_name, same as folder creation — otherwise
-          // "Created By" comes back empty once this file round-trips through a listing.
-          file_info: buildCreationInfo(toParentId(plan.targetFolderId)),
+          // Stamps creation_info.user_id, same as folder creation — otherwise
+          // "Created By" can't be resolved once this file round-trips through a listing.
+          file_info: buildCreationInfo(),
           file_type: fileTypeOf(plan.file),
           file_version: fileVersion,
           expected_file_size: plan.file.size,

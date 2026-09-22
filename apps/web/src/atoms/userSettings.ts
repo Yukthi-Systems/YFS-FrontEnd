@@ -26,6 +26,11 @@ export const gridSizeAtom = atom<GridSize>("medium");
 export const sortFieldAtom = atom<SortField>("name");
 export const sortOrderAtom = atom<SortOrder>("asc");
 export const sidebarCollapsedAtom = atom<boolean>(false);
+// Starred file/folder ids — personal, per-user state, so it lives in private_info
+// rather than on the shared resource itself (starring something you don't own, or
+// that's shared with others, must not star it for anyone else). Seeded/written the
+// same way as the other private_info-backed atoms above.
+export const starredIdsAtom = atom<string[]>([]);
 
 export const publicProfileAtom = atom<PublicProfile>({});
 export const savingProfileAtom = atom<boolean>(false);
