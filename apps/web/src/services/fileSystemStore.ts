@@ -28,6 +28,7 @@ import {
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
+import { isItemLocked } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
@@ -170,6 +171,8 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
   const trash = info?.trash_info ?? null;
   const ui = info?.ui;
 
+  const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
+
   const common = {
     id: r.resource_id,
     name: r.resource_name,
@@ -183,10 +186,8 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
     isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
-    // createdBy isn't set here — it's resolved live from creation_info.user_id by
-    // resolveCreatedByNames() after mapping, rather than trusted from a
-    // stamped-at-creation name, which would go stale the moment the creator
-    // changes their display name.
+    createdBy: creatorName,
+    isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
     // trash_info in resource_info is the source of truth for "is trashed".
     isDeleted: !!trash,
     resourceInfo: info,
@@ -204,24 +205,35 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
   return { ...common, isFolder: false, type, extension: extension || undefined, fileId: r.resource_id };
 };
 
-// Map a "shared with me" folder into a FileItem parked under SHARED_ROOT_ID.
+// Map a "shared with me" folder or file into a FileItem parked under SHARED_ROOT_ID.
 const mapSharedResource = (r: InternalSharedResource): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
+  const isFolder = r.is_resource_folder !== false;
+  const { type, extension } = isFolder ? { type: "folder" as const, extension: undefined } : categorizeByName(r.resource_name);
+  const trash = info?.trash_info ?? null;
+  const ui = info?.ui;
+  const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
+
   return {
     id: r.resource_id,
     name: r.resource_name,
-    isFolder: true,
+    isFolder,
     parentId: SHARED_ROOT_ID,
     size: r.total_resource_size ?? 0,
     owner: { name: "Shared", email: "" },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
     isStarred: store.get(starredIdsAtom).includes(r.resource_id),
-    isDeleted: false,
-    type: "folder",
+    color: ui?.color,
+    icon: ui?.icon,
+    isDeleted: !!trash,
+    type,
+    extension: extension || undefined,
+    fileId: isFolder ? undefined : r.resource_id,
     origin: "shared",
-    // See mapResource's comment — resolved live by resolveCreatedByNames().
     resourceInfo: info,
+    createdBy: creatorName,
+    isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
     sharedIn: {
       ownerUserId: r.user_id,
       permissions: { ...r.permission_set },
@@ -728,8 +740,19 @@ export const updateSharedLink = async (shareId: string, input: UpdateExternalSha
 export const getSharedFolderId = (folderId: string | null): string | null =>
   folderId !== null ? (sharedSubtreeContext(store.get(filesAtom), folderId)?.rootId ?? null) : null;
 
-export const getSharedPermissions = (itemId: string | null): InternalSharePermissions | null =>
-  itemId !== null ? (sharedSubtreeContext(store.get(filesAtom), itemId)?.permissions ?? null) : null;
+export const getSharedPermissions = (itemId: string | null): InternalSharePermissions | null => {
+  if (itemId === null) return null;
+  const files = store.get(filesAtom);
+  const item = files.find((f) => f.id === itemId);
+  if (item?.sharedIn?.permissions) return item.sharedIn.permissions;
+  return sharedSubtreeContext(files, itemId)?.permissions ?? null;
+};
+
+export const setItemLocked = (id: string, isLocked: boolean) => {
+  store.set(filesAtom, (prev) =>
+    prev.map((f) => (f.id === id ? { ...f, isLocked } : f))
+  );
+};
 
 export const getDescendantIds = (id: string) => collectDescendantIds(store.get(filesAtom), id);
 
@@ -1057,6 +1080,7 @@ export const renameItem = (id: string, newName: string) => {
   if (!safeName) return;
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);
+  if (!target || isItemLocked(target)) return;
   persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
   const tk = authSnapshot.token;
@@ -1188,9 +1212,14 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
 // renameItem/moveItems) rather than just {file_id, file_name, file_info}.
 export const trashItems = (ids: string[]) => {
   const trashId = store.get(trashFolderIdAtom);
-  const targets = new Set(ids);
   const files = store.get(filesAtom);
-  const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
+  const unlockedIds = ids.filter((id) => {
+    const item = files.find((f) => f.id === id);
+    return !isItemLocked(item);
+  });
+  if (unlockedIds.length === 0) return;
+  const targets = new Set(unlockedIds);
+  const descendantIds = new Set(unlockedIds.flatMap((id) => getDescendantIds(id)));
   const roots = files.filter((f) => targets.has(f.id));
 
   persist(
@@ -1315,8 +1344,14 @@ export const restoreItems = (
 };
 
 export const permanentDeleteItems = (ids: string[]) => {
-  const allIds = new Set(ids.flatMap((id) => [id, ...getDescendantIds(id)]));
-  persist(store.get(filesAtom).filter((f) => !allIds.has(f.id)));
+  const files = store.get(filesAtom);
+  const unlockedIds = ids.filter((id) => {
+    const item = files.find((f) => f.id === id);
+    return !isItemLocked(item);
+  });
+  if (unlockedIds.length === 0) return;
+  const allIds = new Set(unlockedIds.flatMap((id) => [id, ...getDescendantIds(id)]));
+  persist(files.filter((f) => !allIds.has(f.id)));
 };
 
 export const moveItems = (
@@ -1345,6 +1380,10 @@ export const moveItems = (
   for (const id of ids) {
     const item = next.find((f) => f.id === id);
     if (!item) continue;
+    if (isItemLocked(item)) {
+      blocked++;
+      continue;
+    }
     const forbidden = new Set([id, ...getDescendantIds(id)]);
     if (newParentId !== null && forbidden.has(newParentId)) {
       blocked++;
@@ -1432,6 +1471,7 @@ export const copyItem = (id: string, newParentId: string | null): { copied: numb
   const files = store.get(filesAtom);
   const source = files.find((f) => f.id === id);
   if (!source) return { copied: 0, blocked: false };
+  if (isItemLocked(source)) return { copied: 0, blocked: true };
 
   const forbidden = new Set([id, ...getDescendantIds(id)]);
   if (newParentId !== null && forbidden.has(newParentId)) {
@@ -1474,6 +1514,11 @@ export const copyItem = (id: string, newParentId: string | null): { copied: numb
 };
 
 export const updateFileContent = async (id: string, blob: Blob): Promise<void> => {
+  const files = store.get(filesAtom);
+  const target = files.find((f) => f.id === id);
+  if (isItemLocked(target)) {
+    throw new Error("File is locked and cannot be modified");
+  }
   const storageKey = generateStorageKey();
   await putBlob(storageKey, blob);
   const blobUrl = URL.createObjectURL(blob);
@@ -1505,6 +1550,9 @@ export const updateFileContent = async (id: string, blob: Blob): Promise<void> =
 };
 
 export const restoreVersion = (id: string, versionId: string) => {
+  const files = store.get(filesAtom);
+  const targetItem = files.find((f) => f.id === id);
+  if (isItemLocked(targetItem)) return;
   store.set(filesAtom, (prev) => {
     const updated = prev.map((f) => {
       if (f.id !== id) return f;

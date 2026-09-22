@@ -68,6 +68,7 @@ export interface FileItem {
   // "server" = came from YFS-Main-API (/folders/*), "local" = created client-side only
   // (uploaded files, offline-created folders). Absent on seeded/legacy items.
   origin?: "server" | "local" | "shared";
+  isLocked?: boolean;
 }
 
 // "shared" = shared with me (in); "shared-out" = folders I've shared; "shared-links" = my public links.

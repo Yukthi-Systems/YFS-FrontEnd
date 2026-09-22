@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, Loader2, MoreVertical } from "lucide-react";
+import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -47,11 +47,12 @@ export function FileTiles({
     const isSel = selectedItemId === item.id;
     const isChecked = checkedItemIds.includes(item.id);
     const isDragOver = item.isFolder && dragOverFolderId === item.id;
+    const locked = isItemLocked(item);
     return (
       <div
         key={item.id}
         data-item-id={item.id}
-        draggable
+        draggable={!locked}
         onDragStart={(e) => onDragStartItem(item, e)}
         onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
         onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
@@ -82,12 +83,20 @@ export function FileTiles({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-text-heading truncate">{item.name}</div>
+          <div className="flex items-center gap-1.5">
+            <div className="text-sm font-semibold text-text-heading truncate">{item.name}</div>
+            {!item.isFolder && locked && <Lock className="w-3 h-3 text-amber-500 shrink-0" />}
+          </div>
           <div className="text-[11px] text-text-main truncate">
             {isItemFailed(item) ? (
               <span className="inline-flex items-center gap-1 text-red-500 font-medium">
                 <AlertCircle className="w-2.5 h-2.5" />
                 Failed
+              </span>
+            ) : !item.isFolder && locked ? (
+              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                <Lock className="w-2.5 h-2.5 text-amber-500" />
+                Locked
               </span>
             ) : isItemProcessing(item) ? (
               <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">

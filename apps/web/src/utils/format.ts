@@ -24,6 +24,24 @@ export const isItemFailed = (item: ProcessingCheckItem): boolean => {
   return elapsed !== null && elapsed > PROCESSING_TIMEOUT_SECONDS;
 };
 
+type LockCheckItem = {
+  isFolder?: boolean;
+  isLocked?: boolean;
+  resourceInfo?: Record<string, unknown> | null;
+};
+
+export const isItemLocked = (
+  item: LockCheckItem | null | undefined,
+  fileInfo?: { is_locked?: boolean } | null
+): boolean => {
+  if (!item || item.isFolder) return false;
+  if (item.isLocked) return true;
+  if (fileInfo?.is_locked) return true;
+  const raw = item.resourceInfo as Record<string, unknown> | undefined | null;
+  if (raw?.is_locked === true) return true;
+  return false;
+};
+
 export const formatBytes = (bytes: number): string => {
   if (!bytes || bytes <= 0) return "-";
   const k = 1024;
