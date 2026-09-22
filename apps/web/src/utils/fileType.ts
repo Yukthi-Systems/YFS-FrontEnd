@@ -39,6 +39,30 @@ const SPREADSHEET_EXTENSIONS = new Set([
   "numbers", "gnumeric", "dif", "dbf", "slk", "wk1", "wks", "wb1", "wq1", "wq2", "qpw", "123", "csv", "tsv",
 ]);
 
+const PRESENTATION_EXTENSIONS = new Set([
+  "ppt", "pptx", "pptm", "pot", "potx", "potm", "pps", "ppsx", "odp", "otp", "fodp", "sxi", "sti", "sxd", "std", "key",
+]);
+
+const DRAWING_EXTENSIONS = new Set([
+  "odg", "otg", "fodg", "sxm", "odf", "oth", "otm", "wpg", "cdr", "cgm", "fh", "pub", "vsd", "vsdx", "vss", "p65", "dxf",
+]);
+
+// Collabora sets a `--doc-type: r,g,b` CSS variable on <html data-doctype="..."> that
+// drives its own cursor/selection/annotation accents per document type — pulled
+// straight from its compiled bundle.css (`[data-doctype='spreadsheet']{--doc-type:16,
+// 104,2}` etc., 2026-09-22), not a generic Office-brand guess. There's no way to read
+// this back live (the ribbon renders inside a cross-origin iframe, and it's set by
+// Collabora's own JS at runtime, not exposed statically anywhere else), so if this
+// Collabora build is ever upgraded these may need re-extracting the same way — open
+// browser/<build-id>/bundle.css directly and grep for `--doc-type`.
+export const getCollaboraAccentColor = (extension: string | undefined): string => {
+  const ext = (extension ?? "").toLowerCase();
+  if (SPREADSHEET_EXTENSIONS.has(ext)) return "#106802"; // spreadsheet (Calc)
+  if (PRESENTATION_EXTENSIONS.has(ext)) return "#A33E03"; // presentation (Impress)
+  if (DRAWING_EXTENSIONS.has(ext)) return "#876900"; // drawing (Draw)
+  return "#0369A3"; // text (Writer) — word-processing and everything else
+};
+
 // Plain-text formats previewed in the CodeMirror viewer without a language grammar.
 const PLAIN_TEXT_EXTENSIONS = new Set(["txt", "text", "log", "md", "markdown", "rst", "ini", "conf", "env", "gitignore"]);
 

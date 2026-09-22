@@ -10,6 +10,8 @@ export {
   getFileBasicInfo,
   moveFile,
   requestWopiSession,
+  deleteFileVersion,
+  deleteFile,
   type FileUploadRequest,
   type FileDownloadRequest,
   type UploadSession,
@@ -19,6 +21,8 @@ export {
   type FileBasicInfo,
   type FileWopiRequest,
   type WopiSession,
+  type FileVersionDeleteRequest,
+  type FileDeleteRequest,
 } from "./files";
 export * from "./users";
 export * from "./shares";

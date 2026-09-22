@@ -31,10 +31,13 @@ export interface CollaboraAction {
 }
 
 // Cached across the whole session — discovery.xml only changes when Collabora itself
-// is upgraded, and it's ~45KB, not worth refetching per file opened. A failed fetch
-// (network blip, CORS misconfig on the Collabora/Caddy side) clears the cache so the
-// next attempt retries instead of being stuck on a rejected promise forever.
+// is upgraded, and it's ~45KB, not worth refetching per file opened.
 let discoveryPromise: Promise<Document> | null = null;
+// Sticky once a fetch has failed (e.g. the confirmed CORS block — see FALLBACK_LOADER_URL
+// above). Without this, every single Collabora file opened re-triggered — and re-failed —
+// the same blocked cross-origin request: a fresh "missing payload" entry in the Network
+// tab per file, for a call whose outcome we already know won't change until a reload.
+let discoveryFailed = false;
 
 const fetchDiscovery = (): Promise<Document> => {
   if (!discoveryPromise) {
@@ -65,13 +68,22 @@ export const resolveCollaboraAction = async (
   extension: string,
   wantEdit: boolean
 ): Promise<CollaboraAction | null> => {
+  if (discoveryFailed) return { urlsrc: FALLBACK_LOADER_URL, name: wantEdit ? "edit" : "view" };
+
   let doc: Document;
   try {
     doc = await fetchDiscovery();
-  } catch {
+  } catch (err) {
     // Discovery unreachable (CORS or network) — the caller already confirmed this
     // extension is Collabora-supported via isCollaboraSupported, so go straight to the
     // known-good loader URL rather than failing the whole viewer over an XML fetch.
+    // Logged once (not silently swallowed) so it's clear in devtools *why* every file is
+    // using the fallback loader instead of discovery's own urlsrc.
+    discoveryFailed = true;
+    console.warn(
+      "[Collabora] discovery.xml fetch failed (most likely CORS-blocked from this origin) — using the fallback loader URL for the rest of this session instead of retrying per file.",
+      err
+    );
     return { urlsrc: FALLBACK_LOADER_URL, name: wantEdit ? "edit" : "view" };
   }
   const ext = extension.toLowerCase();
