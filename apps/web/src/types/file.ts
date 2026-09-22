@@ -52,7 +52,6 @@ export interface FileItem {
   createdAt: string; // ISO String
   isStarred: boolean;
   isDeleted: boolean; // true = sitting in the Trash folder
-  trashedFrom?: string | null; // parentId to restore to (only set while isDeleted)
   type: "folder" | "audio" | "video" | "image" | "pdf" | "spreadsheet" | "document" | "code" | "other";
   extension?: string;
   blobUrl?: string; // Local Object URL for active previews (regenerated from storageKey on load)
@@ -62,13 +61,14 @@ export interface FileItem {
   resourceInfo?: Record<string, unknown>; // folders.folder_info / files.file_info (creation_info, trash_info, ui, …)
   color?: string; // folder colour (from resource_info.ui.color)
   icon?: string; // folder icon key (from resource_info.ui.icon)
-  createdBy?: string; // resource_info.creation_info.user_name
+  createdBy?: string; // resolved live from resource_info.creation_info.user_id (see resolveCreatedByNames in fileSystemStore.ts)
   versions?: FileVersion[]; // past content, newest first; does not include the current version
   share?: ShareSettings; // legacy client-only external link (SharedFileView demo route)
   sharedIn?: SharedInInfo; // set on folders in the "Shared with me" tab
   // "server" = came from YFS-Main-API (/folders/*), "local" = created client-side only
   // (uploaded files, offline-created folders). Absent on seeded/legacy items.
   origin?: "server" | "local" | "shared";
+  isLocked?: boolean;
 }
 
 // "shared" = shared with me (in); "shared-out" = folders I've shared; "shared-links" = my public links.

@@ -45,6 +45,7 @@ import {
   setShareSettings,
   clearShareSettings,
   getDescendantIds,
+  setItemLocked,
 } from "../services/fileSystemStore";
 
 export type { AddFileInput, PaginationInfo } from "../atoms/fileSystem";
@@ -109,5 +110,6 @@ export const useFileSystem = () => {
     getDescendantIds,
     getSharedFolderId,
     getSharedPermissions,
+    setItemLocked,
   };
 };

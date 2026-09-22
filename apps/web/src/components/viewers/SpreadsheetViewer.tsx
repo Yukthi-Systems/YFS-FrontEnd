@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { FileSpreadsheet, Save } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { useFileBlob } from "../../hooks/useFileBlob";
+import { isItemLocked } from "../../utils/format";
 
 export function SpreadsheetViewer({
   item,
@@ -17,7 +18,7 @@ export function SpreadsheetViewer({
   const [loadFailed, setLoadFailed] = useState(false);
   const isDelimited = item.extension === "csv" || item.extension === "tsv";
   // No write-back path to the server for cell edits, so only local items are editable.
-  const readOnly = item.origin === "server" || item.origin === "shared";
+  const readOnly = item.origin === "server" || item.origin === "shared" || isItemLocked(item);
 
   useEffect(() => {
     setRows(null);

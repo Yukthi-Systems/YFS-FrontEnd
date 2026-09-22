@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, LogOut, Monitor, Moon, Palette, RotateCcw, Sun, UserRound } from "lucide-react";
+import {
+  ChevronRight,
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  RotateCcw,
+  Sun,
+  UserRound,
+} from "lucide-react";
 import { capitalize } from "@yfs/utils";
 import type { UserInfo } from "../../atoms/auth";
 import { useTheme, useAccentColor } from "../../atoms/theme";
@@ -20,6 +29,7 @@ export function UserMenu({
   storagePercentage,
   storageUsedLabel,
   storageTotalLabel,
+  storageFileCount,
   onLogout,
 }: {
   user: UserInfo | null;
@@ -27,6 +37,7 @@ export function UserMenu({
   storagePercentage: number;
   storageUsedLabel: string;
   storageTotalLabel: string;
+  storageFileCount?: number;
   onLogout: () => void;
 }) {
   const { theme, setTheme } = useTheme();
@@ -41,7 +52,8 @@ export function UserMenu({
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
@@ -54,8 +66,12 @@ export function UserMenu({
     }
   }, [open]);
 
-  const name = publicProfile.display_name?.trim() || capitalize(user?.username || "Guest User");
-  const CurrentThemeIcon = (THEME_OPTIONS.find((o) => o.value === theme) ?? THEME_OPTIONS[1]).Icon;
+  const name =
+    publicProfile.display_name?.trim() ||
+    capitalize(user?.username || "Guest User");
+  const CurrentThemeIcon = (
+    THEME_OPTIONS.find((o) => o.value === theme) ?? THEME_OPTIONS[1]
+  ).Icon;
 
   const rowClass =
     "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[0.82rem] font-medium text-left cursor-pointer transition border-none bg-transparent text-text-main hover:bg-code-bg hover:text-text-heading";
@@ -77,8 +93,12 @@ export function UserMenu({
         />
         {!compact && (
           <span className="flex flex-col overflow-hidden">
-            <span className="text-[0.8rem] font-semibold text-text-heading truncate">{name}</span>
-            <span className="text-[10px] text-text-main truncate">{user?.email}</span>
+            <span className="text-[0.8rem] font-semibold text-text-heading truncate">
+              {name}
+            </span>
+            <span className="text-[10px] text-text-main truncate">
+              {user?.email}
+            </span>
           </span>
         )}
       </button>
@@ -99,7 +119,9 @@ export function UserMenu({
           <button onClick={() => setThemeOpen((v) => !v)} className={rowClass}>
             <CurrentThemeIcon className="w-4 h-4" />
             <span className="flex-1">Theme</span>
-            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${themeOpen ? "rotate-90" : ""}`} />
+            <ChevronRight
+              className={`w-3.5 h-3.5 transition-transform ${themeOpen ? "rotate-90" : ""}`}
+            />
           </button>
           {themeOpen && (
             <div className="flex flex-col gap-0.5 pl-2">
@@ -108,7 +130,9 @@ export function UserMenu({
                   key={value}
                   onClick={() => setTheme(value)}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[0.8rem] font-medium text-left cursor-pointer transition border-none bg-transparent ${
-                    theme === value ? "text-accent bg-accent-bg" : "text-text-main hover:bg-code-bg hover:text-text-heading"
+                    theme === value
+                      ? "text-accent bg-accent-bg"
+                      : "text-text-main hover:bg-code-bg hover:text-text-heading"
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -121,7 +145,9 @@ export function UserMenu({
           <button onClick={() => setColorOpen((v) => !v)} className={rowClass}>
             <Palette className="w-4 h-4" />
             <span className="flex-1">Accent color</span>
-            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${colorOpen ? "rotate-90" : ""}`} />
+            <ChevronRight
+              className={`w-3.5 h-3.5 transition-transform ${colorOpen ? "rotate-90" : ""}`}
+            />
           </button>
           {colorOpen && (
             <div className="flex flex-wrap items-center gap-2 pl-2 py-1">
@@ -140,7 +166,9 @@ export function UserMenu({
                   onClick={() => setAccentColor(c)}
                   style={{ background: c }}
                   className={`w-5 h-5 rounded-full border-2 transition cursor-pointer ${
-                    accentColor === c ? "border-text-heading" : "border-transparent"
+                    accentColor === c
+                      ? "border-text-heading"
+                      : "border-transparent"
                   }`}
                   title={c}
                 />
@@ -169,6 +197,7 @@ export function UserMenu({
           storagePercentage={storagePercentage}
           storageUsedLabel={storageUsedLabel}
           storageTotalLabel={storageTotalLabel}
+          storageFileCount={storageFileCount}
           onClose={() => setProfileOpen(false)}
         />
       )}

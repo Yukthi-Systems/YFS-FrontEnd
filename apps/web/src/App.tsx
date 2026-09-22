@@ -465,6 +465,7 @@ function App() {
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
+        storageFileCount={quota?.used_file_count}
         onRefreshQuota={handleRefreshQuota}
         refreshingQuota={refreshingQuota}
         user={user}
@@ -637,7 +638,7 @@ function App() {
             item={selectedItem}
             files={files}
             pathLabel={getItemPath(files, selectedItem)}
-            permissions={getSharedPermissions(selectedItem.id)}
+            permissions={selectedItem.sharedIn?.permissions ?? getSharedPermissions(selectedItem.id)}
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
             onDownload={() => fileActions.handleDownload(selectedItem)}

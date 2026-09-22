@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, Loader2, MoreVertical } from "lucide-react";
+import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { FileItem, GridSize } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
@@ -99,11 +99,12 @@ export function FileGrid({
     const isSel = selectedItemId === item.id;
     const isChecked = checkedItemIds.includes(item.id);
     const isDragOver = item.isFolder && dragOverFolderId === item.id;
+    const locked = isItemLocked(item);
     return (
       <div
         key={item.id}
         data-item-id={item.id}
-        draggable
+        draggable={!locked}
         onDragStart={(e) => onDragStartItem(item, e)}
         onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
         onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
@@ -154,7 +155,15 @@ export function FileGrid({
               <AlertCircle className="w-2.5 h-2.5 text-red-500" />
             </span>
           )}
-          {!item.isFolder && isItemProcessing(item) && (
+          {!item.isFolder && !isItemFailed(item) && locked && (
+            <span
+              title="Locked"
+              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-bg-main border border-amber-500/30 flex items-center justify-center shadow-xs"
+            >
+              <Lock className="w-2.5 h-2.5 text-amber-500" />
+            </span>
+          )}
+          {!item.isFolder && !isItemFailed(item) && !locked && isItemProcessing(item) && (
             <span
               title="Processing"
               className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-bg-main border border-border-main flex items-center justify-center"

@@ -4,6 +4,7 @@ import { loadLanguage } from "@uiw/codemirror-extensions-langs";
 import { FileCode, Save, Braces } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { useFileBlob } from "../../hooks/useFileBlob";
+import { isItemLocked } from "../../utils/format";
 
 // CodeMirror renders the whole document; past this it stalls the tab, so bigger files
 // are download-only.
@@ -65,7 +66,7 @@ export function CodeEditor({
 
   // There is no write-back path to the server for text edits, so saving is only offered
   // for local items; server/shared files open read-only rather than pretending to save.
-  const readOnly = item.origin === "server" || item.origin === "shared";
+  const readOnly = item.origin === "server" || item.origin === "shared" || isItemLocked(item);
   const tooLarge = !!blob && blob.size > MAX_PREVIEW_BYTES;
   const ext = (item.extension || "").toLowerCase();
 

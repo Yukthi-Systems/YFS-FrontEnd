@@ -3,7 +3,6 @@ import type { FileItem, FileVersion, ShareSettings } from "../types/file";
 import { SHARED_ROOT_ID } from "../types/file";
 import type {
   BackendResource,
-  FolderTrashInfo,
   InternalSharedResource,
   InternalSharePermissions,
   ResourceInfo,
@@ -32,9 +31,11 @@ import {
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
+import { isItemLocked } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
+import { starredIdsAtom } from "../atoms/userSettings";
 import {
   filesAtom,
   isLoadingAtom,
@@ -173,6 +174,8 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
   const trash = info?.trash_info ?? null;
   const ui = info?.ui;
 
+  const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
+
   const common = {
     id: r.resource_id,
     name: r.resource_name,
@@ -181,13 +184,15 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
     owner: { name: "me", email: ownerEmailForRow },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    isStarred: !!ui?.starred,
+    // Starred is personal, per-user state — resolved from the user's own
+    // private_info (starredIdsAtom), not from this shared resource's own data.
+    isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
-    createdBy: info?.creation_info?.user_name,
+    createdBy: creatorName,
+    isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
     // trash_info in resource_info is the source of truth for "is trashed".
     isDeleted: !!trash,
-    trashedFrom: trash ? trash.trashed_from : undefined,
     resourceInfo: info,
     origin: "server" as const,
   };
@@ -203,29 +208,73 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
   return { ...common, isFolder: false, type, extension: extension || undefined, fileId: r.resource_id };
 };
 
-// Map a "shared with me" folder into a FileItem parked under SHARED_ROOT_ID.
+// Map a "shared with me" folder or file into a FileItem parked under SHARED_ROOT_ID.
 const mapSharedResource = (r: InternalSharedResource): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
+  const isFolder = r.is_resource_folder !== false;
+  const { type, extension } = isFolder ? { type: "folder" as const, extension: undefined } : categorizeByName(r.resource_name);
+  const trash = info?.trash_info ?? null;
+  const ui = info?.ui;
+  const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
+
   return {
     id: r.resource_id,
     name: r.resource_name,
-    isFolder: true,
+    isFolder,
     parentId: SHARED_ROOT_ID,
     size: r.total_resource_size ?? 0,
     owner: { name: "Shared", email: "" },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    isStarred: false,
-    isDeleted: false,
-    type: "folder",
+    isStarred: store.get(starredIdsAtom).includes(r.resource_id),
+    color: ui?.color,
+    icon: ui?.icon,
+    isDeleted: !!trash,
+    type,
+    extension: extension || undefined,
+    fileId: isFolder ? undefined : r.resource_id,
     origin: "shared",
-    createdBy: info?.creation_info?.user_name,
     resourceInfo: info,
+    createdBy: creatorName,
+    isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
     sharedIn: {
       ownerUserId: r.user_id,
       permissions: { ...r.permission_set },
     },
   };
+};
+
+const creatorIdOf = (item: FileItem): string | undefined =>
+  (item.resourceInfo as ResourceInfo | undefined)?.creation_info?.user_id;
+
+// Resolves each item's creator display name from creation_info.user_id, live, via
+// public_info.display_name (falling back to the email local-part) — the same
+// pattern already used to resolve a shared folder's owner below. Cached per user id
+// through the query client, so the same creator seen across many pages/folders in a
+// session costs one GET /user/user-by-id call, not one per item.
+const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
+  const userIds = [...new Set(items.map(creatorIdOf).filter((id): id is string => !!id))];
+  if (userIds.length === 0) return;
+  await Promise.all(
+    userIds.map(async (userId) => {
+      try {
+        const user = await queryClient.fetchQuery({
+          queryKey: ["userById", userId],
+          queryFn: () => withFreshToken((tk) => getUserById(tk, userId)),
+          staleTime: 5 * 60 * 1000,
+        });
+        if (!user) return;
+        const displayName =
+          typeof user.public_info?.display_name === "string" ? user.public_info.display_name.trim() : "";
+        const name = displayName || user.email.split("@")[0];
+        for (const item of items) {
+          if (creatorIdOf(item) === userId) item.createdBy = name;
+        }
+      } catch {
+        /* leave unresolved — createdBy just stays unset for this item */
+      }
+    })
+  );
 };
 
 // Grace window for a just-created optimistic folder whose server create call may
@@ -280,7 +329,6 @@ const mergeServerListing = (
     return {
       ...res,
       isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
-      trashedFrom: f.trashedFrom ?? res.trashedFrom,
       share: f.share,
       versions: f.versions,
       blobUrl: f.blobUrl,
@@ -358,13 +406,12 @@ export const fileTypeGuess = (item: FileItem): string => (item.type === "other" 
 
 // Metadata stamped into a new folder's folder_info, or a new file's file_info
 // (echoed back as resource_info) — this is where the "Created By" column comes from
-// once the item round-trips through a listing.
-export const buildCreationInfo = (parentFolderId: string | null): ResourceInfo => ({
+// once the item round-trips through a listing. created_at/parent_folder_id aren't
+// duplicated here — the resource's own top-level created_at/parent_folder_id
+// (BackendResource.created_at / .parent_folder_id) already cover both.
+export const buildCreationInfo = (): ResourceInfo => ({
   creation_info: {
     user_id: authSnapshot.userId ?? undefined,
-    user_name: userName,
-    parent_folder_id: parentFolderId,
-    created_at: nowIso(),
   },
 });
 
@@ -483,6 +530,7 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
       }
       return item;
     });
+    await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
       const next = mergeServerListing(prev, parentId, mapped, mode);
       saveCache(next);
@@ -572,6 +620,7 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
       }
       return item;
     });
+    await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
       // "force" replaces the whole bucket; "append" and "initial" add/merge without dropping
       const kept = mode === "force" ? prev.filter((f) => f.origin !== "shared") : prev;
@@ -619,15 +668,14 @@ export const loadSharedOut = async (opts?: { force?: boolean }) => {
     });
     const byId = new Map<string, InternalSharedResource>();
     for (const r of rows) byId.set(r.resource_id, r);
-    store.set(
-      sharedOutAtom,
-      [...byId.values()].map((r) => {
-        const item = mapSharedResource(r);
-        item.parentId = null;
-        item.owner = { name: "me", email: ownerEmail };
-        return item;
-      })
-    );
+    const sharedOutItems = [...byId.values()].map((r) => {
+      const item = mapSharedResource(r);
+      item.parentId = null;
+      item.owner = { name: "me", email: ownerEmail };
+      return item;
+    });
+    await resolveCreatedByNames(sharedOutItems);
+    store.set(sharedOutAtom, sharedOutItems);
     store.set(sharedOutLoadedAtom, true);
     store.set(remoteErrorAtom, null);
   } catch (err) {
@@ -695,8 +743,19 @@ export const updateSharedLink = async (shareId: string, input: UpdateExternalSha
 export const getSharedFolderId = (folderId: string | null): string | null =>
   folderId !== null ? (sharedSubtreeContext(store.get(filesAtom), folderId)?.rootId ?? null) : null;
 
-export const getSharedPermissions = (itemId: string | null): InternalSharePermissions | null =>
-  itemId !== null ? (sharedSubtreeContext(store.get(filesAtom), itemId)?.permissions ?? null) : null;
+export const getSharedPermissions = (itemId: string | null): InternalSharePermissions | null => {
+  if (itemId === null) return null;
+  const files = store.get(filesAtom);
+  const item = files.find((f) => f.id === itemId);
+  if (item?.sharedIn?.permissions) return item.sharedIn.permissions;
+  return sharedSubtreeContext(files, itemId)?.permissions ?? null;
+};
+
+export const setItemLocked = (id: string, isLocked: boolean) => {
+  store.set(filesAtom, (prev) =>
+    prev.map((f) => (f.id === id ? { ...f, isLocked } : f))
+  );
+};
 
 export const getDescendantIds = (id: string) => collectDescendantIds(store.get(filesAtom), id);
 
@@ -751,7 +810,7 @@ const ensureTrashFolder = async (): Promise<string | null> => {
         apiCreateFolder(t, {
           parentFolderId: null,
           folderName: TRASH_FOLDER_NAME,
-          folderInfo: buildCreationInfo(null),
+          folderInfo: buildCreationInfo(),
         })
       );
     } catch (err) {
@@ -764,6 +823,7 @@ const ensureTrashFolder = async (): Promise<string | null> => {
   if (!match) return null;
 
   const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmail));
+  await resolveCreatedByNames(mapped);
   store.set(filesAtom, (prev) => {
     const next = mergeServerListing(prev, null, mapped, "initial");
     saveCache(next);
@@ -825,7 +885,7 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
   const safeName = sanitizeName(name);
   if (!safeName) return null;
 
-  const creationInfo = buildCreationInfo(parentId);
+  const creationInfo = buildCreationInfo();
   const newFolder: FileItem = {
     id: "folder-" + Date.now() + "-" + randomSuffix(),
     name: safeName,
@@ -920,7 +980,7 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
         apiCreateFolder(t, {
           parentFolderId: parentId,
           folderName: segment,
-          folderInfo: buildCreationInfo(parentId),
+          folderInfo: buildCreationInfo(),
         })
       );
     } catch (err) {
@@ -943,6 +1003,7 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
     if (!match) return null;
 
     const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmail));
+    await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
       const next = mergeServerListing(prev, listParentId, mapped, "initial");
       saveCache(next);
@@ -974,7 +1035,7 @@ export const addFile = (input: AddFileInput): FileItem => {
     storageKey: input.storageKey,
     fileId: input.fileId,
     version: input.version,
-    resourceInfo: buildCreationInfo(input.parentId),
+    resourceInfo: buildCreationInfo(),
     createdBy: userName,
     origin: "local",
   };
@@ -1022,6 +1083,7 @@ export const renameItem = (id: string, newName: string) => {
   if (!safeName) return;
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);
+  if (!target || isItemLocked(target)) return;
   persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
   const tk = authSnapshot.token;
@@ -1066,7 +1128,7 @@ export const renameItem = (id: string, newName: string) => {
   }
 };
 
-// Merge a UI patch (starred / color / icon) into an item's resource_info.
+// Merge a UI patch (color / icon) into an item's resource_info.
 const mergeUi = (f: FileItem, patch: Partial<ResourceUiInfo>): Record<string, unknown> => {
   const info = (f.resourceInfo ?? {}) as ResourceInfo;
   return { ...info, ui: { ...(info.ui ?? {}), ...patch } };
@@ -1097,18 +1159,33 @@ const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
   );
 };
 
+// Starring is personal, per-user state — kept in the user's own private_info
+// (starredIdsAtom), never on the resource itself, so starring something you don't
+// own or that's shared with others only stars it for you. UserSettingsBridge
+// watches this atom and debounce-saves it the same way it does theme/viewMode;
+// the FileItem patch here just keeps the currently-listed items' isStarred flag in
+// sync immediately (see also the store.sub below, for items listed after the fact).
 export const toggleStar = (id: string) => {
-  const files = store.get(filesAtom);
-  const next = !files.find((f) => f.id === id)?.isStarred;
-  persist(files.map((f) => (f.id === id ? { ...f, isStarred: next, resourceInfo: mergeUi(f, { starred: next }) } : f)));
-  patchFolderUi(id, { starred: next });
+  const current = store.get(starredIdsAtom);
+  const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+  store.set(starredIdsAtom, next);
 };
 
 export const starItems = (ids: string[]) => {
-  const files = store.get(filesAtom);
-  persist(files.map((f) => (ids.includes(f.id) ? { ...f, isStarred: true, resourceInfo: mergeUi(f, { starred: true }) } : f)));
-  ids.forEach((id) => patchFolderUi(id, { starred: true }));
+  const current = store.get(starredIdsAtom);
+  store.set(starredIdsAtom, Array.from(new Set([...current, ...ids])));
 };
+
+// Keeps every already-listed item's isStarred flag in sync whenever starredIdsAtom
+// changes — covers both toggleStar/starItems above and UserSettingsBridge's
+// initial load-from-server (which can resolve after some folders were already
+// mapped with isStarred defaulted to false).
+store.sub(starredIdsAtom, () => {
+  const ids = store.get(starredIdsAtom);
+  const current = store.get(filesAtom);
+  const next = current.map((f) => (f.isStarred === ids.includes(f.id) ? f : { ...f, isStarred: ids.includes(f.id) }));
+  if (next.some((f, i) => f !== current[i])) persist(next);
+});
 
 // Folder colour / icon. Pass null to clear either.
 export const setFolderStyle = (id: string, style: { color?: string | null; icon?: string | null }) => {
@@ -1131,26 +1208,22 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
   patchFolderUi(id, patch);
 };
 
-// Trashing = record where it came from in resource_info.trash_info AND move the
-// item into the Trash folder. For server folders/files both are real API calls
-// (PATCH /folders/edit or /files/update, then PUT /folders/move or /files/move); the
-// client mirrors them optimistically. Files need the full FileOpsRequest shape (see
+// Trashing = mark resource_info.trash_info true AND move the item into the Trash
+// folder. For server folders/files both are real API calls (PATCH /folders/edit or
+// /files/update, then PUT /folders/move or /files/move); the client mirrors them
+// optimistically. Files need the full FileOpsRequest shape (see
 // renameItem/moveItems) rather than just {file_id, file_name, file_info}.
 export const trashItems = (ids: string[]) => {
   const trashId = store.get(trashFolderIdAtom);
-  const targets = new Set(ids);
   const files = store.get(filesAtom);
-  const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
-  const roots = files.filter((f) => targets.has(f.id));
-  const parentNameById = new Map(files.map((f) => [f.id, f.name]));
-
-  const trashInfoFor = (f: FileItem): FolderTrashInfo => ({
-    trashed_from: f.parentId,
-    trashed_from_name: f.parentId ? parentNameById.get(f.parentId) : undefined,
-    trashed_by: authSnapshot.userId ?? undefined,
-    trashed_by_name: userName,
-    trashed_at: nowIso(),
+  const unlockedIds = ids.filter((id) => {
+    const item = files.find((f) => f.id === id);
+    return !isItemLocked(item);
   });
+  if (unlockedIds.length === 0) return;
+  const targets = new Set(unlockedIds);
+  const descendantIds = new Set(unlockedIds.flatMap((id) => getDescendantIds(id)));
+  const roots = files.filter((f) => targets.has(f.id));
 
   persist(
     files.map((f) => {
@@ -1158,9 +1231,8 @@ export const trashItems = (ids: string[]) => {
         return {
           ...f,
           isDeleted: true,
-          trashedFrom: f.parentId,
           parentId: trashId ?? f.parentId,
-          resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) },
+          resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: true },
           modifiedAt: nowIso(),
         };
       }
@@ -1173,7 +1245,7 @@ export const trashItems = (ids: string[]) => {
     roots
       .filter((f) => f.isFolder && f.origin === "server")
       .forEach((f) => {
-        const folderInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) };
+        const folderInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: true };
         runMutation(
           () =>
             trackPendingSync(
@@ -1191,7 +1263,7 @@ export const trashItems = (ids: string[]) => {
     roots
       .filter((f): f is FileItem & { fileId: string; parentId: string } => !f.isFolder && f.origin === "server" && !!f.fileId && !!f.parentId)
       .forEach((f) => {
-        const fileInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: trashInfoFor(f) };
+        const fileInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: true };
         const opsShape = {
           folder_id: f.parentId,
           file_id: f.fileId,
@@ -1217,29 +1289,22 @@ export const trashItems = (ids: string[]) => {
   }
 };
 
-export const restoreItems = (ids: string[]) => {
+// Restore no longer auto-returns an item to where it was trashed from — the caller
+// picks a destination the same way "Move to…" does (see MoveCopyModal's "restore"
+// mode), so this just clears the trash marker and hands off to moveItems for the
+// actual relocation (same blocked/unsupported bookkeeping, same API calls).
+export const restoreItems = (
+  ids: string[],
+  destinationId: string | null
+): { moved: number; blocked: number; unsupported: number } => {
   const targets = new Set(ids);
   const files = store.get(filesAtom);
   const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
-  const roots = files.filter((f) => targets.has(f.id));
-
-  const withoutTrashInfo = (info: FileItem["resourceInfo"]): ResourceInfo => {
-    const next = { ...(info ?? {}) } as ResourceInfo;
-    next.trash_info = null;
-    return next;
-  };
 
   persist(
     files.map((f) => {
       if (targets.has(f.id)) {
-        return {
-          ...f,
-          isDeleted: false,
-          trashedFrom: undefined,
-          parentId: f.trashedFrom ?? null,
-          resourceInfo: withoutTrashInfo(f.resourceInfo),
-          modifiedAt: nowIso(),
-        };
+        return { ...f, isDeleted: false, resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: null } };
       }
       if (descendantIds.has(f.id)) return { ...f, isDeleted: false };
       return f;
@@ -1247,57 +1312,38 @@ export const restoreItems = (ids: string[]) => {
   );
 
   if (authSnapshot.token) {
-    roots
-      .filter((f) => f.isFolder && f.origin === "server")
-      .forEach((f) => {
-        const folderInfo = withoutTrashInfo(f.resourceInfo);
-        const restoreTo = f.trashedFrom ?? null;
+    targets.forEach((id) => {
+      const f = files.find((x) => x.id === id);
+      if (!f || f.origin !== "server") return;
+      const clearedInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: null };
+      if (f.isFolder) {
         runMutation(
-          () =>
-            trackPendingSync(
-              f.id,
-              withFreshToken(async (t) => {
-                await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
-                await apiMoveFolder(t, { folderId: f.id, newParentFolderId: restoreTo });
-              })
-            ),
-          { id: f.id },
+          () => withFreshToken((t) => apiEditFolder(t, { folderId: id, folderName: f.name, folderInfo: clearedInfo })),
+          { id },
           notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
         );
-      });
-
-    roots
-      .filter((f): f is FileItem & { fileId: string; parentId: string } => !f.isFolder && f.origin === "server" && !!f.fileId && !!f.parentId)
-      .forEach((f) => {
-        // Files can't be moved to root (no destination_folder_id to send) — trashing
-        // a file always records a real folder in trashedFrom, so this shouldn't
-        // trip, but skip the API sync rather than send an invalid move if it ever did.
-        const restoreTo = f.trashedFrom ?? null;
-        if (!restoreTo) return;
-        const fileInfo = withoutTrashInfo(f.resourceInfo);
-        const opsShape = {
-          folder_id: f.parentId,
-          file_id: f.fileId,
-          file_name: f.name,
-          file_info: fileInfo,
-          file_type: fileTypeGuess(f),
-          file_version: f.version ?? 1,
-          expected_file_size: f.size,
-        };
+      } else if (f.fileId && f.parentId) {
         runMutation(
           () =>
-            trackPendingSync(
-              f.id,
-              withFreshToken(async (t) => {
-                await apiUpdateFileInfo(t, opsShape);
-                await apiMoveFile(t, restoreTo, opsShape);
+            withFreshToken((t) =>
+              apiUpdateFileInfo(t, {
+                folder_id: f.parentId!,
+                file_id: f.fileId!,
+                file_name: f.name,
+                file_info: clearedInfo,
+                file_type: fileTypeGuess(f),
+                file_version: f.version ?? 1,
+                expected_file_size: f.size,
               })
             ),
-          { id: f.id },
+          { id },
           notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
         );
-      });
+      }
+    });
   }
+
+  return moveItems(ids, destinationId);
 };
 
 // Permanent delete, unlike trash/restore/move above, is NOT optimistic — this is
@@ -1306,7 +1352,16 @@ export const restoreItems = (ids: string[]) => {
 // fired via runMutation, so the confirm dialog can report real success/failure counts.
 export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: number; blocked: number }> => {
   const files = store.get(filesAtom);
-  const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
+  const targets = ids
+    .map((id) => files.find((f) => f.id === id))
+    .filter((f): f is FileItem => !!f && !isItemLocked(f));
+
+  if (targets.length < ids.length) {
+    showToast(`Skipped ${ids.length - targets.length} locked item(s)`, "error");
+  }
+  if (targets.length === 0) {
+    return { deleted: 0, blocked: ids.length };
+  }
 
   // Local-only items (never touched the server) can just be dropped, folders included —
   // there's nothing server-side to reconcile, so their descendants go with them.
@@ -1328,7 +1383,7 @@ export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: nu
       !coveredByFolderDelete.has(f.id)
   );
 
-  let blocked = targets.length - localOnly.length - serverFolders.length - serverFiles.length;
+  let blocked = ids.length - targets.length + (targets.length - localOnly.length - serverFolders.length - serverFiles.length);
 
   if ((serverFolders.length > 0 || serverFiles.length > 0) && !authSnapshot.token) {
     blocked += serverFolders.length + serverFiles.length;
@@ -1387,6 +1442,10 @@ export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: nu
 // list on success rather than needing a manual refresh.
 export const deleteFileVersion = async (item: FileItem, version: number): Promise<boolean> => {
   if (item.isFolder || !item.fileId || !item.parentId) return false;
+  if (isItemLocked(item)) {
+    showToast("File is locked and its versions cannot be deleted", "error");
+    return false;
+  }
   // Server-enforced (routes/files.rs delete_any_file_version): version 1 can never be
   // deleted alone. The UI (VersionHistoryModal) already disables that button; this is a
   // backstop for any other caller, so it fails clearly instead of round-tripping to a 400.
@@ -1446,6 +1505,10 @@ export const moveItems = (
   for (const id of ids) {
     const item = next.find((f) => f.id === id);
     if (!item) continue;
+    if (isItemLocked(item)) {
+      blocked++;
+      continue;
+    }
     const forbidden = new Set([id, ...getDescendantIds(id)]);
     if (newParentId !== null && forbidden.has(newParentId)) {
       blocked++;
@@ -1533,6 +1596,7 @@ export const copyItem = (id: string, newParentId: string | null): { copied: numb
   const files = store.get(filesAtom);
   const source = files.find((f) => f.id === id);
   if (!source) return { copied: 0, blocked: false };
+  if (isItemLocked(source)) return { copied: 0, blocked: true };
 
   const forbidden = new Set([id, ...getDescendantIds(id)]);
   if (newParentId !== null && forbidden.has(newParentId)) {
@@ -1575,6 +1639,11 @@ export const copyItem = (id: string, newParentId: string | null): { copied: numb
 };
 
 export const updateFileContent = async (id: string, blob: Blob): Promise<void> => {
+  const files = store.get(filesAtom);
+  const target = files.find((f) => f.id === id);
+  if (isItemLocked(target)) {
+    throw new Error("File is locked and cannot be modified");
+  }
   const storageKey = generateStorageKey();
   await putBlob(storageKey, blob);
   const blobUrl = URL.createObjectURL(blob);
@@ -1606,6 +1675,9 @@ export const updateFileContent = async (id: string, blob: Blob): Promise<void> =
 };
 
 export const restoreVersion = (id: string, versionId: string) => {
+  const files = store.get(filesAtom);
+  const targetItem = files.find((f) => f.id === id);
+  if (isItemLocked(targetItem)) return;
   store.set(filesAtom, (prev) => {
     const updated = prev.map((f) => {
       if (f.id !== id) return f;
