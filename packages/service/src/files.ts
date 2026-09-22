@@ -208,6 +208,43 @@ interface RawWopiSession {
   access_token_ttl?: number;
 }
 
+// Same FileOpsRequest shape as FileDownloadRequest — file_version is the specific
+// older version to delete. Server requires it to be > 1 (the current/latest version
+// can't be deleted this way, only replaced by a new upload or removed entirely via
+// deleteFile below) and to already be one of the file's available_versions.
+export type FileVersionDeleteRequest = FileDownloadRequest;
+
+// DELETE /files/delete/version — permanently deletes one older version's bytes off the
+// storage server plus its file_versions row, and updates the owner's quota. 204 No
+// Content on success; throws HttpError (see apiClient.ts) on failure — most commonly a
+// 400 if file_version is 1 or isn't an available version, or a 403 on a shared file
+// without SharedPermission::Delete.
+export const deleteFileVersion = async (accessToken: string, req: FileVersionDeleteRequest): Promise<void> => {
+  await apiRequest("/files/delete/version", {
+    accessToken,
+    method: "DELETE",
+    parseJson: false,
+    body: JSON.stringify(req),
+  });
+};
+
+// Same FileOpsRequest shape — file_version just needs to name *a* version that exists
+// (validated server-side against available_versions); deleting the file removes every
+// version's bytes and row, not only the one named here.
+export type FileDeleteRequest = FileDownloadRequest;
+
+// DELETE /files/delete/file — permanently deletes every version of the file (across
+// however many storage servers they're hosted on) plus its files/file_versions rows,
+// and updates the owner's quota. 204 No Content on success.
+export const deleteFile = async (accessToken: string, req: FileDeleteRequest): Promise<void> => {
+  await apiRequest("/files/delete/file", {
+    accessToken,
+    method: "DELETE",
+    parseJson: false,
+    body: JSON.stringify(req),
+  });
+};
+
 // POST /files/wopi/session/create/{to_write} — mints a WOPI session for Collabora.
 export const requestWopiSession = async (
   accessToken: string,

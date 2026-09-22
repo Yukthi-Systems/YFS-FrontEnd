@@ -17,6 +17,7 @@ import {
   createFolder as apiCreateFolder,
   editFolder as apiEditFolder,
   moveFolder as apiMoveFolder,
+  deleteFolder as apiDeleteFolder,
   listSharingIn,
   listSharingOut,
   listSharedFolderChildren,
@@ -25,6 +26,8 @@ import {
   updateExternalShare,
   updateFileInfo as apiUpdateFileInfo,
   moveFile as apiMoveFile,
+  deleteFile as apiDeleteFile,
+  deleteFileVersion as apiDeleteFileVersion,
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
@@ -1343,15 +1346,137 @@ export const restoreItems = (
   return moveItems(ids, destinationId);
 };
 
-export const permanentDeleteItems = (ids: string[]) => {
+// Permanent delete, unlike trash/restore/move above, is NOT optimistic — this is
+// irreversible, so an item only disappears once the server actually confirms it's
+// gone (or was never the server's to begin with). Awaited by the caller rather than
+// fired via runMutation, so the confirm dialog can report real success/failure counts.
+export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: number; blocked: number }> => {
   const files = store.get(filesAtom);
-  const unlockedIds = ids.filter((id) => {
-    const item = files.find((f) => f.id === id);
-    return !isItemLocked(item);
-  });
-  if (unlockedIds.length === 0) return;
-  const allIds = new Set(unlockedIds.flatMap((id) => [id, ...getDescendantIds(id)]));
-  persist(files.filter((f) => !allIds.has(f.id)));
+  const targets = ids
+    .map((id) => files.find((f) => f.id === id))
+    .filter((f): f is FileItem => !!f && !isItemLocked(f));
+
+  if (targets.length < ids.length) {
+    showToast(`Skipped ${ids.length - targets.length} locked item(s)`, "error");
+  }
+  if (targets.length === 0) {
+    return { deleted: 0, blocked: ids.length };
+  }
+
+  // Local-only items (never touched the server) can just be dropped, folders included —
+  // there's nothing server-side to reconcile, so their descendants go with them.
+  const localOnly = targets.filter((f) => f.origin !== "server" && f.origin !== "shared");
+  const removeIds = new Set(localOnly.flatMap((f) => [f.id, ...getDescendantIds(f.id)]));
+
+  const serverFolders = targets.filter((f) => f.isFolder && (f.origin === "server" || f.origin === "shared"));
+  // DELETE /folders/delete purges a folder's whole subtree recursively server-side, so a
+  // file/folder that's already inside one of `serverFolders` gets deleted along with it —
+  // giving it its own separate delete call too would be redundant (and could easily race
+  // the folder's own background purge into a 400/404).
+  const coveredByFolderDelete = new Set(serverFolders.flatMap((f) => getDescendantIds(f.id)));
+  const serverFiles = targets.filter(
+    (f): f is FileItem & { fileId: string; parentId: string } =>
+      !f.isFolder &&
+      (f.origin === "server" || f.origin === "shared") &&
+      !!f.fileId &&
+      !!f.parentId &&
+      !coveredByFolderDelete.has(f.id)
+  );
+
+  let blocked = ids.length - targets.length + (targets.length - localOnly.length - serverFolders.length - serverFiles.length);
+
+  if ((serverFolders.length > 0 || serverFiles.length > 0) && !authSnapshot.token) {
+    blocked += serverFolders.length + serverFiles.length;
+    showToast("You're signed out — can't permanently delete items right now", "error");
+  } else {
+    await Promise.all([
+      ...serverFolders.map(async (f) => {
+        const req = {
+          folderId: f.id,
+          sharedFolderId: getSharedFolderId(f.parentId),
+          folderName: f.name,
+          folderInfo: f.resourceInfo ?? {},
+        };
+        try {
+          await withFreshToken((t) => apiDeleteFolder(t, req));
+          removeIds.add(f.id);
+          getDescendantIds(f.id).forEach((id) => removeIds.add(id));
+        } catch (err) {
+          blocked += 1;
+          notifySyncFailed(`Permanent delete of "${f.name}" did not sync to API`, `Couldn't permanently delete "${f.name}"`)(err);
+        }
+      }),
+      ...serverFiles.map(async (f) => {
+        const req = {
+          folder_id: f.parentId,
+          file_id: f.fileId,
+          shared_folder_id: getSharedFolderId(f.parentId),
+          file_name: f.name,
+          file_info: f.resourceInfo ?? {},
+          file_type: fileTypeGuess(f),
+          file_version: f.version ?? 1,
+          expected_file_size: f.size,
+        };
+        try {
+          await withFreshToken((t) => apiDeleteFile(t, req));
+          removeIds.add(f.id);
+        } catch (err) {
+          blocked += 1;
+          notifySyncFailed(`Permanent delete of "${f.name}" did not sync to API`, `Couldn't permanently delete "${f.name}"`)(err);
+        }
+      }),
+    ]);
+  }
+
+  if (removeIds.size > 0) {
+    persist(store.get(filesAtom).filter((f) => !removeIds.has(f.id)));
+  }
+
+  return { deleted: removeIds.size, blocked };
+};
+
+// DELETE /files/delete/version — removes one older version of a file (never the
+// current/latest one; the server enforces file_version > 1). Also awaited rather than
+// optimistic, same reasoning as permanentDeleteItems. Invalidates the file's cached
+// available_versions (see useFileInfo/useVersionHistory) so the modal drops it from the
+// list on success rather than needing a manual refresh.
+export const deleteFileVersion = async (item: FileItem, version: number): Promise<boolean> => {
+  if (item.isFolder || !item.fileId || !item.parentId) return false;
+  if (isItemLocked(item)) {
+    showToast("File is locked and its versions cannot be deleted", "error");
+    return false;
+  }
+  // Server-enforced (routes/files.rs delete_any_file_version): version 1 can never be
+  // deleted alone. The UI (VersionHistoryModal) already disables that button; this is a
+  // backstop for any other caller, so it fails clearly instead of round-tripping to a 400.
+  if (version <= 1) {
+    showToast("The first version can't be deleted on its own — delete the whole file instead", "error");
+    return false;
+  }
+  if (!authSnapshot.token) {
+    showToast("You're signed out — can't delete that version right now", "error");
+    return false;
+  }
+
+  const req = {
+    folder_id: item.parentId,
+    file_id: item.fileId,
+    shared_folder_id: getSharedFolderId(item.parentId),
+    file_name: item.name,
+    file_info: item.resourceInfo ?? {},
+    file_type: fileTypeGuess(item),
+    file_version: version,
+    expected_file_size: item.size,
+  };
+
+  try {
+    await withFreshToken((t) => apiDeleteFileVersion(t, req));
+    queryClient.invalidateQueries({ queryKey: ["fileInfo", item.id] });
+    return true;
+  } catch (err) {
+    notifySyncFailed(`Delete of version ${version} did not sync to API`, `Couldn't delete version ${version}`)(err);
+    return false;
+  }
 };
 
 export const moveItems = (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FolderOpen, Star, RotateCcw, Trash2, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock } from "lucide-react";
+import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
@@ -57,7 +57,10 @@ export function ItemContextMenu({
   const allowDownload = !shared || effectivePermissions.can_download;
   const allowEdit = !shared || effectivePermissions.can_update; // rename, colour/icon, star
   const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
-  const allowDelete = !shared && !item.isDeleted; // no folder-delete API for shares yet
+  // Move to Trash is client-only (see fileSystemStore.ts trashItems) — deliberately not
+  // offered for shared items regardless of permission, unrelated to whether a real
+  // delete endpoint exists server-side (it does now, for both files and folders).
+  const allowDelete = !shared && !item.isDeleted;
   const allowShare = !shared; // can't re-share someone else's folder
 
   const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
@@ -207,14 +210,28 @@ export function ItemContextMenu({
         </>
       ) : (
         allowDelete && (
-          <button
-            onClick={onTrash}
-            disabled={locked}
-            title={locked ? "File is locked and cannot be moved to trash" : undefined}
-            className={destructiveClass}
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Move to Trash
-          </button>
+          <>
+            <button
+              onClick={onTrash}
+              disabled={locked}
+              title={locked ? "File is locked and cannot be moved to trash" : undefined}
+              className={destructiveClass}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Move to Trash
+            </button>
+            {/* Skips Trash entirely — DELETE /files/delete/file or /folders/delete
+                straight away, same confirm dialog as the Trash-tab version above. A
+                different icon from "Move to Trash" so two destructive actions in a
+                row don't read as duplicates of each other. */}
+            <button
+              onClick={onPermanentDelete}
+              disabled={locked}
+              title={locked ? "File is locked and cannot be deleted" : undefined}
+              className={destructiveClass}
+            >
+              <XCircle className="w-3.5 h-3.5" /> Delete Permanently
+            </button>
+          </>
         )
       )}
     </div>
