@@ -42,7 +42,8 @@ export function useFileActions({
     starItems: (ids: string[]) => void;
     trashItems: (ids: string[]) => void;
     restoreItems: (ids: string[], destinationId: string | null) => { moved: number; blocked: number; unsupported: number };
-    permanentDeleteItems: (ids: string[]) => void;
+    permanentDeleteItems: (ids: string[]) => Promise<{ deleted: number; blocked: number }>;
+    deleteFileVersion: (item: FileItem, version: number) => Promise<boolean>;
     moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
     copyItem: (id: string, newParentId: string | null) => { copied: number; blocked: boolean };
     updateFileContent: (id: string, blob: Blob) => Promise<void>;
@@ -149,16 +150,16 @@ export function useFileActions({
     });
   };
 
-  // Permanent delete has no server endpoint at all yet, for files or folders
-  // (folders::delete_folder_with_files is commented out server-side too) — except
-  // for items the server never knew about in the first place (created offline,
-  // origin !== "server"), which are safe to just drop locally.
+  // Permanent delete: local-only items (created offline, origin !== "server"/"shared")
+  // are always droppable, whatever they are. Server-backed files go through
+  // DELETE /files/delete/file, server-backed folders through DELETE /folders/delete
+  // (recursive, purges its whole subtree). fileSystem.permanentDeleteItems sorts out
+  // which of `removable` actually succeeds and reports real counts back — it's not
+  // optimistic, this is irreversible.
   const requestPermanentDelete = (ids: string[]) => {
     if (ids.length === 0) return;
     const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
-    const removable = targets.filter((f) => f.isFolder && f.origin !== "server" && f.origin !== "shared").map((f) => f.id);
-    const blocked = targets.length - removable.length;
-    if (blocked > 0) showToast(`${plural(blocked, "item")} can't be permanently deleted yet — not supported by the server`, "error");
+    const removable = targets.map((f) => f.id);
     if (removable.length === 0) return;
 
     setPendingConfirm({
@@ -166,13 +167,44 @@ export function useFileActions({
       description: `This will permanently delete ${removable.length > 1 ? `${removable.length} items` : "this item"}. This action cannot be undone.`,
       confirmLabel: "Delete Permanently",
       destructive: true,
-      onConfirm: () => {
-        fileSystem.permanentDeleteItems(removable);
-        showToast(`Permanently deleted ${plural(removable.length, "item")}`, "success");
+      onConfirm: async () => {
+        setPendingConfirm(null);
+        const { deleted, blocked } = await fileSystem.permanentDeleteItems(removable);
+        if (deleted > 0) showToast(`Permanently deleted ${plural(deleted, "item")}`, "success");
+        if (blocked > 0) showToast(`Couldn't permanently delete ${plural(blocked, "item")}`, "error");
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
+      },
+    });
+  };
+
+  // DELETE /files/delete/version — removes one older version from Version History.
+  // Confirmed the same way as every other destructive action here, not optimistic:
+  // the modal's list only drops the version once the server actually confirms it.
+  //
+  // isOnlyVersion (Version History's "no older versions" case) routes to
+  // fileSystem.permanentDeleteItems instead — the server rejects /delete/version for a
+  // file_version <= 1 or for the file's last remaining version, and conceptually
+  // "delete the only version" just *is* "delete the file".
+  const requestDeleteVersion = (item: FileItem, version: number, isOnlyVersion: boolean) => {
+    setPendingConfirm({
+      title: isOnlyVersion ? "Delete File" : "Delete Version",
+      description: isOnlyVersion
+        ? `Version ${version} is the only version of "${item.name}" — deleting it permanently deletes the file. This action cannot be undone.`
+        : `This will permanently delete version ${version} of "${item.name}". This action cannot be undone.`,
+      confirmLabel: isOnlyVersion ? "Delete File" : "Delete Version",
+      destructive: true,
+      onConfirm: async () => {
         setPendingConfirm(null);
+        if (isOnlyVersion) {
+          const { deleted, blocked } = await fileSystem.permanentDeleteItems([item.id]);
+          if (deleted > 0) showToast(`Permanently deleted "${item.name}"`, "success");
+          if (blocked > 0) showToast(`Couldn't permanently delete "${item.name}"`, "error");
+        } else {
+          const ok = await fileSystem.deleteFileVersion(item, version);
+          if (ok) showToast(`Deleted version ${version}`, "success");
+        }
       },
     });
   };
@@ -337,6 +369,7 @@ export function useFileActions({
     handleBatchStar,
     requestTrash,
     requestPermanentDelete,
+    requestDeleteVersion,
     handleRestore,
     pendingConfirm,
     closeConfirm,

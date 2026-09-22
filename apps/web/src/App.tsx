@@ -80,6 +80,7 @@ function App() {
     trashItems,
     restoreItems,
     permanentDeleteItems,
+    deleteFileVersion,
     moveItems,
     copyItem,
     updateFileContent,
@@ -290,7 +291,19 @@ function App() {
   const fileActions = useFileActions({
     files,
     currentFolderId: nav.currentFolderId,
-    fileSystem: { createFolder, renameItem, toggleStar, starItems, trashItems, restoreItems, permanentDeleteItems, moveItems, copyItem, updateFileContent },
+    fileSystem: {
+      createFolder,
+      renameItem,
+      toggleStar,
+      starItems,
+      trashItems,
+      restoreItems,
+      permanentDeleteItems,
+      deleteFileVersion,
+      moveItems,
+      copyItem,
+      updateFileContent,
+    },
     enqueueFiles,
     showToast,
     logout,
@@ -724,6 +737,14 @@ function App() {
           loading={versionHistory.isLoadingVersions}
           onClose={versionHistory.closeVersionHistory}
           onDownloadVersion={versionHistory.handleDownloadVersion}
+          onDeleteVersion={(v) =>
+            fileActions.requestDeleteVersion(
+              versionHistory.item!,
+              v,
+              v === versionHistory.latestVersion && versionHistory.olderVersions.length === 0
+            )
+          }
+          permissions={getSharedPermissions(versionHistory.item.id)}
         />
       )}
 
