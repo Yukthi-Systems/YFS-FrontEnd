@@ -625,7 +625,7 @@ function App() {
             item={selectedItem}
             files={files}
             pathLabel={getItemPath(files, selectedItem)}
-            permissions={getSharedPermissions(selectedItem.id)}
+            permissions={selectedItem.sharedIn?.permissions ?? getSharedPermissions(selectedItem.id)}
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
             onDownload={() => fileActions.handleDownload(selectedItem)}

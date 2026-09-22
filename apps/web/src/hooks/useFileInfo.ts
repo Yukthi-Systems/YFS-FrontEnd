@@ -10,15 +10,15 @@ import { withAuthRetry } from "../utils/authRetry";
 export const useFileInfo = (item: FileItem | null, enabled = true) => {
   const token = useAtomValue(tokenAtom);
   const { refreshAccessToken } = useAuth();
-  const { fileTypeGuess } = useFileSystem();
+  const { fileTypeGuess, setItemLocked } = useFileSystem();
   // Only own (non-shared) real files have a backend file_id/parent to look up.
   const canQuery = !!item && !item.isFolder && !!item.fileId && !!item.parentId && item.origin === "server";
 
   return useQuery({
     queryKey: ["fileInfo", item?.id],
-    queryFn: () => {
+    queryFn: async () => {
       if (!token || !item?.fileId || !item.parentId) throw new Error("Missing token or file");
-      return withAuthRetry(token, refreshAccessToken, (tk) =>
+      const data = await withAuthRetry(token, refreshAccessToken, (tk) =>
         getFileBasicInfo(tk, {
           folder_id: item.parentId!,
           file_id: item.fileId!,
@@ -29,6 +29,10 @@ export const useFileInfo = (item: FileItem | null, enabled = true) => {
           expected_file_size: item.size,
         })
       );
+      if (data && typeof data.is_locked === "boolean") {
+        setItemLocked(item.id, data.is_locked);
+      }
+      return data;
     },
     enabled: !!token && canQuery && enabled,
   });

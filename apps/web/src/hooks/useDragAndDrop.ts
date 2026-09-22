@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
+import { isItemLocked } from "../utils/format";
 
 export function useDragAndDrop({
   checkedItemIds,
@@ -16,6 +17,11 @@ export function useDragAndDrop({
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
   const handleDragStartItem = (item: FileItem, e: React.DragEvent) => {
+    if (isItemLocked(item)) {
+      e.preventDefault();
+      showToast(`"${item.name}" is locked and cannot be moved`, "error");
+      return;
+    }
     e.dataTransfer.setData("application/x-yfs-item", item.id);
     e.dataTransfer.effectAllowed = "move";
   };

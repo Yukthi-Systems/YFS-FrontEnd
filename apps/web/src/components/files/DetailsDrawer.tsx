@@ -1,10 +1,26 @@
 import { useState } from "react";
-import { AlertCircle, Download, Expand, FolderInput, CopyPlus, Star, Trash2, X, History, Share2, Loader2, Copy, Check } from "lucide-react";
+import {
+  AlertCircle,
+  Download,
+  Expand,
+  FolderInput,
+  CopyPlus,
+  Star,
+  Trash2,
+  X,
+  History,
+  Share2,
+  Loader2,
+  Copy,
+  Check,
+  Lock,
+} from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 import { useStreamUrl } from "../../hooks/useDownload";
+import { useFileInfo } from "../../hooks/useFileInfo";
 
 const PLACEHOLDER_SVG =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='1'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><polyline points='21 15 16 10 5 21'/></svg>";
@@ -109,7 +125,38 @@ function folderContents(files: FileItem[], rootId: string) {
   return { directCount: direct.length, folders, files: leaves };
 }
 
-import { useFileInfo } from "../../hooks/useFileInfo";
+function getPermissionsLabel(perms: InternalSharePermissions | null): string {
+  if (!perms) return "Full Access";
+  const { can_preview, can_download, can_create, can_update, can_delete } = perms;
+  if (can_preview && can_download && can_create && can_update && can_delete) {
+    return "Full Access";
+  }
+  if (can_preview && can_download && !can_create && !can_update && !can_delete) {
+    return "View & Download";
+  }
+  if (can_preview && !can_download && !can_create && !can_update && !can_delete) {
+    return "View only";
+  }
+  const active = [
+    can_preview && "View",
+    can_download && "Download",
+    can_create && "Create",
+    can_update && "Edit",
+    can_delete && "Delete",
+  ].filter(Boolean);
+  return active.join(", ") || "None";
+}
+
+function getPermissionsTooltip(perms: InternalSharePermissions | null): string {
+  if (!perms) return "Full access: all actions allowed";
+  return [
+    `Preview: ${perms.can_preview ? "Allowed" : "Denied"}`,
+    `Download: ${perms.can_download ? "Allowed" : "Denied"}`,
+    `Create: ${perms.can_create ? "Allowed" : "Denied"}`,
+    `Edit: ${perms.can_update ? "Allowed" : "Denied"}`,
+    `Delete: ${perms.can_delete ? "Allowed" : "Denied"}`,
+  ].join("\n");
+}
 
 export function DetailsDrawer({
   item,
@@ -145,11 +192,15 @@ export function DetailsDrawer({
   onTrash: () => void;
   onRestore: () => void;
 }) {
-  const shared = permissions !== null;
-  const allowDownload = !shared || permissions.can_download;
-  const allowEdit = !shared || permissions.can_update;
-  const allowMove = !shared || (permissions.can_update && permissions.can_create);
-  const allowDelete = !shared && !item.isDeleted;
+  const effectivePermissions = permissions ?? item.sharedIn?.permissions ?? null;
+  const shared = effectivePermissions !== null;
+  const { data: fileInfo } = useFileInfo(item, !item.isFolder);
+  const locked = isItemLocked(item, fileInfo);
+
+  const allowDownload = !shared || effectivePermissions.can_download;
+  const allowEdit = (!shared || effectivePermissions.can_update) && !locked;
+  const allowMove = (!shared || (effectivePermissions.can_update && effectivePermissions.can_create)) && !locked;
+  const allowDelete = !shared && !item.isDeleted && !locked;
   const allowShare = !shared;
 
   const [copiedId, setCopiedId] = useState(false);
@@ -159,7 +210,8 @@ export function DetailsDrawer({
     setTimeout(() => setCopiedId(false), 1500);
   };
 
-  const { data: fileInfo } = useFileInfo(item, !item.isFolder);
+  const creatorName = item.createdBy || (item.resourceInfo as { creation_info?: { user_name?: string } } | undefined)?.creation_info?.user_name;
+  const trashInfo = (item.resourceInfo as { trash_info?: { trashed_by_name?: string; trashed_at?: string; trashed_from_name?: string } } | undefined)?.trash_info;
 
   return (
     <aside
@@ -190,7 +242,14 @@ export function DetailsDrawer({
         </div>
 
         <div className="flex flex-col gap-1">
-          <h4 className="text-sm font-bold text-text-heading break-all leading-snug">{item.name}</h4>
+          <div className="flex items-center gap-1.5">
+            <h4 className="text-sm font-bold text-text-heading break-all leading-snug">{item.name}</h4>
+            {locked && (
+              <span title="File is locked" className="shrink-0 p-1 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                <Lock className="w-3 h-3" />
+              </span>
+            )}
+          </div>
           <span className="text-xs text-text-main">{KIND_LABEL[item.type]}</span>
         </div>
 
@@ -219,7 +278,7 @@ export function DetailsDrawer({
           {!item.isFolder && item.version != null && <InfoRow label="Version">v{item.version}</InfoRow>}
 
           <InfoRow label="Owner">{item.owner.name || "—"}</InfoRow>
-          {item.createdBy && <InfoRow label="Created by">{item.createdBy}</InfoRow>}
+          {creatorName && <InfoRow label="Created by">{creatorName}</InfoRow>}
           <InfoRow label="Location">
             <span title={pathLabel}>{pathLabel}</span>
           </InfoRow>
@@ -245,6 +304,13 @@ export function DetailsDrawer({
 
           {item.isStarred && <InfoRow label="Starred">Yes</InfoRow>}
           {item.isDeleted && <InfoRow label="Status">In Trash</InfoRow>}
+          {trashInfo && (
+            <>
+              {trashInfo.trashed_by_name && <InfoRow label="Trashed by">{trashInfo.trashed_by_name}</InfoRow>}
+              {trashInfo.trashed_at && <InfoRow label="Trashed on">{formatDate(trashInfo.trashed_at)}</InfoRow>}
+              {trashInfo.trashed_from_name && <InfoRow label="Trashed from">{trashInfo.trashed_from_name}</InfoRow>}
+            </>
+          )}
           {item.isFolder && item.color && (
             <div className="flex justify-between gap-3 text-xs leading-normal">
               <span className="text-text-main font-semibold">Colour</span>
@@ -287,14 +353,29 @@ export function DetailsDrawer({
               </span>
             </InfoRow>
           )}
-          {!item.isFolder && !isItemFailed(item) && (fileInfo?.is_locked || isItemProcessing(item)) && (
+          {!item.isFolder && !isItemFailed(item) && locked && (
             <InfoRow label="Status">
-              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
-                <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-                {fileInfo?.is_locked ? "Locked (upload in progress)" : "Processing"}
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-xs border border-amber-500/20">
+                <Lock className="w-3 h-3 text-amber-500" />
+                Locked
               </span>
             </InfoRow>
           )}
+          {!item.isFolder && !isItemFailed(item) && !locked && isItemProcessing(item) && (
+            <InfoRow label="Status">
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium text-xs">
+                <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                Processing
+              </span>
+            </InfoRow>
+          )}
+
+          {/* Permissions */}
+          <InfoRow label="Permissions">
+            <span title={getPermissionsTooltip(effectivePermissions)}>
+              {getPermissionsLabel(effectivePermissions)}
+            </span>
+          </InfoRow>
         </div>
 
         <div className="flex flex-col gap-2 mt-2">
@@ -318,7 +399,7 @@ export function DetailsDrawer({
               <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
             </button>
           )}
-          {allowEdit && (
+          {(!shared || effectivePermissions?.can_update) && (
             <div className="flex gap-2">
               <button
                 onClick={onToggleStar}
@@ -328,7 +409,9 @@ export function DetailsDrawer({
               </button>
               <button
                 onClick={onRename}
-                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs"
+                disabled={!allowEdit}
+                title={locked ? "File is locked and cannot be renamed" : !allowEdit ? "No permission to rename" : undefined}
+                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs"
               >
                 Rename
               </button>
@@ -337,7 +420,9 @@ export function DetailsDrawer({
           {!item.isFolder && (
             <button
               onClick={onVersionHistory}
-              className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              disabled={locked}
+              title={locked ? "File is locked" : undefined}
+              className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <History className="w-3.5 h-3.5" /> Version History
             </button>
@@ -347,7 +432,9 @@ export function DetailsDrawer({
               {allowMove && (
                 <button
                   onClick={onMove}
-                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+                  disabled={locked}
+                  title={locked ? "File is locked and cannot be moved" : undefined}
+                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
                 >
                   <FolderInput className="w-3.5 h-3.5" /> Move
                 </button>
@@ -355,7 +442,9 @@ export function DetailsDrawer({
               {!item.isFolder && (
                 <button
                   onClick={onCopy}
-                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+                  disabled={locked}
+                  title={locked ? "File is locked and cannot be copied" : undefined}
+                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
                 >
                   <CopyPlus className="w-3.5 h-3.5" /> Copy
                 </button>
@@ -381,7 +470,9 @@ export function DetailsDrawer({
             allowDelete && (
               <button
                 onClick={onTrash}
-                className="w-full py-2 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+                disabled={locked}
+                title={locked ? "File is locked and cannot be moved to trash" : undefined}
+                className="w-full py-2 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Move to Trash
               </button>
