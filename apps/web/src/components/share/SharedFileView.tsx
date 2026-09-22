@@ -11,10 +11,12 @@ import {
   LogOut,
   Pencil,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import {
   createPublicFolder,
   createPublicSession,
+  deletePublicFolder,
   editPublicFolder,
   getPublicSession,
   listPublicFolderChildren,
@@ -38,6 +40,7 @@ import { ListSkeleton, GridSkeleton } from "../common/Skeletons";
 import { EmptyState } from "../common/EmptyState";
 import { CreateFolderModal } from "../modals/CreateFolderModal";
 import { RenameModal } from "../modals/RenameModal";
+import { ConfirmModal } from "../modals/ConfirmModal";
 
 
 
@@ -141,6 +144,7 @@ export function SharedFileView() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const setViewMode = (m: ViewMode) => {
     setViewModeState(m);
@@ -168,6 +172,7 @@ export function SharedFileView() {
   const canCreate = !!info?.permission_set.can_create;
   const canEdit = !!info?.permission_set.can_update;
   const canMove = !!info?.permission_set.can_update && !!info?.permission_set.can_create;
+  const canDelete = !!info?.permission_set.can_delete;
 
   const folderQueryKey = ["publicFolder", token, currentFolderId] as const;
   const folderQuery = useQuery({
@@ -214,7 +219,19 @@ export function SharedFileView() {
     },
     onError: (err) => fail(err, "Couldn't move the folder."),
   });
-  const busy = createFolderMutation.isPending || renameFolderMutation.isPending || moveFolderMutation.isPending;
+  const deleteFolderMutation = useMutation({
+    mutationFn: (id: string) => deletePublicFolder(token, id),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      refresh();
+    },
+    onError: (err) => fail(err, "Couldn't delete the folder."),
+  });
+  const busy =
+    createFolderMutation.isPending ||
+    renameFolderMutation.isPending ||
+    moveFolderMutation.isPending ||
+    deleteFolderMutation.isPending;
 
   const items = useMemo(() => sortItems(rows.map(mapPublicResource), sortField, sortOrder), [rows, sortField, sortOrder]);
 
@@ -258,6 +275,11 @@ export function SharedFileView() {
   const moveHere = () => {
     if (!moveTarget || !currentFolderId) return;
     moveFolderMutation.mutate({ id: moveTarget.id, newParentId: currentFolderId });
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteFolderMutation.mutate(deleteTarget.id);
   };
 
   const exitShare = async () => {
@@ -314,6 +336,17 @@ export function SharedFileView() {
             }}
           >
             <FolderInput className="w-3.5 h-3.5" /> Move…
+          </button>
+        )}
+        {item.isFolder && canDelete && (
+          <button
+            className={`${rowClass} !text-red-500 hover:!bg-red-500/10`}
+            onClick={() => {
+              setContextMenuId(null);
+              setDeleteTarget({ id: item.id, name: item.name });
+            }}
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Delete
           </button>
         )}
         {!item.isFolder && (
@@ -578,6 +611,7 @@ export function SharedFileView() {
           item={selectedItem}
           canEdit={canEdit}
           canMove={canMove}
+          canDelete={canDelete}
           onClose={selection.clearSelection}
           onOpenFolder={() => {
             openFolder(selectedItem);
@@ -585,6 +619,7 @@ export function SharedFileView() {
           }}
           onRename={() => setRenameTarget({ id: selectedItem.id, name: selectedItem.name })}
           onMove={() => setMoveTarget({ id: selectedItem.id, name: selectedItem.name })}
+          onDelete={() => setDeleteTarget({ id: selectedItem.id, name: selectedItem.name })}
         />
       )}
       </div>
@@ -597,6 +632,15 @@ export function SharedFileView() {
           currentName={renameTarget.name}
           onCancel={() => setRenameTarget(null)}
           onRename={submitRename}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete Folder"
+          description={`This will permanently delete "${deleteTarget.name}" and everything inside it. This action cannot be undone.`}
+          confirmLabel="Delete"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
         />
       )}
     </div>
