@@ -118,6 +118,33 @@ export const editFolder = async (
   });
 };
 
+// DELETE /folders/delete — permanently deletes a folder and everything under it.
+// folder_name/folder_info are written first (same as editFolder — worth passing the
+// current values, not placeholders, since they land in the same row update), then the
+// server marks the whole subtree deleted_at immediately and purges it (storage bytes,
+// file_versions/files/folders rows, quota) in a background task — this returns 202
+// Accepted once the delete is queued, not once it's actually finished.
+export const deleteFolder = async (
+  accessToken: string,
+  params: {
+    folderId: string;
+    folderName: string;
+    folderInfo?: Record<string, unknown>;
+  } & SharedFolderScope
+): Promise<void> => {
+  await apiRequest("/folders/delete", {
+    accessToken,
+    method: "DELETE",
+    parseJson: false,
+    body: JSON.stringify({
+      folder_id: params.folderId,
+      shared_folder_id: params.sharedFolderId ?? null,
+      folder_name: params.folderName,
+      folder_info: params.folderInfo ?? {},
+    }),
+  });
+};
+
 // PUT /folders/move — re-parent a folder (null = move to root).
 export const moveFolder = async (
   accessToken: string,
