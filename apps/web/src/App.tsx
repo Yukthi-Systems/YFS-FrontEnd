@@ -5,6 +5,7 @@ import { useToast } from "./atoms/toast";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { useUserSettings } from "./hooks/useUserSettings";
 import { UserSettingsBridge } from "./components/UserSettingsBridge";
+import { Star, Trash2 } from "lucide-react";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
@@ -551,7 +552,21 @@ function App() {
                   {isFolderLoading ? (
                     viewSkeleton
                   ) : listItems.length === 0 ? (
-                    <EmptyState />
+                    nav.activeSidebarTab === "starred" ? (
+                      <EmptyState
+                        icon={<Star className="w-14 h-14 mb-4 text-amber-400 opacity-60 fill-amber-400/20" />}
+                        title="No Starred Items"
+                        description="Star important files and folders from the menu to find them quickly here."
+                      />
+                    ) : nav.activeSidebarTab === "trash" ? (
+                      <EmptyState
+                        icon={<Trash2 className="w-14 h-14 mb-4 opacity-50 text-neutral-400" />}
+                        title="Trash is Empty"
+                        description="Items moved to trash will appear here."
+                      />
+                    ) : (
+                      <EmptyState />
+                    )
                   ) : viewMode === "list" ? (
                     <FileListTable
                       items={listItems}
@@ -569,6 +584,8 @@ function App() {
                       onContextMenuToggle={menus.setContextMenuId}
                       onItemContextMenu={menus.openItemContextMenu}
                       renderContextMenu={renderItemContextMenu}
+                      onShare={shareSettings.openShareModal}
+                      onToggleStar={fileActions.handleToggleStar}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}

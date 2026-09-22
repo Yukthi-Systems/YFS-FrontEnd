@@ -58,7 +58,21 @@ export function useFileNavigation() {
   }, []);
 
   const getBreadcrumbSegments = (files: FileItem[]): BreadcrumbSegment[] => {
-    const segments: BreadcrumbSegment[] = [{ id: null, name: "My Drive" }];
+    const rootName =
+      activeSidebarTab === "starred"
+        ? "Starred"
+        : activeSidebarTab === "trash"
+        ? "Trash"
+        : activeSidebarTab === "shared"
+        ? "Shared with you"
+        : activeSidebarTab === "shared-out"
+        ? "Shared by you"
+        : activeSidebarTab === "shared-links"
+        ? "Shared by link"
+        : activeSidebarTab === "recent"
+        ? "Recent"
+        : "My Drive";
+    const segments: BreadcrumbSegment[] = [{ id: null, name: rootName }];
     currentPath.forEach((folderId) => {
       const folder = files.find((f) => f.id === folderId);
       if (folder) segments.push({ id: folderId, name: folder.name });
