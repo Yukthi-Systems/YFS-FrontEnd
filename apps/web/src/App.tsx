@@ -585,6 +585,7 @@ function App() {
                       onItemContextMenu={menus.openItemContextMenu}
                       renderContextMenu={renderItemContextMenu}
                       onShare={shareSettings.openShareModal}
+                      onToggleStar={fileActions.handleToggleStar}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
