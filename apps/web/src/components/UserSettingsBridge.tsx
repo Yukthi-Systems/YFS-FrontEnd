@@ -84,11 +84,15 @@ export function UserSettingsBridge() {
   const privTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pubTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const initedRef = useRef(false);
+  const justAppliedServerRef = useRef(false);
+  const justAppliedPublicRef = useRef(false);
 
   // Re-arm the one-time server->client apply across a logout/login.
   useEffect(() => {
     if (!token || !userId) {
       initedRef.current = false;
+      justAppliedServerRef.current = false;
+      justAppliedPublicRef.current = false;
       privateBlobRef.current = {};
       publicBlobRef.current = {};
     }
@@ -98,6 +102,8 @@ export function UserSettingsBridge() {
   useEffect(() => {
     if (!query.data || initedRef.current) return;
     initedRef.current = true;
+    justAppliedServerRef.current = true;
+    justAppliedPublicRef.current = true;
     const priv = (query.data.private_info ?? {}) as PrivateBlob;
     const pub = (query.data.public_info ?? {}) as Record<string, unknown>;
     privateBlobRef.current = { ...priv };
@@ -115,7 +121,15 @@ export function UserSettingsBridge() {
     if (typeof priv.sidebarCollapsed === "boolean") setSidebarCollapsed(priv.sidebarCollapsed);
     if (th && th !== theme) setTheme(th);
     if (typeof priv.accentColor === "string") setAccentColor(priv.accentColor);
-    if (Array.isArray(priv.starredIds)) setStarredIds(priv.starredIds.filter((id) => typeof id === "string"));
+
+    // Merge server starred ids with any already cached in starredIdsAtom/localStorage
+    const serverStarred = Array.isArray(priv.starredIds)
+      ? priv.starredIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const mergedStarred = Array.from(new Set([...starredIds, ...serverStarred]));
+    setStarredIds(mergedStarred);
+    privateBlobRef.current.starredIds = mergedStarred;
+
     setPublicProfile({
       display_name: typeof pub.display_name === "string" ? pub.display_name : undefined,
       avatar_color: typeof pub.avatar_color === "string" ? pub.avatar_color : undefined,
@@ -123,11 +137,14 @@ export function UserSettingsBridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
 
-  // Push local pref changes back to the server, whole-blob, debounced. Comparing
-  // against the last-known blob (seeded from the server above) means the apply-on-load
-  // above doesn't itself trigger a redundant round trip.
+  // Push local pref changes back to the server, whole-blob, debounced.
   useEffect(() => {
     if (!initedRef.current) return;
+    // Skip saving on the very render where server data was just loaded into atoms
+    if (justAppliedServerRef.current) {
+      justAppliedServerRef.current = false;
+      return;
+    }
     const prev = privateBlobRef.current;
     const unchanged =
       prev.theme === theme &&
@@ -164,6 +181,11 @@ export function UserSettingsBridge() {
 
   useEffect(() => {
     if (!initedRef.current) return;
+    // Skip saving on the very render where server data was just loaded into atoms
+    if (justAppliedPublicRef.current) {
+      justAppliedPublicRef.current = false;
+      return;
+    }
     const prev = publicBlobRef.current;
     const unchanged = prev.display_name === publicProfile.display_name && prev.avatar_color === publicProfile.avatar_color;
     publicBlobRef.current = { ...prev, ...publicProfile };

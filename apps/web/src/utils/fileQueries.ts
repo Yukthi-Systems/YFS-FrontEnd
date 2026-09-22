@@ -26,7 +26,11 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
   } else if (activeSidebarTab === "recent") {
     result = result.filter((f) => !f.isFolder && !f.isDeleted);
   } else if (activeSidebarTab === "starred") {
-    result = result.filter((f) => f.isStarred && !f.isDeleted);
+    if (currentFolderId) {
+      result = result.filter((f) => f.parentId === currentFolderId && !f.isDeleted);
+    } else {
+      result = result.filter((f) => f.isStarred && !f.isDeleted);
+    }
   } else if (activeSidebarTab === "trash") {
     // Top-level trashed items only (a trashed folder brings its subtree with it).
     result = result.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
@@ -106,7 +110,12 @@ export function getSearchScope(
   } else if (activeSidebarTab === "recent") {
     result = files.filter((f) => !f.isFolder && !f.isDeleted);
   } else if (activeSidebarTab === "starred") {
-    result = files.filter((f) => f.isStarred && !f.isDeleted);
+    if (currentFolderId) {
+      const ids = new Set(collectDescendantIds(files, currentFolderId));
+      result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
+    } else {
+      result = files.filter((f) => f.isStarred && !f.isDeleted);
+    }
   } else if (activeSidebarTab === "trash") {
     result = files.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
   } else {
