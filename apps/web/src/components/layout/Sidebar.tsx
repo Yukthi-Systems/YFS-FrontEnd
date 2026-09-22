@@ -56,8 +56,10 @@ function NavRow({
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`w-full flex items-center gap-3 rounded-lg text-text-main font-medium text-[0.9rem] text-left cursor-pointer transition hover:bg-code-bg hover:text-text-heading px-3 py-2 border-none bg-transparent ${focusRing} ${
-          active ? "bg-accent-bg text-accent font-semibold" : ""
+        className={`w-full flex items-center gap-3 rounded-lg text-[0.9rem] text-left cursor-pointer transition px-3 py-2 border-none ${focusRing} ${
+          active
+            ? "bg-accent-bg text-accent font-semibold"
+            : "bg-transparent text-text-main font-medium hover:bg-code-bg hover:text-text-heading"
         }`}
       >
         <Icon className="w-4 h-4 shrink-0" />
@@ -301,8 +303,10 @@ export function Sidebar({
                           aria-label={label}
                           aria-current={activeTab === tab ? "page" : undefined}
                           title={label}
-                          className={`w-10 h-10 flex items-center justify-center rounded-xl text-text-main cursor-pointer transition hover:bg-code-bg hover:text-text-heading border-none bg-transparent ${focusRing} ${
-                            activeTab === tab ? "bg-accent-bg text-accent" : ""
+                          className={`w-10 h-10 flex items-center justify-center rounded-xl cursor-pointer transition border-none ${focusRing} ${
+                            activeTab === tab
+                              ? "bg-accent-bg text-accent font-semibold"
+                              : "bg-transparent text-text-main hover:bg-code-bg hover:text-text-heading"
                           }`}
                         >
                           <Icon className="w-[18px] h-[18px]" />

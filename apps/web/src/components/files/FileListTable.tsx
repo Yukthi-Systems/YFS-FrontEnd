@@ -1,12 +1,12 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus } from "lucide-react";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
-import { Avatar } from "../common/Avatar";
+
 
 function SortableHeader({
   label,
@@ -59,6 +59,7 @@ export function FileListTable({
   onContextMenuToggle,
   onItemContextMenu,
   renderContextMenu,
+  onShare,
   onDragStartItem,
   onDragOverFolder,
   onDragLeaveFolder,
@@ -79,6 +80,7 @@ export function FileListTable({
   onContextMenuToggle: (id: string | null) => void;
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
+  onShare?: (item: FileItem) => void;
   onDragStartItem: (item: FileItem, e: React.DragEvent) => void;
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
@@ -105,7 +107,6 @@ export function FileListTable({
             </th>
             <SortableHeader label="Name" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[980px]:hidden">Created By</th>
             <SortableHeader
               label="Last Modified"
               field="modifiedAt"
@@ -115,7 +116,7 @@ export function FileListTable({
               className="max-[860px]:hidden"
             />
             <SortableHeader label="Size" field="size" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-12"></th>
+            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-20"></th>
           </tr>
         </thead>
         <tbody>
@@ -156,13 +157,9 @@ export function FileListTable({
                     )}
                   </div>
                 </td>
-                <td className="px-3 py-2 border-b border-border-main max-[640px]:hidden">
-                  <div className="flex items-center gap-1.5">
-                    <Avatar name={item.owner.name} email={item.owner.email} className="w-5 h-5 text-[9px]" />
-                    <span className="text-[0.8rem] text-text-heading font-medium">{item.owner.name}</span>
-                  </div>
+                <td className="px-3 py-2 border-b border-border-main text-[0.8rem] text-text-heading font-medium max-[640px]:hidden truncate">
+                  {item.createdBy || item.owner.name}
                 </td>
-                <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[980px]:hidden">{item.createdBy || "—"}</td>
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main">
                   {item.isFolder ? (
@@ -186,17 +183,31 @@ export function FileListTable({
                     formatBytes(item.size)
                   )}
                 </td>
-                <td className="px-3 py-2 border-b border-border-main text-center relative" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => {
-                      const opening = contextMenuId !== item.id;
-                      setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
-                      onContextMenuToggle(opening ? item.id : null);
-                    }}
-                    className="row-actions-trigger border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                <td className="px-3 py-2 border-b border-border-main text-right relative whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-1">
+                    {onShare && !item.isDeleted && item.origin !== "shared" && !item.sharedIn && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onShare(item);
+                        }}
+                        title="Share"
+                        className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        const opening = contextMenuId !== item.id;
+                        setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
+                        onContextMenuToggle(opening ? item.id : null);
+                      }}
+                      className="row-actions-trigger border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                  </div>
                   {contextMenuId === item.id && menuAnchor && (
                     <ContextMenuPortal anchor={menuAnchor.rect} align={menuAnchor.align}>
                       {renderContextMenu(item)}
