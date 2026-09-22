@@ -12,6 +12,7 @@ import {
   sortFieldAtom,
   sortOrderAtom,
   sidebarCollapsedAtom,
+  starredIdsAtom,
   publicProfileAtom,
   savingProfileAtom,
 } from "../atoms/userSettings";
@@ -46,8 +47,11 @@ interface PrivateBlob {
   sortField?: SortField;
   sortOrder?: SortOrder;
   sidebarCollapsed?: boolean;
+  starredIds?: string[];
   [k: string]: unknown; // preserve keys we don't model
 }
+
+const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
 export function UserSettingsBridge() {
   const { token, userId, refreshAccessToken } = useAuth();
@@ -58,6 +62,7 @@ export function UserSettingsBridge() {
   const [sortField, setSortField] = useAtom(sortFieldAtom);
   const [sortOrder, setSortOrder] = useAtom(sortOrderAtom);
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
+  const [starredIds, setStarredIds] = useAtom(starredIdsAtom);
   const [publicProfile, setPublicProfile] = useAtom(publicProfileAtom);
   const setSavingProfile = useSetAtom(savingProfileAtom);
 
@@ -110,6 +115,7 @@ export function UserSettingsBridge() {
     if (typeof priv.sidebarCollapsed === "boolean") setSidebarCollapsed(priv.sidebarCollapsed);
     if (th && th !== theme) setTheme(th);
     if (typeof priv.accentColor === "string") setAccentColor(priv.accentColor);
+    if (Array.isArray(priv.starredIds)) setStarredIds(priv.starredIds.filter((id) => typeof id === "string"));
     setPublicProfile({
       display_name: typeof pub.display_name === "string" ? pub.display_name : undefined,
       avatar_color: typeof pub.avatar_color === "string" ? pub.avatar_color : undefined,
@@ -130,7 +136,8 @@ export function UserSettingsBridge() {
       prev.gridSize === gridSize &&
       prev.sortField === sortField &&
       prev.sortOrder === sortOrder &&
-      prev.sidebarCollapsed === sidebarCollapsed;
+      prev.sidebarCollapsed === sidebarCollapsed &&
+      sameIds(prev.starredIds ?? [], starredIds);
     privateBlobRef.current = {
       ...prev,
       theme,
@@ -140,6 +147,7 @@ export function UserSettingsBridge() {
       sortField,
       sortOrder,
       sidebarCollapsed,
+      starredIds,
     };
     if (unchanged) return;
     clearTimeout(privTimer.current);
@@ -152,7 +160,7 @@ export function UserSettingsBridge() {
         }
       );
     }, SAVE_DEBOUNCE_MS);
-  }, [theme, accentColor, viewMode, gridSize, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
+  }, [theme, accentColor, viewMode, gridSize, sortField, sortOrder, sidebarCollapsed, starredIds, token, refreshAccessToken]);
 
   useEffect(() => {
     if (!initedRef.current) return;

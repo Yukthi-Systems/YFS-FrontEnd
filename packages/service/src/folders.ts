@@ -8,30 +8,37 @@ import type { BackendResource, PageQuery } from "./types";
 // preserved whenever the frontend rewrites this on an edit.
 export interface FolderCreationInfo {
   user_id?: string;
-  user_name?: string;
-  parent_folder_id?: string | null;
-  created_at?: string; // RFC3339
+  // No user_name here by design — the creator's display name is resolved live from
+  // user_id via GET /user/user-by-id (public_info.display_name) instead of stamped
+  // once at creation, so it doesn't go stale when the creator renames themselves.
+  // No created_at/parent_folder_id either — both duplicate fields the resource
+  // already carries at the top level (BackendResource.created_at/.parent_folder_id),
+  // so there's nothing here to read that isn't already available there.
+  // Older resources created before this change may still carry user_name/
+  // created_at/parent_folder_id keys in their stored JSON; they're simply ignored
+  // now (ResourceInfo's index signature still accepts them, nothing breaks parsing).
 }
 
-export interface FolderTrashInfo {
-  trashed_from: string | null; // the original parent_folder_id
-  trashed_from_name?: string;
-  trashed_by?: string; // user_id
-  trashed_by_name?: string;
-  trashed_at: string; // RFC3339
-}
+// Presence (true) means "in trash". No metadata beyond that: restoring always goes
+// through an explicit destination picker now rather than auto-returning to
+// trashed_from, and modifiedAt already captures when a trashed item was last
+// touched (i.e. when it was trashed) — so there's nothing else worth stamping here.
+// Older resources created before this change may still carry an object with
+// trashed_from/trashed_at/etc.; any truthy value here still reads as "trashed".
+export type TrashInfo = boolean;
 
-// Per-item UI preferences (Drive-style): starred, folder colour, folder icon.
-// Server-backed so they follow the user across devices.
+// Per-item UI preferences (Drive-style): folder colour, folder icon. Server-backed
+// so they follow the user across devices. Starred is NOT here — see
+// atoms/userSettings.ts's starredIdsAtom: starring is personal, per-user state, so
+// it lives in the user's own private_info instead of on the shared resource.
 export interface ResourceUiInfo {
-  starred?: boolean;
   color?: string; // CSS colour, e.g. "#e8710a"
   icon?: string; // key from the frontend's fixed folder-icon set
 }
 
 export interface ResourceInfo {
   creation_info?: FolderCreationInfo;
-  trash_info?: FolderTrashInfo | null;
+  trash_info?: TrashInfo | null;
   ui?: ResourceUiInfo;
   [key: string]: unknown;
 }
