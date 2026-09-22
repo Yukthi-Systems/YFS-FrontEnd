@@ -1,4 +1,4 @@
-import { Check, Download, RefreshCw, RotateCcw, Star, Trash2, X } from "lucide-react";
+import { Check, Download, RefreshCw, RotateCcw, Star, Trash2, XCircle, X } from "lucide-react";
 import { SORT_FIELD_OPTIONS } from "../../types/file";
 import type { SidebarTab, SortField, SortOrder, ViewMode } from "../../types/file";
 import { Dropdown } from "../common/Dropdown";
@@ -116,6 +116,16 @@ export function FilterSortBar({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Move to Trash</span>
+              </button>
+              {/* Skips Trash entirely, same as ItemContextMenu's single-item version. */}
+              <button
+                type="button"
+                onClick={onBatchPermanentDelete}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent"
+                title="Permanently delete selected items"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Delete</span>
               </button>
             </div>
           )}
