@@ -171,7 +171,10 @@ function App() {
     else if (tab === "shared-out") loadSharedOut({ force: true });
     else if (tab === "shared-links") loadSharedLinks({ force: true });
     else if (tab === "trash") {
-      if (trashFolderId) loadFolder(trashFolderId, { force: true });
+      // Trash root lists the Trash folder's children; opening a trashed folder browses
+      // it like any other folder.
+      const target = nav.currentFolderId ?? trashFolderId;
+      if (target) loadFolder(target, { force: true });
     } else if (restoringSharedRoute) {
       // The hydration effect above owns loading this chain in order; it flips
       // restoringSharedRoute to false once the ancestors are in, which re-runs this
@@ -199,7 +202,8 @@ function App() {
       else if (tab === "shared-out") await loadSharedOut({ force: true });
       else if (tab === "shared-links") await loadSharedLinks({ force: true });
       else if (tab === "trash") {
-        if (trashFolderId) await loadFolder(trashFolderId, { force: true });
+        const target = nav.currentFolderId ?? trashFolderId;
+        if (target) await loadFolder(target, { force: true });
       } else await loadFolder(nav.currentFolderId, { force: true });
     } finally {
       setRefreshing(false);
@@ -212,7 +216,7 @@ function App() {
   const isSharedRoot = isSharedTab && !nav.currentFolderId;
   const isTrashTab = nav.activeSidebarTab === "trash";
   const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive" || isTrashTab;
-  const paginationParentId = isTrashTab ? trashFolderId : nav.currentFolderId;
+  const paginationParentId = isTrashTab ? (nav.currentFolderId ?? trashFolderId) : nav.currentFolderId;
   const pagination = getPagination(paginationParentId, isSharedRoot);
 
   const isSharedOutTab = nav.activeSidebarTab === "shared-out";
@@ -228,7 +232,7 @@ function App() {
         lastLoadTimeRef.current = Date.now();
         if (isSharedRoot) loadMoreSharedFolders();
         else if (isTrashTab) {
-          if (trashFolderId) loadMoreFolder(trashFolderId);
+          if (paginationParentId) loadMoreFolder(paginationParentId);
         } else loadMoreFolder(nav.currentFolderId);
       }
     };
@@ -241,7 +245,7 @@ function App() {
     pagination.loading,
     isSharedRoot,
     isTrashTab,
-    trashFolderId,
+    paginationParentId,
     loadMoreSharedFolders,
     loadMoreFolder,
     nav.currentFolderId,
@@ -359,7 +363,7 @@ function App() {
       return;
     }
     if (item.isFolder) {
-      if (!item.isDeleted) openFolder(item.id);
+      openFolder(item.id);
     } else {
       setViewerItem(item);
     }
@@ -558,7 +562,7 @@ function App() {
                         title="No Starred Items"
                         description="Star important files and folders from the menu to find them quickly here."
                       />
-                    ) : nav.activeSidebarTab === "trash" ? (
+                    ) : nav.activeSidebarTab === "trash" && !nav.currentFolderId ? (
                       <EmptyState
                         icon={<Trash2 className="w-14 h-14 mb-4 opacity-50 text-neutral-400" />}
                         title="Trash is Empty"
