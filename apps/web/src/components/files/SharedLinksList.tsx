@@ -12,13 +12,10 @@ const isExpired = (iso: string | null) => !!iso && new Date(iso).getTime() < Dat
 export function SharedLinksList({
   links,
   onRevoke,
-  onOpenFolder,
   onEdit,
 }: {
   links: ExternalShare[];
   onRevoke: (shareId: string) => Promise<void>;
-  // Folder-target links only — jumps to that folder in My Drive.
-  onOpenFolder?: (folderId: string) => void;
   onEdit: (share: ExternalShare) => void;
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -72,7 +69,7 @@ export function SharedLinksList({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-text-heading">Shared by link</h2>
+        <h2 className="text-lg font-semibold text-text-heading m-0">Shared by link</h2>
         <span className="text-xs font-medium text-text-main bg-code-bg border border-border-main rounded-full px-2 py-0.5">
           {links.length}
         </span>
@@ -83,48 +80,55 @@ export function SharedLinksList({
           const otpCount = s.emails_for_otp.length + s.phones_for_otp.length;
           const expired = isExpired(s.expires_at);
           const isFolder = !!s.share_folder_target_id;
+          const perms = PERMISSION_FIELDS.filter(({ key }) => s.permission_set[key]);
 
           return (
             <div
               key={s.share_id}
-              className="group bg-bg-main border border-border-main rounded-xl px-3.5 py-3 flex items-start gap-3 transition hover:border-accent-border hover:shadow-sm"
+              role="button"
+              tabIndex={0}
+              onClick={() => onEdit(s)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onEdit(s);
+                }
+              }}
+              title="Edit this link"
+              className="group bg-bg-main border border-border-main rounded-xl px-3.5 py-3 flex items-start gap-3 cursor-pointer transition hover:border-accent-border hover:bg-code-bg/40 focus-visible:outline-none focus-visible:border-accent focus-visible:ring-4 focus-visible:ring-accent-bg"
             >
-              {isFolder && onOpenFolder ? (
-                <button
-                  onClick={() => onOpenFolder(s.share_folder_target_id!)}
-                  title="Open in My Drive"
-                  className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-accent-bg text-accent cursor-pointer hover:brightness-110 transition"
-                >
-                  <Folder className="w-4 h-4" />
-                </button>
-              ) : (
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                    isFolder ? "bg-accent-bg text-accent" : "bg-code-bg text-text-main"
-                  }`}
-                >
-                  {isFolder ? <Folder className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                </div>
-              )}
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  expired ? "bg-code-bg text-text-main" : "bg-accent-bg text-accent"
+                }`}
+              >
+                {isFolder ? <Folder className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+              </div>
 
               <div className="min-w-0 flex-1 flex flex-col gap-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-mono text-text-heading">
-                  <span className="truncate" title={shareUrl(s.share_id)}>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-text-heading truncate" title={shareUrl(s.share_id)}>
                     {shareUrl(s.share_id)}
                   </span>
+                  {expired && (
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-md border border-red-500/30 bg-red-500/10 text-red-500 text-[10px] font-semibold">
+                      Expired
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1">
-                  {PERMISSION_FIELDS.filter(({ key }) => s.permission_set[key]).map(({ key, label }) => (
-                    <span
-                      key={key}
-                      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent-bg text-accent border border-accent-border"
-                    >
-                      <Check className="w-2.5 h-2.5" />
-                      {label}
-                    </span>
-                  ))}
-                </div>
+                {perms.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {perms.map(({ key, label }) => (
+                      <span
+                        key={key}
+                        className="rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-code-bg text-text-main border border-border-main"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-main">
                   {s.password_hash && (
@@ -157,36 +161,19 @@ export function SharedLinksList({
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => nativeShare(s.share_id)}
-                  title="Share"
-                  className="p-1.5 rounded-lg text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition"
-                >
+              <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <RowAction onClick={() => nativeShare(s.share_id)} title="Share">
                   <Share2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => copy(s.share_id)}
-                  title="Copy link"
-                  className="p-1.5 rounded-lg text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition"
-                >
-                  {copiedId === s.share_id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={() => onEdit(s)}
-                  title="Edit link"
-                  className="p-1.5 rounded-lg text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition"
-                >
+                </RowAction>
+                <RowAction onClick={() => copy(s.share_id)} title="Copy link">
+                  {copiedId === s.share_id ? <Check className="w-4 h-4 text-accent" /> : <Copy className="w-4 h-4" />}
+                </RowAction>
+                <RowAction onClick={() => onEdit(s)} title="Edit link">
                   <Pencil className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => revoke(s.share_id)}
-                  disabled={busyId === s.share_id}
-                  title="Revoke link"
-                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 cursor-pointer transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                </RowAction>
+                <RowAction onClick={() => revoke(s.share_id)} disabled={busyId === s.share_id} title="Revoke link" danger>
                   <Trash2 className="w-4 h-4" />
-                </button>
+                </RowAction>
               </div>
             </div>
           );
@@ -195,3 +182,33 @@ export function SharedLinksList({
     </div>
   );
 }
+
+function RowAction({
+  onClick,
+  title,
+  disabled,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`p-1.5 rounded-lg border-none bg-transparent cursor-pointer transition disabled:opacity-50 disabled:cursor-not-allowed ${
+        danger ? "text-red-500 hover:bg-red-500/10" : "text-text-main hover:bg-code-bg hover:text-text-heading"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+

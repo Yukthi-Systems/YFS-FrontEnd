@@ -88,12 +88,10 @@ input {
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px var(--accent-border);
 }
 
 .btn-primary:hover {
   opacity: 0.95;
-  box-shadow: 0 6px 16px var(--accent-border);
   transform: translateY(-1px);
 }
 
@@ -105,7 +103,6 @@ input {
   background: var(--border);
   color: var(--text);
   cursor: not-allowed;
-  box-shadow: none;
   transform: none;
 }
 
@@ -348,7 +345,6 @@ input[type="date"].dialog-input::-webkit-calendar-picker-indicator {
   font-size: 0.85rem;
   cursor: pointer;
   transition: opacity 0.2s;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
 }
 
 .btn-destructive:hover {
