@@ -41,6 +41,7 @@ import {
   remoteErrorAtom,
   pageInfoAtom,
   trashFolderIdAtom,
+  idRemapAtom,
   sharedOutAtom,
   sharedOutLoadingAtom,
   sharedOutLoadedAtom,
@@ -118,6 +119,13 @@ const folderQueryKey = (key: string, offset: number) => ["folder", key, offset] 
 
 const nowIso = () => new Date().toISOString();
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
+
+// Optimistic rows carry a client-made id ("folder-<ts>-<rand>") until the create
+// lands and a listing swaps in the server's UUID. Every folder id the API takes is a
+// UUID path/body param, so sending a temp one comes back as a 400 ("UUID parsing
+// failed") — guard any call that passes an id straight through.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isServerId = (id: string | null): boolean => id === null || UUID_RE.test(id);
 
 interface SharedSubtree {
   rootId: string; // the folder from "Shared with me" (share endpoint's shared_folder_id)
@@ -303,6 +311,7 @@ const mergeServerListing = (
 
   let working = prev;
   if (idRemap.size) {
+    store.set(idRemapAtom, (prev) => ({ ...prev, ...Object.fromEntries(idRemap) }));
     working = prev
       .filter((f) => !idRemap.has(f.id)) // drop the temp folder; the server version replaces it
       .map((f) => (f.parentId && idRemap.has(f.parentId) ? { ...f, parentId: idRemap.get(f.parentId)! } : f));
@@ -470,6 +479,9 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     const folder = currentFiles.find((f) => f.id === parentId);
     if (folder && folder.origin !== "server") return;
   }
+  // Belt and braces: never put a non-UUID in the request path, even if the row it
+  // came from has already been remapped away and so isn't found above.
+  if (!isServerId(parentId)) return;
 
   const state = pageState.get(key) ?? { loaded: 0, hasMore: true };
   if (mode === "append" && !state.hasMore) return;
@@ -910,6 +922,13 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
 
   const tk = authSnapshot.token;
   if (tk) {
+    // The parent's own create may still be in flight, leaving it with a temp id the
+    // API can't parse. Keep the folder locally and let the caller retry once the
+    // parent is real, rather than firing a request that's guaranteed to 400.
+    if (!isServerId(parentId)) {
+      showToast("That folder is still being saved — try again in a moment", "error");
+      return newFolder;
+    }
     // Creating inside a "Shared with me" folder: the API needs shared_folder_id to
     // check the caller's share permissions and write as the folder's owner. It's the
     // id of the folder actually shared with the user (the shared-subtree root), not
@@ -949,6 +968,12 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
 // FileSystemContextType doc on ensureFolderPath. Returns the deepest folder id, or
 // null on failure.
 export const ensureFolderPath = async (segments: string[], rootParentId: string | null): Promise<string | null> => {
+  // Uploading into a folder whose own create hasn't come back yet: its id is still a
+  // temp one the API can't parse, so there's nothing to hang the upload off.
+  if (!isServerId(rootParentId)) {
+    showToast("That folder is still being saved — try again in a moment", "error");
+    return null;
+  }
   let parentId = rootParentId;
 
   for (const rawSegment of segments) {
@@ -1422,6 +1447,11 @@ export const moveItems = (
       continue;
     }
     if (item.parentId === newParentId) continue;
+    // The destination's own create may still be in flight — its temp id would 400.
+    if (!isServerId(newParentId)) {
+      blocked++;
+      continue;
+    }
 
     // PUT /files/move/{destination_folder_id} requires a real destination folder
     // UUID — there's no way to move a file to root against that endpoint.
