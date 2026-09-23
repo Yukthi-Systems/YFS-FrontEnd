@@ -1535,52 +1535,6 @@ export const moveItems = (
   return { moved, blocked, unsupported };
 };
 
-export const copyItem = (id: string, newParentId: string | null): { copied: number; blocked: boolean } => {
-  const files = store.get(filesAtom);
-  const source = files.find((f) => f.id === id);
-  if (!source) return { copied: 0, blocked: false };
-  if (isItemLocked(source)) return { copied: 0, blocked: true };
-
-  const forbidden = new Set([id, ...getDescendantIds(id)]);
-  if (newParentId !== null && forbidden.has(newParentId)) {
-    return { copied: 0, blocked: true };
-  }
-
-  const idMap = new Map<string, string>();
-  const now = nowIso();
-  const makeCopyId = (originalId: string) => {
-    const copyId = originalId + "-copy-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-    idMap.set(originalId, copyId);
-    return copyId;
-  };
-
-  const rootCopy: FileItem = {
-    ...source,
-    id: makeCopyId(source.id),
-    parentId: newParentId,
-    name: source.isFolder ? source.name : `Copy of ${source.name}`,
-    createdAt: now,
-    modifiedAt: now,
-    origin: "local",
-  };
-
-  const descendantIds = getDescendantIds(id);
-  const descendantCopies: FileItem[] = descendantIds.map((descId) => {
-    const desc = files.find((f) => f.id === descId)!;
-    return { ...desc, id: makeCopyId(descId), createdAt: now, modifiedAt: now, origin: "local" };
-  });
-
-  descendantIds.forEach((originalId, i) => {
-    const originalParentId = files.find((f) => f.id === originalId)!.parentId;
-    if (originalParentId && idMap.has(originalParentId)) {
-      descendantCopies[i].parentId = idMap.get(originalParentId)!;
-    }
-  });
-
-  persist([...files, rootCopy, ...descendantCopies]);
-  return { copied: 1 + descendantCopies.length, blocked: false };
-};
-
 export const updateFileContent = async (id: string, blob: Blob): Promise<void> => {
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);

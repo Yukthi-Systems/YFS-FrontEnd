@@ -90,7 +90,7 @@ export function MoveCopyModal({
   onConfirm,
 }: {
   files: FileItem[];
-  mode: "move" | "copy" | "restore";
+  mode: "move" | "restore";
   sourceIds: string[];
   currentParentId: string | null;
   trashFolderId?: string | null;
@@ -99,19 +99,17 @@ export function MoveCopyModal({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(currentParentId);
 
-  // Items inside a "Shared with you" folder can only be *moved* around within that same
-  // share — never out into our own Drive, which isn't ours to move them to. Copying is
-  // the opposite: taking our own copy of someone's file out of the share is the point,
-  // so only move/restore are scoped. Walking up to SHARED_ROOT_ID finds the share root;
-  // null means these are our own items, rooted at My Drive as usual.
+  // Items inside a "Shared with you" folder can only be moved around within that same
+  // share — never out into our own Drive, which isn't ours to move them to. Walking up
+  // to SHARED_ROOT_ID finds the share root; null means these are our own items, rooted
+  // at My Drive as usual.
   const shareRootId = useMemo(() => {
-    if (mode === "copy") return null;
     let current = files.find((f) => f.id === sourceIds[0]);
     while (current && current.parentId && current.parentId !== SHARED_ROOT_ID) {
       current = files.find((f) => f.id === current!.parentId);
     }
     return current?.parentId === SHARED_ROOT_ID ? current.id : null;
-  }, [files, sourceIds, mode]);
+  }, [files, sourceIds]);
 
   const folders = useMemo(() => {
     const all = files.filter((f) => f.isFolder && !f.isDeleted && f.id !== trashFolderId);
@@ -134,7 +132,7 @@ export function MoveCopyModal({
   // Own items hang off a "My Drive" root; a share is rooted at the shared folder itself.
   const tree = useMemo(() => buildTree(folders, shareRootId), [folders, shareRootId]);
 
-  // A folder can't be moved/copied into itself or one of its own descendants.
+  // A folder can't be moved into itself or one of its own descendants.
   const disabledIds = useMemo(() => {
     const disabled = new Set<string>();
     const collectDescendants = (rootId: string) => {
@@ -151,8 +149,8 @@ export function MoveCopyModal({
   }, [sourceIds, files, folders]);
 
   const isNoOp = mode === "move" && sourceIds.length === 1 && selectedId === currentParentId;
-  const title = mode === "move" ? "Move to…" : mode === "copy" ? "Copy to…" : "Restore to…";
-  const confirmLabel = mode === "move" ? "Move Here" : mode === "copy" ? "Copy Here" : "Restore Here";
+  const title = mode === "move" ? "Move to…" : "Restore to…";
+  const confirmLabel = mode === "move" ? "Move Here" : "Restore Here";
 
   return (
     <ModalShell onClose={onCancel}>
