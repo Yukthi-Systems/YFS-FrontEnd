@@ -33,6 +33,13 @@ export function useFileSelection({
     setSelectedItemId(null);
   };
 
+  
+  const resetSelection = () => {
+    clearSelection();
+    setCheckedItemIds([]);
+    setSelectionAnchorId(null);
+  };
+
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (e.shiftKey) {
@@ -99,6 +106,7 @@ export function useFileSelection({
     setCheckedItemIds,
     selectionAnchorId,
     clearSelection,
+    resetSelection,
     handleItemClick,
     handleCheckboxToggle,
     handleSelectAllToggle,
