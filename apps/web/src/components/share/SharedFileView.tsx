@@ -380,8 +380,8 @@ export function SharedFileView() {
     return (
       <CenteredMessage
         icon={<FileIcon className="w-10 h-10 text-accent" />}
-        title="Access granted"
-        description="This link shares a single file. A public download isn't available yet."
+        title="Link is valid"
+        description="Your access to this file is confirmed, but opening or downloading a file straight from a link isn't supported by the server yet. Ask the owner to share it with your account instead."
       >
         <div className="w-full max-w-sm mt-1">
           <ShareInfoBar info={info} session={session} shareId={shareId} />
@@ -568,7 +568,8 @@ export function SharedFileView() {
         )}
 
         <p className="text-[11px] text-text-main text-center mt-2">
-          Preview and download for shared content aren&apos;t available yet.
+          Browsing works, but opening or downloading a file from a public link isn&apos;t supported by the server yet —
+          the permissions above apply once it is.
         </p>
       </div>
 
