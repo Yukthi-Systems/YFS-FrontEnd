@@ -26,27 +26,5 @@ export const gridSizeAtom = atom<GridSize>("medium");
 export const sortFieldAtom = atom<SortField>("name");
 export const sortOrderAtom = atom<SortOrder>("asc");
 export const sidebarCollapsedAtom = atom<boolean>(false);
-const STARRED_STORAGE_KEY = "yfs_starred_ids";
-export const getStoredStarredIds = (): string[] => {
-  try {
-    const raw = localStorage.getItem(STARRED_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-export const setStoredStarredIds = (ids: string[]) => {
-  try {
-    localStorage.setItem(STARRED_STORAGE_KEY, JSON.stringify(ids));
-  } catch {}
-};
-
-// Starred file/folder ids — personal, per-user state, so it lives in private_info
-// rather than on the shared resource itself (starring something you don't own, or
-// that's shared with others, must not star it for anyone else). Seeded/written the
-// same way as the other private_info-backed atoms above, and cached locally for instant boot.
-export const starredIdsAtom = atom<string[]>(getStoredStarredIds());
-
 export const publicProfileAtom = atom<PublicProfile>({});
 export const savingProfileAtom = atom<boolean>(false);

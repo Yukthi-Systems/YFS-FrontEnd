@@ -5,12 +5,13 @@ import { useToast } from "./atoms/toast";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { useUserSettings } from "./hooks/useUserSettings";
 import { UserSettingsBridge } from "./components/UserSettingsBridge";
-import { Star, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
+import { buildAppRoute } from "./utils/appRoute";
 import { getStorageQuota, GB } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
@@ -23,7 +24,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
-import { useMyQuota, useRefreshUserQuota } from "./hooks/useUserQuota";
+import { useMyQuota } from "./hooks/useUserQuota";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -64,6 +65,7 @@ function App() {
     getPagination,
     getSharedPermissions,
     trashFolderId,
+    idRemap,
     sharedOut,
     sharedOutLoading,
     sharedOutLoaded,
@@ -75,15 +77,13 @@ function App() {
     revokeSharedLink,
     createFolder,
     renameItem,
-    toggleStar,
-    starItems,
     setFolderStyle,
+    setItemDescription,
     trashItems,
     restoreItems,
     permanentDeleteItems,
     deleteFileVersion,
     moveItems,
-    copyItem,
     updateFileContent,
   } = useFileSystem();
   const { showToast } = useToast();
@@ -152,7 +152,7 @@ function App() {
         setRestoringSharedRoute(false);
       })();
     } else if (ancestorIds.length > 0) {
-      // Best-effort breadcrumb hydration for a deep-linked drive/starred/etc path —
+      // Best-effort breadcrumb hydration for a deep-linked drive/trash/etc path —
       // the leaf's own content loads via the effect below regardless.
       (async () => {
         for (const id of ancestorIds) await loadFolder(id);
@@ -160,6 +160,13 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
+
+  // A folder created a moment ago swaps its temp id for the server's UUID when the
+  // listing lands; if we're standing inside it, follow that swap.
+  useEffect(() => {
+    nav.replacePathIds(idRemap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idRemap]);
 
   // Pull the current folder's children from YFS-Main-API whenever navigation changes.
   useEffect(() => {
@@ -171,7 +178,10 @@ function App() {
     else if (tab === "shared-out") loadSharedOut({ force: true });
     else if (tab === "shared-links") loadSharedLinks({ force: true });
     else if (tab === "trash") {
-      if (trashFolderId) loadFolder(trashFolderId, { force: true });
+      // Trash root lists the Trash folder's children; opening a trashed folder browses
+      // it like any other folder.
+      const target = nav.currentFolderId ?? trashFolderId;
+      if (target) loadFolder(target, { force: true });
     } else if (restoringSharedRoute) {
       // The hydration effect above owns loading this chain in order; it flips
       // restoringSharedRoute to false once the ancestors are in, which re-runs this
@@ -199,7 +209,8 @@ function App() {
       else if (tab === "shared-out") await loadSharedOut({ force: true });
       else if (tab === "shared-links") await loadSharedLinks({ force: true });
       else if (tab === "trash") {
-        if (trashFolderId) await loadFolder(trashFolderId, { force: true });
+        const target = nav.currentFolderId ?? trashFolderId;
+        if (target) await loadFolder(target, { force: true });
       } else await loadFolder(nav.currentFolderId, { force: true });
     } finally {
       setRefreshing(false);
@@ -212,7 +223,7 @@ function App() {
   const isSharedRoot = isSharedTab && !nav.currentFolderId;
   const isTrashTab = nav.activeSidebarTab === "trash";
   const isPaginatedTab = isSharedTab || nav.activeSidebarTab === "drive" || isTrashTab;
-  const paginationParentId = isTrashTab ? trashFolderId : nav.currentFolderId;
+  const paginationParentId = isTrashTab ? (nav.currentFolderId ?? trashFolderId) : nav.currentFolderId;
   const pagination = getPagination(paginationParentId, isSharedRoot);
 
   const isSharedOutTab = nav.activeSidebarTab === "shared-out";
@@ -228,7 +239,7 @@ function App() {
         lastLoadTimeRef.current = Date.now();
         if (isSharedRoot) loadMoreSharedFolders();
         else if (isTrashTab) {
-          if (trashFolderId) loadMoreFolder(trashFolderId);
+          if (paginationParentId) loadMoreFolder(paginationParentId);
         } else loadMoreFolder(nav.currentFolderId);
       }
     };
@@ -241,7 +252,7 @@ function App() {
     pagination.loading,
     isSharedRoot,
     isTrashTab,
-    trashFolderId,
+    paginationParentId,
     loadMoreSharedFolders,
     loadMoreFolder,
     nav.currentFolderId,
@@ -295,14 +306,11 @@ function App() {
     fileSystem: {
       createFolder,
       renameItem,
-      toggleStar,
-      starItems,
       trashItems,
       restoreItems,
       permanentDeleteItems,
       deleteFileVersion,
       moveItems,
-      copyItem,
       updateFileContent,
     },
     enqueueFiles,
@@ -332,9 +340,11 @@ function App() {
     search.setSearchQuery("");
   }
 
-  // Opening a folder from "Shared by link" jumps straight to My Drive regardless of
+  // Opening a folder from "Shared by you" jumps straight to My Drive regardless of
   // whatever tab/path was active — it's one of my own folders, just reached via a
-  // link rather than by browsing there.
+  // share rather than by browsing there. The breadcrumb only gets the target itself,
+  // not its ancestors: resolving those needs a get-folder-by-id (or ancestor-path)
+  // endpoint the API doesn't have yet.
   function openSharedLinkFolder(folderId: string) {
     nav.openPath("drive", [folderId]);
     selection.clearSelection();
@@ -345,6 +355,18 @@ function App() {
     nav.navigateBackTo(index);
     selection.clearSelection();
     search.setSearchQuery("");
+  }
+
+  // A link to the item as the *recipient* sees it — it lands in their "Shared with you"
+  // tab. Grants no access on its own: whoever opens it still needs an existing share.
+  async function handleCopyShareLink(item: FileItem) {
+    const url = `${window.location.origin}${buildAppRoute("shared", [item.id])}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Link copied — only people you've shared this with can open it", "success");
+    } catch {
+      showToast("Couldn't copy the link to your clipboard", "error");
+    }
   }
 
   function handleItemDoubleClick(item: FileItem) {
@@ -359,7 +381,7 @@ function App() {
       return;
     }
     if (item.isFolder) {
-      if (!item.isDeleted) openFolder(item.id);
+      openFolder(item.id);
     } else {
       setViewerItem(item);
     }
@@ -398,11 +420,10 @@ function App() {
   // --- Storage --- (from the API's account quota, not a client-side file tally)
   // GET /user/quota on load gives the real used-bytes; falls back to the SSO
   // login snapshot until that request lands, and again if it fails.
-  const { quota } = useMyQuota();
-  const { refreshQuota, refreshing: refreshingQuota } = useRefreshUserQuota();
+  const { quota, refetchQuota, refetching: refetchingQuota } = useMyQuota();
   const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
-  const handleRefreshQuota = () => {
-    refreshQuota().catch(() => {});
+  const handleRefetchQuota = () => {
+    refetchQuota().catch(() => {});
   };
 
   if (authLoading) {
@@ -428,12 +449,11 @@ function App() {
       permissions={getSharedPermissions(item.id)}
       onOpen={() => handleItemDoubleClick(item)}
       onDownload={() => fileActions.handleDownload(item)}
-      onToggleStar={() => fileActions.handleToggleStar(item.id)}
       onRename={() => fileActions.openRenameModal(item)}
       onMove={() => fileActions.openMoveModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
-      onCopy={() => fileActions.openCopyModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
       onShare={() => shareSettings.openShareModal(item)}
+      onCopyLink={isSharedOutTab ? () => handleCopyShareLink(item) : undefined}
       onSetColor={(color) => setFolderStyle(item.id, { color })}
       onSetIcon={(icon) => setFolderStyle(item.id, { icon })}
       onTrash={() => fileActions.requestTrash([item.id])}
@@ -467,8 +487,8 @@ function App() {
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
         storageFileCount={quota?.used_file_count}
-        onRefreshQuota={handleRefreshQuota}
-        refreshingQuota={refreshingQuota}
+        onRefreshQuota={handleRefetchQuota}
+        refreshingQuota={refetchingQuota}
         user={user}
         onRequestLogout={fileActions.requestLogout}
         mobileOpen={mobileNavOpen}
@@ -487,7 +507,15 @@ function App() {
         />
 
         <div className="flex-1 flex overflow-hidden relative">
-        <UploadDropzone onDropFiles={(items) => enqueueFiles(items, nav.currentFolderId)}>
+        <UploadDropzone
+          onDropFiles={(items) => {
+            if (!canCreateHere) {
+              showToast("You don't have permission to add files to this folder", "error");
+              return;
+            }
+            enqueueFiles(items, nav.currentFolderId);
+          }}
+        >
           <div
             ref={setScrollContainer}
               className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"
@@ -502,12 +530,7 @@ function App() {
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
                   viewSkeleton
                 ) : (
-                  <SharedLinksList
-                    links={sharedLinks}
-                    onRevoke={revokeSharedLink}
-                    onOpenFolder={openSharedLinkFolder}
-                    onEdit={setEditingShareLink}
-                  />
+                  <SharedLinksList links={sharedLinks} onRevoke={revokeSharedLink} onEdit={setEditingShareLink} />
                 )
               ) : search.isSearching ? (
                 <SearchResultsList
@@ -542,7 +565,6 @@ function App() {
                     onRefresh={handleRefresh}
                     refreshing={refreshing}
                     onClearSelection={() => selection.setCheckedItemIds([])}
-                    onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
                     onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
                     onBatchRestore={() => fileActions.handleRestore(selection.checkedItemIds)}
                     onBatchPermanentDelete={() => fileActions.requestPermanentDelete(selection.checkedItemIds)}
@@ -552,13 +574,7 @@ function App() {
                   {isFolderLoading ? (
                     viewSkeleton
                   ) : listItems.length === 0 ? (
-                    nav.activeSidebarTab === "starred" ? (
-                      <EmptyState
-                        icon={<Star className="w-14 h-14 mb-4 text-amber-400 opacity-60 fill-amber-400/20" />}
-                        title="No Starred Items"
-                        description="Star important files and folders from the menu to find them quickly here."
-                      />
-                    ) : nav.activeSidebarTab === "trash" ? (
+                    nav.activeSidebarTab === "trash" && !nav.currentFolderId ? (
                       <EmptyState
                         icon={<Trash2 className="w-14 h-14 mb-4 opacity-50 text-neutral-400" />}
                         title="Trash is Empty"
@@ -585,7 +601,7 @@ function App() {
                       onItemContextMenu={menus.openItemContextMenu}
                       renderContextMenu={renderItemContextMenu}
                       onShare={shareSettings.openShareModal}
-                      onToggleStar={fileActions.handleToggleStar}
+                      onCopyLink={isSharedOutTab ? handleCopyShareLink : undefined}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
@@ -659,14 +675,13 @@ function App() {
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
             onDownload={() => fileActions.handleDownload(selectedItem)}
-            onToggleStar={() => fileActions.handleToggleStar(selectedItem.id)}
             onRename={() => fileActions.openRenameModal(selectedItem)}
             onMove={() => fileActions.openMoveModal([selectedItem.id])}
-            onCopy={() => fileActions.openCopyModal([selectedItem.id])}
             onVersionHistory={() => versionHistory.openVersionHistory(selectedItem)}
             onShare={() => shareSettings.openShareModal(selectedItem)}
             onTrash={() => fileActions.requestTrash([selectedItem.id])}
             onRestore={() => fileActions.handleRestore([selectedItem.id])}
+            onSaveDescription={(text) => setItemDescription(selectedItem.id, text)}
           />
         )}
         </div>

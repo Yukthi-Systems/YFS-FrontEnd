@@ -12,7 +12,6 @@ const VALID_TABS: SidebarTab[] = [
   "shared-out",
   "shared-links",
   "recent",
-  "starred",
   "trash",
 ];
 

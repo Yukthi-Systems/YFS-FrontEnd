@@ -45,6 +45,21 @@ export function useFileNavigation() {
 
   const switchTab = (tab: SidebarTab) => openPath(tab, []);
 
+  // An optimistic folder's temp id becomes the server's UUID once the create lands.
+  // Anything already sitting on that id (having opened the folder straight after
+  // creating it) has to follow, or it's browsing an id that no longer exists — which
+  // is what produced "UUID parsing failed" on the listing call. Replaces the history
+  // entry rather than pushing: it's the same folder, just correctly identified.
+  const replacePathIds = (remap: Record<string, string>) => {
+    setCurrentPath((prev) => {
+      if (!prev.some((id) => remap[id])) return prev;
+      const next = prev.map((id) => remap[id] ?? id);
+      const url = buildAppRoute(activeSidebarTab, next);
+      if (url !== window.location.pathname) window.history.replaceState(null, "", url);
+      return next;
+    });
+  };
+
   // Browser back/forward: re-derive state from the URL rather than going through
   // pushRoute above, which would push a fresh history entry over the one just popped.
   useEffect(() => {
@@ -59,9 +74,7 @@ export function useFileNavigation() {
 
   const getBreadcrumbSegments = (files: FileItem[]): BreadcrumbSegment[] => {
     const rootName =
-      activeSidebarTab === "starred"
-        ? "Starred"
-        : activeSidebarTab === "trash"
+      activeSidebarTab === "trash"
         ? "Trash"
         : activeSidebarTab === "shared"
         ? "Shared with you"
@@ -88,6 +101,7 @@ export function useFileNavigation() {
     navigateBackTo,
     openPath,
     switchTab,
+    replacePathIds,
     getBreadcrumbSegments,
   };
 }

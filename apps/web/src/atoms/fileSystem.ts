@@ -32,6 +32,9 @@ export const isLoadingAtom = atom<boolean>(true);
 export const remoteErrorAtom = atom(null as string | null);
 export const pageInfoAtom = atom<Record<string, PaginationInfo>>({});
 export const trashFolderIdAtom = atom(null as string | null);
+// Optimistic-id → real server-id, accumulated as listings land. Anything holding an
+// id across that swap (the breadcrumb path, most importantly) follows it through here.
+export const idRemapAtom = atom<Record<string, string>>({});
 export const sharedOutAtom = atom<FileItem[]>([]);
 export const sharedOutLoadingAtom = atom<boolean>(false);
 export const sharedOutLoadedAtom = atom<boolean>(false);

@@ -50,7 +50,6 @@ export interface FileItem {
   };
   modifiedAt: string; // ISO String
   createdAt: string; // ISO String
-  isStarred: boolean;
   isDeleted: boolean; // true = sitting in the Trash folder
   type: "folder" | "audio" | "video" | "image" | "pdf" | "spreadsheet" | "document" | "code" | "other";
   extension?: string;
@@ -79,7 +78,6 @@ export type SidebarTab =
   | "shared-out"
   | "shared-links"
   | "recent"
-  | "starred"
   | "trash";
 export type ViewMode = "list" | "tiles" | "grid";
 export type GridSize = "small" | "medium" | "large";

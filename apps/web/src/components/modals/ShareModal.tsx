@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Info, Link2, Loader2, Plus, Trash2, Undo2, Users, X } from "lucide-react";
+import { Check, Copy, FileText, Folder, Info, Link2, Loader2, Lock, Plus, Search, Trash2, Undo2, Users, X } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import type { BasicUserInfo, ExternalShare } from "@yfs/service";
 import {
@@ -19,15 +19,9 @@ import { useAuth } from "../../hooks/useAuth";
 import { withAuthRetry } from "../../utils/authRetry";
 import { useToast } from "../../atoms/toast";
 import { Avatar } from "../common/Avatar";
+import { Checkbox } from "../common/Checkbox";
+import { PermissionPicker, permsEqual, permsOf } from "../common/PermissionPicker";
 import { ModalShell } from "./ModalShell";
-
-const PERMISSION_FIELDS: { key: keyof InternalSharePermissions; label: string }[] = [
-  { key: "can_preview", label: "Preview" },
-  { key: "can_download", label: "Download" },
-  { key: "can_create", label: "Create" },
-  { key: "can_update", label: "Edit" },
-  { key: "can_delete", label: "Delete" },
-];
 
 const DEFAULT_PERMS: InternalSharePermissions = {
   can_preview: true,
@@ -37,15 +31,6 @@ const DEFAULT_PERMS: InternalSharePermissions = {
   can_delete: false,
 };
 
-const permsOf = (s: InternalSharePermissions): InternalSharePermissions => ({
-  can_preview: s.can_preview,
-  can_download: s.can_download,
-  can_create: s.can_create,
-  can_update: s.can_update,
-  can_delete: s.can_delete,
-});
-const permsEqual = (a: InternalSharePermissions, b: InternalSharePermissions) =>
-  PERMISSION_FIELDS.every(({ key }) => a[key] === b[key]);
 const newShareId = () => Math.random().toString(36).slice(2, 12);
 // Extract the *local* calendar date an ISO instant falls on (not a raw UTC slice —
 // see toExpiresIso below for why the two have to agree).
@@ -117,29 +102,79 @@ interface LinkDraft {
   removed: boolean;
 }
 
-function PermissionToggles({
+const CARD = "rounded-xl border border-border-main bg-code-bg/50";
+const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-text-main";
+
+function Pill({ tone, children }: { tone: "accent" | "amber" | "red"; children: React.ReactNode }) {
+  const tones = {
+    accent: "bg-accent-bg text-accent border-accent-border",
+    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    red: "bg-red-500/10 text-red-500 border-red-500/30",
+  };
+  return (
+    <span className={`shrink-0 px-1.5 py-0.5 rounded-md border text-[10px] font-semibold ${tones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-medium text-text-main">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function PermissionSection({
   value,
-  disabled,
   onChange,
+  note,
 }: {
   value: InternalSharePermissions;
-  disabled?: boolean;
   onChange: (next: InternalSharePermissions) => void;
+  note?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1">
-      {PERMISSION_FIELDS.map(({ key, label }) => (
-        <label key={key} className="flex items-center gap-1.5 text-[11px] text-text-heading cursor-pointer">
-          <input
-            type="checkbox"
-            checked={value[key]}
-            disabled={disabled}
-            onChange={(e) => onChange({ ...value, [key]: e.target.checked })}
-          />
-          {label}
-        </label>
-      ))}
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <span className={SECTION_LABEL}>Permissions</span>
+        {note}
+      </div>
+      <PermissionPicker value={value} onChange={onChange} />
     </div>
+  );
+}
+
+function IconButton({
+  onClick,
+  title,
+  tone = "default",
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  tone?: "default" | "danger";
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      className={`shrink-0 p-1.5 rounded-lg border-none bg-transparent cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed ${
+        tone === "danger"
+          ? "text-red-500 hover:bg-red-500/10"
+          : "text-text-main hover:bg-code-bg hover:text-text-heading"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -396,67 +431,93 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
   const activePeople = people.filter((p) => !(p.base === null && p.removed));
   const activeLinks = links.filter((l) => !(l.base === null && l.removed));
 
+  const peopleCount = activePeople.filter((p) => !p.removed).length;
+  const linkCount = activeLinks.filter((l) => !l.removed).length;
+
   return (
-    <ModalShell onClose={onClose} size="lg">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <h3 className="modal-title mb-0 truncate">Share "{item.name}"</h3>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="shrink-0 -mt-1 -mr-1 p-1.5 rounded-lg text-text-main hover:bg-code-bg hover:text-text-heading transition border-none bg-transparent cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-border-main mb-4 -mx-1 px-1">
-        {canShareInternally && (
-          <TabButton active={tab === "people"} onClick={() => setTab("people")} icon={<Users className="w-3.5 h-3.5" />}>
-            People
-          </TabButton>
-        )}
-        <TabButton active={tab === "links"} onClick={() => setTab("links")} icon={<Link2 className="w-3.5 h-3.5" />}>
-          Public links
-        </TabButton>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-xs text-text-main py-6">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+    <ModalShell onClose={onClose} size="xl" padded={false}>
+      <div className="shrink-0 px-5 pt-5">
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 w-9 h-9 rounded-xl bg-accent-bg border border-accent-border flex items-center justify-center">
+            {item.isFolder ? <Folder className="w-4 h-4 text-accent" /> : <FileText className="w-4 h-4 text-accent" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[0.95rem] font-semibold text-text-heading leading-snug m-0">Share</h3>
+            <p className="text-[11px] text-text-main truncate mt-0.5">{item.name}</p>
+          </div>
+          <IconButton onClick={onClose} title="Close">
+            <X className="w-4 h-4" />
+          </IconButton>
         </div>
-      ) : tab === "people" ? (
-        <PeopleTab
-          item={item}
-          people={activePeople}
-          setPeople={setPeople}
-          emailQuery={emailQuery}
-          setEmailQuery={setEmailQuery}
-          results={results}
-          searching={searching}
-          newPerms={newPerms}
-          setNewPerms={setNewPerms}
-          onAddPerson={addPerson}
-          sharingDisabled={sharingDisabled}
-          personDirty={personDirty}
-        />
-      ) : (
-        <LinksTab
-          item={item}
-          links={activeLinks}
-          onAddLink={addLink}
-          patchLink={patchLink}
-          setLinks={setLinks}
-          linkDirty={linkDirty}
-        />
-      )}
 
-      <div className="flex items-center justify-end gap-3 mt-5">
+        <div className="inline-flex gap-1 p-1 mt-4 bg-code-bg rounded-xl">
+          {canShareInternally && (
+            <TabButton
+              active={tab === "people"}
+              onClick={() => setTab("people")}
+              icon={<Users className="w-3.5 h-3.5" />}
+              count={peopleCount}
+            >
+              People
+            </TabButton>
+          )}
+          <TabButton
+            active={tab === "links"}
+            onClick={() => setTab("links")}
+            icon={<Link2 className="w-3.5 h-3.5" />}
+            count={linkCount}
+          >
+            Public links
+          </TabButton>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs text-text-main py-8 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading sharing settings…
+          </div>
+        ) : tab === "people" ? (
+          <PeopleTab
+            item={item}
+            people={activePeople}
+            setPeople={setPeople}
+            emailQuery={emailQuery}
+            setEmailQuery={setEmailQuery}
+            results={results}
+            searching={searching}
+            newPerms={newPerms}
+            setNewPerms={setNewPerms}
+            onAddPerson={addPerson}
+            sharingDisabled={sharingDisabled}
+            personDirty={personDirty}
+          />
+        ) : (
+          <LinksTab
+            item={item}
+            links={activeLinks}
+            onAddLink={addLink}
+            patchLink={patchLink}
+            setLinks={setLinks}
+            linkDirty={linkDirty}
+          />
+        )}
+      </div>
+
+      <div className="shrink-0 flex items-center gap-3 px-5 py-3.5 border-t border-border-main">
         {hasInvalidExpiry ? (
           <span className="text-[11px] text-red-500 mr-auto">Fix the expiry date on a link before saving</span>
+        ) : dirty ? (
+          <span className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 mr-auto">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Unsaved changes
+          </span>
         ) : (
-          dirty && <span className="text-[11px] text-text-main mr-auto">Unsaved changes</span>
+          <span className="mr-auto" />
         )}
+        <button onClick={onClose} className="btn-outline">
+          {dirty ? "Discard" : "Close"}
+        </button>
         <button
           onClick={save}
           disabled={!dirty || saving || hasInvalidExpiry}
@@ -475,22 +536,35 @@ function TabButton({
   active,
   onClick,
   icon,
+  count,
   children,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
+  count?: number;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition ${
-        active ? "border-accent text-accent" : "border-transparent text-text-main hover:text-text-heading"
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer transition ${
+        active
+          ? "bg-bg-main text-text-heading shadow-sm"
+          : "bg-transparent text-text-main hover:text-text-heading"
       }`}
     >
       {icon}
       {children}
+      {!!count && (
+        <span
+          className={`px-1.5 rounded-full text-[10px] leading-4 ${
+            active ? "bg-accent-bg text-accent" : "bg-bg-main text-text-main"
+          }`}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -543,107 +617,119 @@ function PeopleTab({
     setPeople((prev) => prev.map((r) => (r.userId === userId ? { ...r, ...p } : r)));
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <label className="data-label mb-1.5 block">People with access</label>
+    <div className="flex flex-col gap-5">
+      <div className={`${CARD} p-3 flex flex-col gap-3`}>
+        <div className="flex flex-col gap-1.5">
+          <span className={SECTION_LABEL}>Add people</span>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-main pointer-events-none" />
+            <input
+              type="email"
+              value={emailQuery}
+              onChange={(e) => setEmailQuery(e.target.value)}
+              placeholder="Search people by email"
+              className="dialog-input has-icon-left w-full"
+            />
+            {(searching || results.length > 0) && emailQuery.trim().length >= 2 && (
+              <div className="absolute z-20 left-0 right-0 mt-1.5 bg-bg-main border border-border-main rounded-xl p-1 shadow-lg animate-scale-in max-h-48 overflow-y-auto flex flex-col gap-0.5">
+                {searching && (
+                  <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-text-main">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Searching…
+                  </div>
+                )}
+                {!searching && results.length === 0 && (
+                  <div className="px-2.5 py-2 text-[11px] text-text-main">No matching users.</div>
+                )}
+                {results.map((u) => {
+                  const already = people.some((p) => p.userId === u.user_id && !p.removed);
+                  const name = displayNameOf(u);
+                  return (
+                    <button
+                      key={u.user_id}
+                      disabled={already}
+                      onClick={() => onAddPerson(u)}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs font-medium border-none bg-transparent cursor-pointer transition text-text-main hover:bg-code-bg hover:text-text-heading disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    >
+                      <Avatar name={name} email={u.email} color={avatarColorOf(u)} className="w-6 h-6 min-w-6 text-[10px]" />
+                      <span className="flex-1 truncate text-text-heading">
+                        {name ? (
+                          <>
+                            {name} <span className="text-text-main font-normal">· {u.email}</span>
+                          </>
+                        ) : (
+                          u.email
+                        )}
+                      </span>
+                      {already && <span className="text-[10px] text-text-main shrink-0">Added</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-border-main">
+          <PermissionSection
+            value={newPerms}
+            onChange={setNewPerms}
+            note={<span className="text-[10px] text-text-main normal-case tracking-normal font-normal">applied to people you add</span>}
+          />
+        </div>
+
+        <div className="flex gap-2 text-[11px] leading-normal text-text-main">
+          <Info className="w-3.5 h-3.5 shrink-0 mt-px text-accent" />
+          <span>Only people in your organization who have signed in to YFS at least once.</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className={SECTION_LABEL}>People with access</span>
         {people.length === 0 ? (
-          <div className="text-xs text-text-main py-1">Not shared with anyone yet.</div>
+          <div className={`${CARD} px-3 py-6 text-center`}>
+            <Users className="w-6 h-6 mx-auto mb-2 text-text-main opacity-40" />
+            <p className="text-xs text-text-main">Not shared with anyone yet.</p>
+          </div>
         ) : (
-          <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
+          <div className="flex flex-col gap-2">
             {people.map((row) => (
               <div
                 key={row.userId}
-                className={`bg-code-bg rounded-lg px-2.5 py-2 flex flex-col gap-1.5 ${row.removed ? "opacity-50" : ""}`}
+                className={`${CARD} p-3 flex flex-col gap-3 transition ${row.removed ? "opacity-60" : ""}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-text-heading truncate">
-                    {row.name ? (
-                      <>
-                        {row.name} <span className="text-text-main">· {row.email}</span>
-                      </>
-                    ) : (
-                      row.email
-                    )}
-                    {row.base === null && <span className="ml-1.5 text-[10px] text-accent">· new</span>}
-                    {personDirty(row) && row.base !== null && !row.removed && (
-                      <span className="ml-1.5 text-[10px] text-amber-500">· edited</span>
-                    )}
-                  </span>
-                  <button
+                <div className="flex items-center gap-2.5">
+                  <Avatar name={row.name} email={row.email} className="w-8 h-8 min-w-8 text-[11px]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-text-heading truncate">{row.name || row.email}</div>
+                    {row.name && <div className="text-[11px] text-text-main truncate">{row.email}</div>}
+                  </div>
+                  {row.removed ? (
+                    <Pill tone="red">Removing</Pill>
+                  ) : row.base === null ? (
+                    <Pill tone="accent">New</Pill>
+                  ) : (
+                    personDirty(row) && <Pill tone="amber">Edited</Pill>
+                  )}
+                  <IconButton
                     onClick={() => patch(row.userId, { removed: !row.removed })}
-                    className="flex items-center gap-1 text-[11px] text-red-500 bg-transparent border-none cursor-pointer hover:bg-red-500/10 rounded px-1.5 py-0.5 shrink-0"
+                    title={row.removed ? "Keep access" : "Remove access"}
+                    tone={row.removed ? "default" : "danger"}
                   >
-                    {row.removed ? <Undo2 className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
-                    {row.removed ? "Keep" : "Remove"}
-                  </button>
+                    {row.removed ? <Undo2 className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  </IconButton>
                 </div>
                 {!row.removed && (
-                  <PermissionToggles
-                    value={row.perms}
-                    onChange={(next) => patch(row.userId, { perms: next })}
-                  />
+                  <div className="pt-3 border-t border-border-main">
+                    <PermissionSection
+                      value={row.perms}
+                      onChange={(next) => patch(row.userId, { perms: next })}
+                    />
+                  </div>
                 )}
               </div>
             ))}
           </div>
         )}
-      </div>
-
-      <div className="border-t border-border-main pt-3 flex flex-col gap-2">
-        <label className="data-label block">Add people</label>
-        <div className="flex gap-2.5 bg-accent-bg border border-accent-border text-text-heading p-2.5 rounded-xl text-[11px] leading-normal">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-accent" />
-          <span>Only people in your organization who have signed in to YFS at least once.</span>
-        </div>
-        <div className="relative">
-          <input
-            type="email"
-            value={emailQuery}
-            onChange={(e) => setEmailQuery(e.target.value)}
-            placeholder="Search by email"
-            className="dialog-input w-full"
-          />
-          {(searching || results.length > 0) && emailQuery.trim().length >= 2 && (
-            <div className="absolute z-20 left-0 right-0 mt-1.5 bg-bg-main border border-border-main rounded-xl p-1 shadow-lg animate-scale-in max-h-48 overflow-y-auto flex flex-col gap-0.5">
-              {searching && (
-                <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-text-main">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Searching…
-                </div>
-              )}
-              {!searching && results.length === 0 && (
-                <div className="px-2.5 py-2 text-[11px] text-text-main">No matching users.</div>
-              )}
-              {results.map((u) => {
-                const already = people.some((p) => p.userId === u.user_id && !p.removed);
-                const name = displayNameOf(u);
-                return (
-                  <button
-                    key={u.user_id}
-                    disabled={already}
-                    onClick={() => onAddPerson(u)}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs font-medium border-none bg-transparent cursor-pointer transition text-text-main hover:bg-code-bg hover:text-text-heading disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                  >
-                    <Avatar name={name} email={u.email} color={avatarColorOf(u)} className="w-6 h-6 min-w-6 text-[10px]" />
-                    <span className="flex-1 truncate text-text-heading">
-                      {name ? (
-                        <>
-                          {name} <span className="text-text-main font-normal">· {u.email}</span>
-                        </>
-                      ) : (
-                        u.email
-                      )}
-                    </span>
-                    {already && <span className="text-[10px] text-text-main shrink-0">Added</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-text-main">Permissions for new people</span>
-          <PermissionToggles value={newPerms} onChange={setNewPerms} />
-        </div>
       </div>
     </div>
   );
@@ -664,129 +750,194 @@ function LinksTab({
   setLinks: React.Dispatch<React.SetStateAction<LinkDraft[]>>;
   linkDirty: (l: LinkDraft) => boolean;
 }) {
-  const origin = window.location.origin;
   const toggleRemoved = (key: string, removed: boolean) =>
     setLinks((prev) => prev.map((l) => (l.key === key ? { ...l, removed } : l)));
 
   return (
     <div className="flex flex-col gap-3">
-      {links.length === 0 && <div className="text-xs text-text-main">No public links yet.</div>}
-
-      {links.map((l) => {
-        const expiryErr = l.removed ? null : expiryError(l.expiresAt);
-        return (
-          <div
+      {links.length === 0 ? (
+        <div className={`${CARD} px-3 py-7 text-center`}>
+          <Link2 className="w-6 h-6 mx-auto mb-2 text-text-main opacity-40" />
+          <p className="text-xs text-text-main mb-0.5">No public links yet.</p>
+          <p className="text-[11px] text-text-main opacity-70">
+            Create one to share {item.isFolder ? "this folder" : "this file"} with anyone.
+          </p>
+        </div>
+      ) : (
+        links.map((l) => (
+          <LinkCard
             key={l.key}
-            className={`bg-code-bg rounded-lg px-2.5 py-2.5 flex flex-col gap-2.5 ${l.removed ? "opacity-50" : ""}`}
-          >
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-text-main shrink-0">{origin}/share/</span>
-              <input
-                value={l.shareId}
-                disabled={l.base !== null}
-                onChange={(e) => patchLink(l.key, { shareId: e.target.value })}
-                className="dialog-input flex-1 font-mono text-[11px] disabled:opacity-70"
-              />
-              <button
-                onClick={() => toggleRemoved(l.key, !l.removed)}
-                title={l.removed ? "Keep link" : "Remove link"}
-                className="p-1 rounded text-red-500 hover:bg-red-500/10 shrink-0"
-              >
-                {l.removed ? <Undo2 className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
-              </button>
-            </div>
+            link={l}
+            dirty={linkDirty(l)}
+            onPatch={(patch) => patchLink(l.key, patch)}
+            onToggleRemoved={() => toggleRemoved(l.key, !l.removed)}
+          />
+        ))
+      )}
 
-            {!l.removed && (
-              <>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-text-main">Permissions</span>
-                    {l.base === null && <span className="text-[10px] text-accent">· new</span>}
-                    {l.base !== null && linkDirty(l) && <span className="text-[10px] text-amber-500">· edited</span>}
-                  </div>
-                  <PermissionToggles value={l.perms} onChange={(next) => patchLink(l.key, { perms: next })} />
-                </div>
-
-                {l.base === null ? (
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] text-text-main">Password (optional)</span>
-                    <input
-                      type="password"
-                      value={l.password}
-                      onChange={(e) => patchLink(l.key, { password: e.target.value })}
-                      placeholder="No password"
-                      className="dialog-input"
-                    />
-                  </label>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    <label className="flex items-center gap-1.5 text-[11px] text-text-heading cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={l.changePassword}
-                        onChange={(e) => patchLink(l.key, { changePassword: e.target.checked, password: "" })}
-                      />
-                      {l.base.password_hash ? "Change / remove password" : "Set a password"}
-                    </label>
-                    {l.changePassword && (
-                      <input
-                        type="password"
-                        value={l.password}
-                        onChange={(e) => patchLink(l.key, { password: e.target.value })}
-                        placeholder="New password (leave blank to remove)"
-                        className="dialog-input"
-                      />
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] text-text-main">OTP emails (optional)</span>
-                    <input
-                      value={l.otpEmails}
-                      onChange={(e) => patchLink(l.key, { otpEmails: e.target.value })}
-                      placeholder="name@company.com, …"
-                      className="dialog-input"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] text-text-main">OTP phone numbers (optional)</span>
-                    <input
-                      value={l.otpPhones}
-                      onChange={(e) => patchLink(l.key, { otpPhones: e.target.value })}
-                      placeholder="+1 555 0100, …"
-                      className="dialog-input"
-                    />
-                  </label>
-                </div>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-text-main">Expires (optional)</span>
-                  <input
-                    type="date"
-                    min={todayDateInput()}
-                    max={maxDateInput()}
-                    value={l.expiresAt}
-                    onChange={(e) => patchLink(l.key, { expiresAt: e.target.value })}
-                    className="dialog-input"
-                  />
-                  {expiryErr && <span className="text-[10px] text-red-500">{expiryErr}</span>}
-                </label>
-              </>
-            )}
-          </div>
-        );
-      })}
-
-      <button onClick={onAddLink} className="btn-outline self-start flex items-center gap-1.5" style={{ width: "auto" }}>
+      <button onClick={onAddLink} className="btn-outline self-start gap-1.5" style={{ width: "auto" }}>
         <Plus className="w-3.5 h-3.5" /> Add link
       </button>
 
       {!item.isFolder && (
-        <div className="flex gap-2.5 bg-accent-bg border border-accent-border text-text-heading p-2.5 rounded-xl text-[11px] leading-normal">
-          <Check className="w-3.5 h-3.5 shrink-0 mt-0.5 text-accent" />
+        <div className="flex gap-2 text-[11px] leading-normal text-text-main">
+          <Check className="w-3.5 h-3.5 shrink-0 mt-px text-accent" />
           <span>Public links are the only way to share a single file.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkCard({
+  link: l,
+  dirty,
+  onPatch,
+  onToggleRemoved,
+}: {
+  link: LinkDraft;
+  dirty: boolean;
+  onPatch: (patch: Partial<LinkDraft>) => void;
+  onToggleRemoved: () => void;
+}) {
+  const { showToast } = useToast();
+  const [copied, setCopied] = useState(false);
+  const origin = window.location.origin;
+  const saved = l.base !== null;
+  const url = `${origin}/share/${l.shareId}`;
+  const expiryErr = l.removed ? null : expiryError(l.expiresAt);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      showToast("Couldn't copy the link to your clipboard", "error");
+    }
+  };
+
+  return (
+    <div className={`${CARD} overflow-hidden transition ${l.removed ? "opacity-60" : ""}`}>
+      <div className="flex items-center gap-2 p-3">
+        <div className="shrink-0 w-7 h-7 rounded-lg bg-accent-bg flex items-center justify-center">
+          <Link2 className="w-3.5 h-3.5 text-accent" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {saved ? (
+            <div className="font-mono text-[11px] text-text-heading truncate" title={url}>
+              {url}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-text-main shrink-0 font-mono">{origin}/share/</span>
+              <input
+                value={l.shareId}
+                onChange={(e) => onPatch({ shareId: e.target.value })}
+                aria-label="Link address"
+                className="dialog-input flex-1 min-w-0 font-mono text-[11px] py-1"
+              />
+            </div>
+          )}
+          {!saved && <div className="text-[10px] text-text-main mt-1">Not active until you save.</div>}
+        </div>
+
+        {!l.removed &&
+          (saved ? <Pill tone={dirty ? "amber" : "accent"}>{dirty ? "Edited" : "Active"}</Pill> : <Pill tone="accent">New</Pill>)}
+        {l.removed && <Pill tone="red">Removing</Pill>}
+
+        <button
+          type="button"
+          onClick={copy}
+          disabled={!saved || l.removed}
+          title={saved ? "Copy link" : "Save changes first to activate this link"}
+          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-main bg-bg-main text-[11px] font-semibold text-text-heading cursor-pointer transition hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-border-main disabled:hover:text-text-heading"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+
+        <IconButton
+          onClick={onToggleRemoved}
+          title={l.removed ? "Keep link" : "Remove link"}
+          tone={l.removed ? "default" : "danger"}
+        >
+          {l.removed ? <Undo2 className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+        </IconButton>
+      </div>
+
+      {!l.removed && (
+        <div className="px-3 pb-3 pt-3 border-t border-border-main flex flex-col gap-3.5">
+          <PermissionSection value={l.perms} onChange={(next) => onPatch({ perms: next })} />
+
+          <div className="flex flex-col gap-1.5">
+            <span className={SECTION_LABEL}>Protection</span>
+            {!saved ? (
+              <Field label="Password (optional)">
+                <input
+                  type="password"
+                  value={l.password}
+                  onChange={(e) => onPatch({ password: e.target.value })}
+                  placeholder="No password"
+                  className="dialog-input"
+                />
+              </Field>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Checkbox
+                  checked={l.changePassword}
+                  onChange={(next) => onPatch({ changePassword: next, password: "" })}
+                  label={
+                    <span className="inline-flex items-center gap-1.5">
+                      <Lock className="w-3 h-3 text-text-main" />
+                      {l.base?.password_hash ? "Change or remove password" : "Set a password"}
+                    </span>
+                  }
+                />
+                {l.changePassword && (
+                  <input
+                    type="password"
+                    value={l.password}
+                    onChange={(e) => onPatch({ password: e.target.value })}
+                    placeholder="New password (leave blank to remove)"
+                    className="dialog-input"
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2.5 max-[440px]:grid-cols-1">
+              <Field label="OTP emails (optional)">
+                <input
+                  value={l.otpEmails}
+                  onChange={(e) => onPatch({ otpEmails: e.target.value })}
+                  placeholder="name@company.com, …"
+                  className="dialog-input"
+                />
+              </Field>
+              <Field label="OTP phone numbers (optional)">
+                <input
+                  value={l.otpPhones}
+                  onChange={(e) => onPatch({ otpPhones: e.target.value })}
+                  placeholder="+1 555 0100, …"
+                  className="dialog-input"
+                />
+              </Field>
+            </div>
+
+            <Field label="Expires (optional)">
+              <input
+                type="date"
+                min={todayDateInput()}
+                max={maxDateInput()}
+                value={l.expiresAt}
+                onChange={(e) => onPatch({ expiresAt: e.target.value })}
+                className="dialog-input"
+              />
+            </Field>
+            {expiryErr && <span className="text-[10px] text-red-500">{expiryErr}</span>}
+          </div>
         </div>
       )}
     </div>
