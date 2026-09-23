@@ -200,7 +200,8 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  /* Above ContextMenuPortal's z-[2000] — a dropdown must never float over a dialog. */
+  z-index: 3000;
   animation: fadeIn 0.2s ease-out;
 }
 
