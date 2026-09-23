@@ -24,7 +24,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
-import { useMyQuota, useRefreshUserQuota } from "./hooks/useUserQuota";
+import { useMyQuota } from "./hooks/useUserQuota";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -414,11 +414,10 @@ function App() {
   // --- Storage --- (from the API's account quota, not a client-side file tally)
   // GET /user/quota on load gives the real used-bytes; falls back to the SSO
   // login snapshot until that request lands, and again if it fails.
-  const { quota } = useMyQuota();
-  const { refreshQuota, refreshing: refreshingQuota } = useRefreshUserQuota();
+  const { quota, refetchQuota, refetching: refetchingQuota } = useMyQuota();
   const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
-  const handleRefreshQuota = () => {
-    refreshQuota().catch(() => {});
+  const handleRefetchQuota = () => {
+    refetchQuota().catch(() => {});
   };
 
   if (authLoading) {
@@ -483,8 +482,8 @@ function App() {
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
         storageFileCount={quota?.used_file_count}
-        onRefreshQuota={handleRefreshQuota}
-        refreshingQuota={refreshingQuota}
+        onRefreshQuota={handleRefetchQuota}
+        refreshingQuota={refetchingQuota}
         user={user}
         onRequestLogout={fileActions.requestLogout}
         mobileOpen={mobileNavOpen}

@@ -114,11 +114,9 @@ export function Sidebar({
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const shareTabActive = activeTab === "shared" || activeTab === "shared-out" || activeTab === "shared-links";
   const [sharesOpen, setSharesOpen] = useState(shareTabActive);
-  const [quotaConfirmOpen, setQuotaConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const quotaPopoverRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -131,17 +129,6 @@ export function Sidebar({
     document.addEventListener("click", handleOutsideClick);
     return () => document.removeEventListener("click", handleOutsideClick);
   }, [newMenuOpen]);
-
-  useEffect(() => {
-    if (!quotaConfirmOpen) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (quotaPopoverRef.current && !quotaPopoverRef.current.contains(e.target as Node)) {
-        setQuotaConfirmOpen(false);
-      }
-    };
-    document.addEventListener("click", handleOutsideClick);
-    return () => document.removeEventListener("click", handleOutsideClick);
-  }, [quotaConfirmOpen]);
 
   const triggerFileUpload = () => {
     if (isRootFolder) {
@@ -369,41 +356,15 @@ export function Sidebar({
               <span className="flex items-center gap-1">
                 Storage
                 {onRefreshQuota && (
-                  <div className="relative" ref={quotaPopoverRef}>
-                    <button
-                      onClick={() => setQuotaConfirmOpen((v) => !v)}
-                      disabled={refreshingQuota}
-                      title="Refresh storage usage"
-                      aria-label="Refresh storage usage"
-                      className="p-0.5 rounded text-text-main hover:text-accent hover:bg-accent-bg disabled:opacity-50 disabled:cursor-not-allowed border-none bg-transparent cursor-pointer inline-flex items-center justify-center transition"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${refreshingQuota ? "animate-spin" : ""}`} />
-                    </button>
-                    {quotaConfirmOpen && (
-                      <div className="absolute z-50 top-full left-0 mt-1.5 w-52 bg-bg-main border border-border-main rounded-xl p-2.5 shadow-lg animate-scale-in font-normal">
-                        <p className="text-text-main mb-2 leading-normal">
-                          This may take a moment. Refresh storage usage now?
-                        </p>
-                        <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => setQuotaConfirmOpen(false)}
-                            className="px-2 py-1 rounded-md text-text-main hover:bg-code-bg border-none bg-transparent cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => {
-                              setQuotaConfirmOpen(false);
-                              onRefreshQuota();
-                            }}
-                            className="px-2 py-1 rounded-md bg-accent text-white border-none cursor-pointer"
-                          >
-                            Refresh
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    onClick={onRefreshQuota}
+                    disabled={refreshingQuota}
+                    title="Refresh storage usage"
+                    aria-label="Refresh storage usage"
+                    className="p-0.5 rounded text-text-main hover:text-accent hover:bg-accent-bg disabled:opacity-50 disabled:cursor-not-allowed border-none bg-transparent cursor-pointer inline-flex items-center justify-center transition"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${refreshingQuota ? "animate-spin" : ""}`} />
+                  </button>
                 )}
               </span>
               <span>{Math.round(storagePercentage)}% Used</span>
