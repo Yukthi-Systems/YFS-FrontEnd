@@ -337,9 +337,11 @@ function App() {
     search.setSearchQuery("");
   }
 
-  // Opening a folder from "Shared by link" jumps straight to My Drive regardless of
+  // Opening a folder from "Shared by you" jumps straight to My Drive regardless of
   // whatever tab/path was active — it's one of my own folders, just reached via a
-  // link rather than by browsing there.
+  // share rather than by browsing there. The breadcrumb only gets the target itself,
+  // not its ancestors: resolving those needs a get-folder-by-id (or ancestor-path)
+  // endpoint the API doesn't have yet.
   function openSharedLinkFolder(folderId: string) {
     nav.openPath("drive", [folderId]);
     selection.clearSelection();
@@ -520,12 +522,7 @@ function App() {
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
                   viewSkeleton
                 ) : (
-                  <SharedLinksList
-                    links={sharedLinks}
-                    onRevoke={revokeSharedLink}
-                    onOpenFolder={openSharedLinkFolder}
-                    onEdit={setEditingShareLink}
-                  />
+                  <SharedLinksList links={sharedLinks} onRevoke={revokeSharedLink} onEdit={setEditingShareLink} />
                 )
               ) : search.isSearching ? (
                 <SearchResultsList
