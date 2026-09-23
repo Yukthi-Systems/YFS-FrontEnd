@@ -35,13 +35,13 @@ import { isItemLocked } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
-import { starredIdsAtom, setStoredStarredIds } from "../atoms/userSettings";
 import {
   filesAtom,
   isLoadingAtom,
   remoteErrorAtom,
   pageInfoAtom,
   trashFolderIdAtom,
+  idRemapAtom,
   sharedOutAtom,
   sharedOutLoadingAtom,
   sharedOutLoadedAtom,
@@ -120,6 +120,13 @@ const folderQueryKey = (key: string, offset: number) => ["folder", key, offset] 
 const nowIso = () => new Date().toISOString();
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
 
+// Optimistic rows carry a client-made id ("folder-<ts>-<rand>") until the create
+// lands and a listing swaps in the server's UUID. Every folder id the API takes is a
+// UUID path/body param, so sending a temp one comes back as a 400 ("UUID parsing
+// failed") — guard any call that passes an id straight through.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isServerId = (id: string | null): boolean => id === null || UUID_RE.test(id);
+
 interface SharedSubtree {
   rootId: string; // the folder from "Shared with me" (share endpoint's shared_folder_id)
   ownerUserId: string;
@@ -171,7 +178,6 @@ const collectDescendantIds = (files: FileItem[], rootId: string): string[] => {
 // Map a raw API resource (folder or file) into the app's FileItem shape.
 const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
-  const trash = info?.trash_info ?? null;
   const ui = info?.ui;
 
   const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
@@ -184,15 +190,13 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
     owner: { name: "me", email: ownerEmailForRow },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    // Starred is personal, per-user state — resolved from the user's own
-    // private_info (starredIdsAtom), not from this shared resource's own data.
-    isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
     createdBy: creatorName,
     isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
-    // trash_info in resource_info is the source of truth for "is trashed".
-    isDeleted: !!trash,
+    // Location is the only thing that makes something trashed; a listing under the
+    // Trash folder is flagged by fetchFolderPage's inTrash check, not from here.
+    isDeleted: false,
     resourceInfo: info,
     origin: "server" as const,
   };
@@ -213,7 +217,6 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
   const isFolder = r.is_resource_folder !== false;
   const { type, extension } = isFolder ? { type: "folder" as const, extension: undefined } : categorizeByName(r.resource_name);
-  const trash = info?.trash_info ?? null;
   const ui = info?.ui;
   const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
 
@@ -226,10 +229,9 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
     owner: { name: "Shared", email: "" },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
-    isDeleted: !!trash,
+    isDeleted: false,
     type,
     extension: extension || undefined,
     fileId: isFolder ? undefined : r.resource_id,
@@ -309,6 +311,7 @@ const mergeServerListing = (
 
   let working = prev;
   if (idRemap.size) {
+    store.set(idRemapAtom, (prev) => ({ ...prev, ...Object.fromEntries(idRemap) }));
     working = prev
       .filter((f) => !idRemap.has(f.id)) // drop the temp folder; the server version replaces it
       .map((f) => (f.parentId && idRemap.has(f.parentId) ? { ...f, parentId: idRemap.get(f.parentId)! } : f));
@@ -328,8 +331,8 @@ const mergeServerListing = (
 
     return {
       ...res,
-      isStarred: f.isStarred || res.isStarred || store.get(starredIdsAtom).includes(f.id),
-      isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
+      // Comes from the listing context (inTrash), so the fresh row is always right.
+      isDeleted: res.isDeleted,
       share: f.share,
       versions: f.versions,
       blobUrl: f.blobUrl,
@@ -352,14 +355,14 @@ const mergeServerListing = (
   //      them and fetchFolderPage won't list their children, so a kept row is a
   //      permanent phantom. A just-created one (within the grace window) is spared
   //      in case its create call is still in flight.
-  //    Rows carrying client-only state worth keeping (starred / trashed / shared)
-  //    are never dropped, nor is one with a move/trash/restore still in flight —
+  //    Rows carrying client-only state worth keeping (shared) are never dropped,
+  //    nor is one with a move/trash/restore still in flight —
   //    a fresh listing that raced ahead of that mutation is not evidence the row
   //    is really gone.
   return merged.filter((f) => {
     if (f.parentId !== parentId) return true;
     if (incomingIds.has(f.id)) return true;
-    if (f.isStarred || f.isDeleted || f.share || pendingSyncIds.has(f.id)) return true;
+    if (f.share || pendingSyncIds.has(f.id)) return true;
     if (f.origin === "server") return false;
     // Optimistic folders from createFolder / ensureFolderPath carry a "folder-" id
     // (copied or offline-authored items use other schemes and stay put).
@@ -476,6 +479,9 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     const folder = currentFiles.find((f) => f.id === parentId);
     if (folder && folder.origin !== "server") return;
   }
+  // Belt and braces: never put a non-UUID in the request path, even if the row it
+  // came from has already been remapped away and so isn't found above.
+  if (!isServerId(parentId)) return;
 
   const state = pageState.get(key) ?? { loaded: 0, hasMore: true };
   if (mode === "append" && !state.hasMore) return;
@@ -514,11 +520,16 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     pageState.set(key, { loaded: offset + resources.length, hasMore });
     store.set(remoteErrorAtom, null);
 
-    const inTrash = parentId !== null && parentId === store.get(trashFolderIdAtom);
+    // Anything under the Trash folder is trashed, at any depth: either a direct child
+    // of Trash, or a descendant of a folder that's already flagged (matches what
+    // trashItems does locally for descendants).
+    const inTrash =
+      parentId !== null &&
+      (parentId === store.get(trashFolderIdAtom) ||
+        (store.get(filesAtom).find((f) => f.id === parentId)?.isDeleted ?? false));
     const mapped = resources.map((r) => {
       const item = mapResource(r, ownerEmail);
-      // Direct children of the Trash folder are, by definition, trashed — keep
-      // the flag true even for items trashed on another device.
+      // Keep the flag true even for items trashed on another device.
       if (inTrash) item.isDeleted = true;
       if (shared) {
         item.origin = "shared";
@@ -896,7 +907,6 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
     owner: { name: "me", email: ownerEmail },
     modifiedAt: nowIso(),
     createdAt: nowIso(),
-    isStarred: false,
     isDeleted: false,
     type: "folder",
     resourceInfo: creationInfo,
@@ -912,6 +922,13 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
 
   const tk = authSnapshot.token;
   if (tk) {
+    // The parent's own create may still be in flight, leaving it with a temp id the
+    // API can't parse. Keep the folder locally and let the caller retry once the
+    // parent is real, rather than firing a request that's guaranteed to 400.
+    if (!isServerId(parentId)) {
+      showToast("That folder is still being saved — try again in a moment", "error");
+      return newFolder;
+    }
     // Creating inside a "Shared with me" folder: the API needs shared_folder_id to
     // check the caller's share permissions and write as the folder's owner. It's the
     // id of the folder actually shared with the user (the shared-subtree root), not
@@ -951,6 +968,12 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
 // FileSystemContextType doc on ensureFolderPath. Returns the deepest folder id, or
 // null on failure.
 export const ensureFolderPath = async (segments: string[], rootParentId: string | null): Promise<string | null> => {
+  // Uploading into a folder whose own create hasn't come back yet: its id is still a
+  // temp one the API can't parse, so there's nothing to hang the upload off.
+  if (!isServerId(rootParentId)) {
+    showToast("That folder is still being saved — try again in a moment", "error");
+    return null;
+  }
   let parentId = rootParentId;
 
   for (const rawSegment of segments) {
@@ -1028,7 +1051,6 @@ export const addFile = (input: AddFileInput): FileItem => {
     owner: { name: "me", email: ownerEmail },
     modifiedAt: nowIso(),
     createdAt: nowIso(),
-    isStarred: false,
     isDeleted: false,
     type: input.type,
     extension: input.extension,
@@ -1047,7 +1069,6 @@ export const addFile = (input: AddFileInput): FileItem => {
     // instead of dropping it; otherwise it's a plain replace.
     const existing = prev.find((f) => !f.isFolder && f.parentId === newItem.parentId && f.name === safeName);
     if (existing) {
-      newItem.isStarred = existing.isStarred;
       newItem.isDeleted = existing.isDeleted;
       newItem.share = existing.share;
       if (input.version && input.version > 1 && existing.storageKey) {
@@ -1129,6 +1150,61 @@ export const renameItem = (id: string, newName: string) => {
   }
 };
 
+// Free-text description, stored on the resource's own info blob. Both edit
+// endpoints replace *_info wholesale, so the existing blob is merged rather than
+// overwritten. Empty string clears the key instead of storing "".
+export const setItemDescription = (id: string, description: string) => {
+  const files = store.get(filesAtom);
+  const target = files.find((f) => f.id === id);
+  if (!target || isItemLocked(target)) return;
+
+  const trimmed = description.trim();
+  const info = { ...((target.resourceInfo ?? {}) as ResourceInfo) };
+  if (trimmed) info.description = trimmed;
+  else delete info.description;
+
+  persist(files.map((f) => (f.id === id ? { ...f, resourceInfo: info, modifiedAt: nowIso() } : f)));
+
+  const tk = authSnapshot.token;
+  if (!tk) return;
+  const shared = sharedWrite(id);
+  if (shared && !shared.perms.can_update) return; // no edit permission — optimistic only
+
+  if (target.isFolder && (target.origin === "server" || target.origin === "shared")) {
+    runMutation(
+      () =>
+        withFreshToken((t) =>
+          apiEditFolder(t, {
+            folderId: id,
+            folderName: target.name,
+            folderInfo: info,
+            sharedFolderId: shared?.sharedFolderId ?? null,
+          })
+        ),
+      { id },
+      notifySyncFailed("Folder description did not sync to API", "Couldn't save the description")
+    );
+  } else if (!target.isFolder && target.origin === "server" && target.fileId) {
+    runMutation(
+      () =>
+        withFreshToken((t) =>
+          apiUpdateFileInfo(t, {
+            folder_id: target.parentId!,
+            file_id: target.fileId!,
+            shared_folder_id: shared?.sharedFolderId ?? null,
+            file_name: target.name,
+            file_info: info,
+            file_type: fileTypeGuess(target),
+            file_version: target.version ?? 1,
+            expected_file_size: target.size,
+          })
+        ),
+      { id },
+      notifySyncFailed("File description did not sync to API", "Couldn't save the description")
+    );
+  }
+};
+
 // Merge a UI patch (color / icon) into an item's resource_info.
 const mergeUi = (f: FileItem, patch: Partial<ResourceUiInfo>): Record<string, unknown> => {
   const info = (f.resourceInfo ?? {}) as ResourceInfo;
@@ -1160,35 +1236,6 @@ const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
   );
 };
 
-// Starring is personal, per-user state — kept in the user's own private_info
-// (starredIdsAtom), never on the resource itself, so starring something you don't
-// own or that's shared with others only stars it for you. UserSettingsBridge
-// watches this atom and debounce-saves it the same way it does theme/viewMode;
-// the FileItem patch here just keeps the currently-listed items' isStarred flag in
-// sync immediately (see also the store.sub below, for items listed after the fact).
-export const toggleStar = (id: string) => {
-  const current = store.get(starredIdsAtom);
-  const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
-  store.set(starredIdsAtom, next);
-};
-
-export const starItems = (ids: string[]) => {
-  const current = store.get(starredIdsAtom);
-  store.set(starredIdsAtom, Array.from(new Set([...current, ...ids])));
-};
-
-// Keeps every already-listed item's isStarred flag in sync whenever starredIdsAtom
-// changes — covers both toggleStar/starItems above and UserSettingsBridge's
-// initial load-from-server (which can resolve after some folders were already
-// mapped with isStarred defaulted to false).
-store.sub(starredIdsAtom, () => {
-  const ids = store.get(starredIdsAtom);
-  setStoredStarredIds(ids);
-  const current = store.get(filesAtom);
-  const next = current.map((f) => (f.isStarred === ids.includes(f.id) ? f : { ...f, isStarred: ids.includes(f.id) }));
-  if (next.some((f, i) => f !== current[i])) persist(next);
-});
-
 // Folder colour / icon. Pass null to clear either.
 export const setFolderStyle = (id: string, style: { color?: string | null; icon?: string | null }) => {
   const patch: Partial<ResourceUiInfo> = {};
@@ -1210,143 +1257,20 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
   patchFolderUi(id, patch);
 };
 
-// Trashing = mark resource_info.trash_info true AND move the item into the Trash
-// folder. For server folders/files both are real API calls (PATCH /folders/edit or
-// /files/update, then PUT /folders/move or /files/move); the client mirrors them
-// optimistically. Files need the full FileOpsRequest shape (see
-// renameItem/moveItems) rather than just {file_id, file_name, file_info}.
+// Trash is just a folder: trashing moves the item into it, restoring moves it back
+// out to a destination the caller picked (see MoveCopyModal's "restore" mode).
+// Nothing is stamped on the resource — whether something is in the Trash is decided
+// by where it lives, which moveItems already maintains.
 export const trashItems = (ids: string[]) => {
   const trashId = store.get(trashFolderIdAtom);
-  const files = store.get(filesAtom);
-  const unlockedIds = ids.filter((id) => {
-    const item = files.find((f) => f.id === id);
-    return !isItemLocked(item);
-  });
-  if (unlockedIds.length === 0) return;
-  const targets = new Set(unlockedIds);
-  const descendantIds = new Set(unlockedIds.flatMap((id) => getDescendantIds(id)));
-  const roots = files.filter((f) => targets.has(f.id));
-
-  persist(
-    files.map((f) => {
-      if (targets.has(f.id)) {
-        return {
-          ...f,
-          isDeleted: true,
-          parentId: trashId ?? f.parentId,
-          resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: true },
-          modifiedAt: nowIso(),
-        };
-      }
-      if (descendantIds.has(f.id)) return { ...f, isDeleted: true };
-      return f;
-    })
-  );
-
-  if (authSnapshot.token) {
-    roots
-      .filter((f) => f.isFolder && f.origin === "server")
-      .forEach((f) => {
-        const folderInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: true };
-        runMutation(
-          () =>
-            trackPendingSync(
-              f.id,
-              withFreshToken(async (t) => {
-                await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
-                if (trashId) await apiMoveFolder(t, { folderId: f.id, newParentFolderId: trashId });
-              })
-            ),
-          { id: f.id },
-          notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
-        );
-      });
-
-    roots
-      .filter((f): f is FileItem & { fileId: string; parentId: string } => !f.isFolder && f.origin === "server" && !!f.fileId && !!f.parentId)
-      .forEach((f) => {
-        const fileInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: true };
-        const opsShape = {
-          folder_id: f.parentId,
-          file_id: f.fileId,
-          file_name: f.name,
-          file_info: fileInfo,
-          file_type: fileTypeGuess(f),
-          file_version: f.version ?? 1,
-          expected_file_size: f.size,
-        };
-        runMutation(
-          () =>
-            trackPendingSync(
-              f.id,
-              withFreshToken(async (t) => {
-                await apiUpdateFileInfo(t, opsShape);
-                if (trashId) await apiMoveFile(t, trashId, opsShape);
-              })
-            ),
-          { id: f.id },
-          notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
-        );
-      });
-  }
+  if (!trashId) return;
+  moveItems(ids, trashId);
 };
 
-// Restore no longer auto-returns an item to where it was trashed from — the caller
-// picks a destination the same way "Move to…" does (see MoveCopyModal's "restore"
-// mode), so this just clears the trash marker and hands off to moveItems for the
-// actual relocation (same blocked/unsupported bookkeeping, same API calls).
 export const restoreItems = (
   ids: string[],
   destinationId: string | null
-): { moved: number; blocked: number; unsupported: number } => {
-  const targets = new Set(ids);
-  const files = store.get(filesAtom);
-  const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
-
-  persist(
-    files.map((f) => {
-      if (targets.has(f.id)) {
-        return { ...f, isDeleted: false, resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: null } };
-      }
-      if (descendantIds.has(f.id)) return { ...f, isDeleted: false };
-      return f;
-    })
-  );
-
-  if (authSnapshot.token) {
-    targets.forEach((id) => {
-      const f = files.find((x) => x.id === id);
-      if (!f || f.origin !== "server") return;
-      const clearedInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: null };
-      if (f.isFolder) {
-        runMutation(
-          () => withFreshToken((t) => apiEditFolder(t, { folderId: id, folderName: f.name, folderInfo: clearedInfo })),
-          { id },
-          notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
-        );
-      } else if (f.fileId && f.parentId) {
-        runMutation(
-          () =>
-            withFreshToken((t) =>
-              apiUpdateFileInfo(t, {
-                folder_id: f.parentId!,
-                file_id: f.fileId!,
-                file_name: f.name,
-                file_info: clearedInfo,
-                file_type: fileTypeGuess(f),
-                file_version: f.version ?? 1,
-                expected_file_size: f.size,
-              })
-            ),
-          { id },
-          notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
-        );
-      }
-    });
-  }
-
-  return moveItems(ids, destinationId);
-};
+): { moved: number; blocked: number; unsupported: number } => moveItems(ids, destinationId);
 
 // Permanent delete, unlike trash/restore/move above, is NOT optimistic — this is
 // irreversible, so an item only disappears once the server actually confirms it's
@@ -1503,6 +1427,12 @@ export const moveItems = (
   const files = store.get(filesAtom);
   const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
   const next = files.map((f) => f);
+  // "Trashed" is purely a matter of where something lives, so a move is the only
+  // thing that changes it — into the Trash subtree or back out of it.
+  const trashId = store.get(trashFolderIdAtom);
+  const intoTrash =
+    newParentId !== null && (newParentId === trashId || !!next.find((f) => f.id === newParentId)?.isDeleted);
+  const movedIds: string[] = [];
 
   for (const id of ids) {
     const item = next.find((f) => f.id === id);
@@ -1517,6 +1447,11 @@ export const moveItems = (
       continue;
     }
     if (item.parentId === newParentId) continue;
+    // The destination's own create may still be in flight — its temp id would 400.
+    if (!isServerId(newParentId)) {
+      blocked++;
+      continue;
+    }
 
     // PUT /files/move/{destination_folder_id} requires a real destination folder
     // UUID — there's no way to move a file to root against that endpoint.
@@ -1551,10 +1486,16 @@ export const moveItems = (
 
     item.parentId = newParentId;
     item.modifiedAt = nowIso();
+    item.isDeleted = intoTrash;
+    movedIds.push(id);
     moved++;
   }
 
-  if (moved > 0) persist(next);
+  if (moved > 0) {
+    const subtree = new Set(movedIds.flatMap((id) => getDescendantIds(id)));
+    for (const f of next) if (subtree.has(f.id)) f.isDeleted = intoTrash;
+    persist(next);
+  }
 
   const tk = authSnapshot.token;
   if (tk) {
@@ -1592,52 +1533,6 @@ export const moveItems = (
   }
 
   return { moved, blocked, unsupported };
-};
-
-export const copyItem = (id: string, newParentId: string | null): { copied: number; blocked: boolean } => {
-  const files = store.get(filesAtom);
-  const source = files.find((f) => f.id === id);
-  if (!source) return { copied: 0, blocked: false };
-  if (isItemLocked(source)) return { copied: 0, blocked: true };
-
-  const forbidden = new Set([id, ...getDescendantIds(id)]);
-  if (newParentId !== null && forbidden.has(newParentId)) {
-    return { copied: 0, blocked: true };
-  }
-
-  const idMap = new Map<string, string>();
-  const now = nowIso();
-  const makeCopyId = (originalId: string) => {
-    const copyId = originalId + "-copy-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-    idMap.set(originalId, copyId);
-    return copyId;
-  };
-
-  const rootCopy: FileItem = {
-    ...source,
-    id: makeCopyId(source.id),
-    parentId: newParentId,
-    name: source.isFolder ? source.name : `Copy of ${source.name}`,
-    createdAt: now,
-    modifiedAt: now,
-    origin: "local",
-  };
-
-  const descendantIds = getDescendantIds(id);
-  const descendantCopies: FileItem[] = descendantIds.map((descId) => {
-    const desc = files.find((f) => f.id === descId)!;
-    return { ...desc, id: makeCopyId(descId), createdAt: now, modifiedAt: now, origin: "local" };
-  });
-
-  descendantIds.forEach((originalId, i) => {
-    const originalParentId = files.find((f) => f.id === originalId)!.parentId;
-    if (originalParentId && idMap.has(originalParentId)) {
-      descendantCopies[i].parentId = idMap.get(originalParentId)!;
-    }
-  });
-
-  persist([...files, rootCopy, ...descendantCopies]);
-  return { copied: 1 + descendantCopies.length, blocked: false };
 };
 
 export const updateFileContent = async (id: string, blob: Blob): Promise<void> => {

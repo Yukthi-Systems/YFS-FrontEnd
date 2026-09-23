@@ -4,6 +4,7 @@ import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { FileItem, GridSize } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
+import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -119,12 +120,12 @@ export function FileGrid({
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
         <div className="absolute top-1 left-1 right-1 flex items-center justify-between z-10">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={isChecked}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
-            className={`opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
+            onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+            ariaLabel={`Select ${item.name}`}
+            className={`opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
           />
           <div className="relative">
             <button

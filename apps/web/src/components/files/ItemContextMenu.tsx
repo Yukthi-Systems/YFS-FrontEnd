@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock } from "lucide-react";
+import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
+import { SHARED_ROOT_ID } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 
@@ -9,12 +10,11 @@ export function ItemContextMenu({
   permissions = null,
   onOpen,
   onDownload,
-  onToggleStar,
   onRename,
   onMove,
-  onCopy,
   onVersionHistory,
   onShare,
+  onCopyLink,
   onSetColor,
   onSetIcon,
   onTrash,
@@ -29,12 +29,12 @@ export function ItemContextMenu({
   // Folders only — opens the folder (same as double-click).
   onOpen?: () => void;
   onDownload: () => void;
-  onToggleStar: () => void;
   onRename: () => void;
   onMove: () => void;
-  onCopy: () => void;
   onVersionHistory: () => void;
   onShare: () => void;
+  // Copies a link that opens this item for people who already have access.
+  onCopyLink?: () => void;
   onSetColor: (color: string | null) => void;
   onSetIcon: (icon: string | null) => void;
   onTrash: () => void;
@@ -58,12 +58,40 @@ export function ItemContextMenu({
   const allowEdit = !shared || effectivePermissions.can_update; // rename, colour/icon, star
   const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
   // Move to Trash is client-only (see fileSystemStore.ts trashItems) — deliberately not
-  // offered for shared items regardless of permission, unrelated to whether a real
-  // delete endpoint exists server-side (it does now, for both files and folders).
-  const allowDelete = !shared && !item.isDeleted;
+  // offered for shared items regardless of permission, since trash is scoped to the
+  // owner's own drive. Permanent delete hits a real backend endpoint though, so it's
+  // allowed for shared items when the share grants can_delete.
+  const allowTrash = !shared && !item.isDeleted;
+  const allowPermanentDelete = (!shared || effectivePermissions.can_delete) && !item.isDeleted;
   const allowShare = !shared; // can't re-share someone else's folder
 
   const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
+
+  // A share root is someone else's folder as it appears at the top of "Shared with
+  // you" — it isn't in a folder of ours to rename, move, trash or re-share, so it
+  // only gets the two things that make sense on it. Inside it, the share's own
+  // permissions take over as normal.
+  if (item.parentId === SHARED_ROOT_ID) {
+    return (
+      <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
+        {item.isFolder && onOpen && (
+          <button onClick={onOpen} className={itemClass}>
+            <FolderOpen className="w-3.5 h-3.5" /> Open
+          </button>
+        )}
+        {allowDownload && (
+          <button
+            onClick={onDownload}
+            disabled={isItemProcessing(item) || isItemFailed(item)}
+            title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
+            className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
@@ -72,7 +100,7 @@ export function ItemContextMenu({
           <Lock className="w-3 h-3 text-amber-500" /> File is locked
         </div>
       )}
-      {item.isFolder && !item.isDeleted && onOpen && (
+      {item.isFolder && onOpen && (
         <button onClick={onOpen} className={itemClass}>
           <FolderOpen className="w-3.5 h-3.5" /> Open
         </button>
@@ -85,12 +113,6 @@ export function ItemContextMenu({
           className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-        </button>
-      )}
-      {allowEdit && (
-        <button onClick={onToggleStar} className={itemClass}>
-          <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} />{" "}
-          {item.isStarred ? "Unstar" : "Star"}
         </button>
       )}
       {allowEdit && (
@@ -125,19 +147,14 @@ export function ItemContextMenu({
               <FolderInput className="w-3.5 h-3.5" /> Move to…
             </button>
           )}
-          {!item.isFolder && (
-            <button
-              onClick={onCopy}
-              disabled={locked}
-              title={locked ? "File is locked and cannot be copied" : undefined}
-              className={itemClass}
-            >
-              <CopyPlus className="w-3.5 h-3.5" /> Copy to…
-            </button>
-          )}
           {allowShare && (
             <button onClick={onShare} className={itemClass}>
               <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+          )}
+          {onCopyLink && (
+            <button onClick={onCopyLink} className={itemClass}>
+              <Link2 className="w-3.5 h-3.5" /> Copy link
             </button>
           )}
         </>
@@ -209,8 +226,8 @@ export function ItemContextMenu({
           </button>
         </>
       ) : (
-        allowDelete && (
-          <>
+        <>
+          {allowTrash && (
             <button
               onClick={onTrash}
               disabled={locked}
@@ -219,10 +236,12 @@ export function ItemContextMenu({
             >
               <Trash2 className="w-3.5 h-3.5" /> Move to Trash
             </button>
-            {/* Skips Trash entirely — DELETE /files/delete/file or /folders/delete
-                straight away, same confirm dialog as the Trash-tab version above. A
-                different icon from "Move to Trash" so two destructive actions in a
-                row don't read as duplicates of each other. */}
+          )}
+          {allowPermanentDelete && (
+            // Skips Trash entirely — DELETE /files/delete/file or /folders/delete
+            // straight away, same confirm dialog as the Trash-tab version above. A
+            // different icon from "Move to Trash" so two destructive actions in a
+            // row don't read as duplicates of each other.
             <button
               onClick={onPermanentDelete}
               disabled={locked}
@@ -231,8 +250,8 @@ export function ItemContextMenu({
             >
               <XCircle className="w-3.5 h-3.5" /> Delete Permanently
             </button>
-          </>
-        )
+          )}
+        </>
       )}
     </div>
   );

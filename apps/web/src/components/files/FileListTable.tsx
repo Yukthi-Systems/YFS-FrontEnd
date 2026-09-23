@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Star } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Link2 } from "lucide-react";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
+import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -60,7 +61,7 @@ export function FileListTable({
   onItemContextMenu,
   renderContextMenu,
   onShare,
-  onToggleStar,
+  onCopyLink,
   onDragStartItem,
   onDragOverFolder,
   onDragLeaveFolder,
@@ -82,7 +83,7 @@ export function FileListTable({
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
   onShare?: (item: FileItem) => void;
-  onToggleStar?: (id: string) => void;
+  onCopyLink?: (item: FileItem) => void;
   onDragStartItem: (item: FileItem, e: React.DragEvent) => void;
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
@@ -101,10 +102,11 @@ export function FileListTable({
         <thead>
           <tr onMouseDown={(e) => e.stopPropagation()}>
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={items.length > 0 && items.every((item) => checkedItemIds.includes(item.id))}
+                indeterminate={items.some((item) => checkedItemIds.includes(item.id))}
                 onChange={onSelectAllToggle}
+                ariaLabel="Select all"
               />
             </th>
             <SortableHeader label="Name" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
@@ -146,7 +148,11 @@ export function FileListTable({
                 }}
               >
                 <td className="px-3 py-2 border-b border-border-main text-center" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={isChecked} onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)} />
+                  <Checkbox
+                    checked={isChecked}
+                    onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+                    ariaLabel={`Select ${item.name}`}
+                  />
                 </td>
                 <td className="px-3 py-2 border-b border-border-main">
                   <div className="flex items-center gap-2.5 text-[0.85rem] font-medium text-text-heading overflow-hidden whitespace-nowrap">
@@ -187,22 +193,6 @@ export function FileListTable({
                 </td>
                 <td className="px-3 py-2 border-b border-border-main text-right relative whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
-                    {onToggleStar && !item.isDeleted && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleStar(item.id);
-                        }}
-                        title={item.isStarred ? "Remove from Starred" : "Add to Starred"}
-                        className={`border-none bg-transparent p-1.5 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 cursor-pointer inline-flex items-center justify-center transition ${
-                          item.isStarred
-                            ? "text-amber-500 opacity-100"
-                            : "text-text-main opacity-0 group-hover:opacity-100 hover:text-amber-500"
-                        }`}
-                      >
-                        <Star className={`w-4 h-4 ${item.isStarred ? "fill-amber-400 text-amber-500" : ""}`} />
-                      </button>
-                    )}
                     {onShare && !item.isDeleted && item.origin !== "shared" && !item.sharedIn && (
                       <button
                         onClick={(e) => {
@@ -213,6 +203,18 @@ export function FileListTable({
                         className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
                       >
                         <UserPlus className="w-4 h-4" />
+                      </button>
+                    )}
+                    {onCopyLink && !item.isDeleted && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCopyLink(item);
+                        }}
+                        title="Copy link"
+                        className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
+                      >
+                        <Link2 className="w-4 h-4" />
                       </button>
                     )}
                     <button

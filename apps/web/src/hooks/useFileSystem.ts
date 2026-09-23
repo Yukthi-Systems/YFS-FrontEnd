@@ -5,6 +5,7 @@ import {
   remoteErrorAtom,
   pageInfoAtom,
   trashFolderIdAtom,
+  idRemapAtom,
   sharedOutAtom,
   sharedOutLoadingAtom,
   sharedOutLoadedAtom,
@@ -31,15 +32,13 @@ import {
   buildCreationInfo,
   fileTypeGuess,
   renameItem,
-  toggleStar,
-  starItems,
   setFolderStyle,
+  setItemDescription,
   trashItems,
   restoreItems,
   permanentDeleteItems,
   deleteFileVersion,
   moveItems,
-  copyItem,
   updateFileContent,
   restoreVersion,
   setShareSettings,
@@ -58,6 +57,7 @@ export const useFileSystem = () => {
   const remoteError = useAtomValue(remoteErrorAtom);
   const pageInfo = useAtomValue(pageInfoAtom);
   const trashFolderId = useAtomValue(trashFolderIdAtom);
+  const idRemap = useAtomValue(idRemapAtom);
   const sharedOut = useAtomValue(sharedOutAtom);
   const sharedOutLoading = useAtomValue(sharedOutLoadingAtom);
   const sharedOutLoaded = useAtomValue(sharedOutLoadedAtom);
@@ -90,19 +90,18 @@ export const useFileSystem = () => {
     createFolder,
     ensureFolderPath,
     trashFolderId,
+    idRemap,
     addFile,
     buildCreationInfo,
     fileTypeGuess,
     renameItem,
-    toggleStar,
-    starItems,
     setFolderStyle,
+    setItemDescription,
     trashItems,
     restoreItems,
     permanentDeleteItems,
     deleteFileVersion,
     moveItems,
-    copyItem,
     updateFileContent,
     restoreVersion,
     setShareSettings,

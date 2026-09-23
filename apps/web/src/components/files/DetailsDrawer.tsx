@@ -4,8 +4,6 @@ import {
   Download,
   Expand,
   FolderInput,
-  CopyPlus,
-  Star,
   Trash2,
   X,
   History,
@@ -16,6 +14,7 @@ import {
   Lock,
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
+import type { ResourceInfo } from "@yfs/service";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
@@ -96,6 +95,83 @@ export const KIND_LABEL: Record<FileItem["type"], string> = {
   other: "File",
 };
 
+// Free-text note stored on the resource itself (resource_info.description), so it's
+// shared with everyone who can see the item rather than being personal.
+function DescriptionSection({
+  value,
+  canEdit,
+  onSave,
+}: {
+  value: string;
+  canEdit: boolean;
+  onSave: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (!editing) {
+    if (!value && !canEdit) return null;
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="data-label">Description</span>
+        {value ? (
+          <p
+            onClick={() => canEdit && (setDraft(value), setEditing(true))}
+            title={canEdit ? "Click to edit" : undefined}
+            className={`text-xs text-text-heading leading-relaxed whitespace-pre-wrap break-words m-0 rounded-lg -mx-1 px-1 py-0.5 ${
+              canEdit ? "cursor-pointer hover:bg-code-bg" : ""
+            }`}
+          >
+            {value}
+          </p>
+        ) : (
+          <button
+            onClick={() => (setDraft(""), setEditing(true))}
+            className="self-start text-xs text-text-main hover:text-accent bg-transparent border-none p-0 cursor-pointer transition"
+          >
+            Add a description
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const commit = () => {
+    if (draft.trim() !== value) onSave(draft);
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="data-label">Description</span>
+      <textarea
+        value={draft}
+        autoFocus
+        rows={3}
+        maxLength={2000}
+        placeholder="What's this for?"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit();
+        }}
+        className="dialog-input resize-y leading-relaxed"
+      />
+      <div className="flex items-center gap-2">
+        <button onClick={commit} className="btn-primary" style={{ width: "auto", padding: "0.35rem 0.8rem" }}>
+          Save
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="text-xs font-semibold text-text-main hover:text-text-heading bg-transparent border-none cursor-pointer px-1"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-xs leading-normal">
@@ -166,14 +242,13 @@ export function DetailsDrawer({
   onClose,
   onOpenFull,
   onDownload,
-  onToggleStar,
   onRename,
   onMove,
-  onCopy,
   onVersionHistory,
   onShare,
   onTrash,
   onRestore,
+  onSaveDescription,
 }: {
   item: FileItem;
   files: FileItem[];
@@ -183,14 +258,13 @@ export function DetailsDrawer({
   onClose: () => void;
   onOpenFull: () => void;
   onDownload: () => void;
-  onToggleStar: () => void;
   onRename: () => void;
   onMove: () => void;
-  onCopy: () => void;
   onVersionHistory: () => void;
   onShare: () => void;
   onTrash: () => void;
   onRestore: () => void;
+  onSaveDescription?: (text: string) => void;
 }) {
   const effectivePermissions = permissions ?? item.sharedIn?.permissions ?? null;
   const shared = effectivePermissions !== null;
@@ -211,7 +285,6 @@ export function DetailsDrawer({
   };
 
   const creatorName = item.createdBy || (item.resourceInfo as { creation_info?: { user_name?: string } } | undefined)?.creation_info?.user_name;
-  const trashInfo = (item.resourceInfo as { trash_info?: { trashed_by_name?: string; trashed_at?: string; trashed_from_name?: string } } | undefined)?.trash_info;
 
   return (
     <aside
@@ -252,6 +325,15 @@ export function DetailsDrawer({
           </div>
           <span className="text-xs text-text-main">{KIND_LABEL[item.type]}</span>
         </div>
+
+        {onSaveDescription && (
+          <DescriptionSection
+            key={item.id}
+            value={(item.resourceInfo as ResourceInfo | undefined)?.description ?? ""}
+            canEdit={allowEdit}
+            onSave={onSaveDescription}
+          />
+        )}
 
         <div className="flex flex-col gap-2.5">
           <InfoRow label="Kind">
@@ -302,15 +384,7 @@ export function DetailsDrawer({
           <InfoRow label="Modified">{formatDate(item.modifiedAt)}</InfoRow>
           <InfoRow label="Created">{formatDate(item.createdAt)}</InfoRow>
 
-          {item.isStarred && <InfoRow label="Starred">Yes</InfoRow>}
           {item.isDeleted && <InfoRow label="Status">In Trash</InfoRow>}
-          {trashInfo && (
-            <>
-              {trashInfo.trashed_by_name && <InfoRow label="Trashed by">{trashInfo.trashed_by_name}</InfoRow>}
-              {trashInfo.trashed_at && <InfoRow label="Trashed on">{formatDate(trashInfo.trashed_at)}</InfoRow>}
-              {trashInfo.trashed_from_name && <InfoRow label="Trashed from">{trashInfo.trashed_from_name}</InfoRow>}
-            </>
-          )}
           {item.isFolder && item.color && (
             <div className="flex justify-between gap-3 text-xs leading-normal">
               <span className="text-text-main font-semibold">Colour</span>
@@ -404,12 +478,6 @@ export function DetailsDrawer({
           {(!shared || effectivePermissions?.can_update) && (
             <div className="flex gap-2">
               <button
-                onClick={onToggleStar}
-                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-              >
-                <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} /> {item.isStarred ? "Unstar" : "Star"}
-              </button>
-              <button
                 onClick={onRename}
                 disabled={!allowEdit}
                 title={locked ? "File is locked and cannot be renamed" : !allowEdit ? "No permission to rename" : undefined}
@@ -439,16 +507,6 @@ export function DetailsDrawer({
                   className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
                 >
                   <FolderInput className="w-3.5 h-3.5" /> Move
-                </button>
-              )}
-              {!item.isFolder && (
-                <button
-                  onClick={onCopy}
-                  disabled={locked}
-                  title={locked ? "File is locked and cannot be copied" : undefined}
-                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-                >
-                  <CopyPlus className="w-3.5 h-3.5" /> Copy
                 </button>
               )}
             </div>
