@@ -63,7 +63,6 @@ const mapPublicResource = (r: BackendResource): FileItem => {
     owner: { name: "Shared", email: "" },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    isStarred: false,
     isDeleted: false,
     color: info?.ui?.color,
     icon: info?.ui?.icon,

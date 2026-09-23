@@ -20,9 +20,7 @@ export interface FolderCreationInfo {
 }
 
 // Per-item UI preferences (Drive-style): folder colour, folder icon. Server-backed
-// so they follow the user across devices. Starred is NOT here — see
-// atoms/userSettings.ts's starredIdsAtom: starring is personal, per-user state, so
-// it lives in the user's own private_info instead of on the shared resource.
+// so they follow the user across devices.
 export interface ResourceUiInfo {
   color?: string; // CSS colour, e.g. "#e8710a"
   icon?: string; // key from the frontend's fixed folder-icon set
@@ -34,8 +32,8 @@ export interface ResourceUiInfo {
 export interface ResourceInfo {
   creation_info?: FolderCreationInfo;
   ui?: ResourceUiInfo;
-  // Free-text note on the resource itself, so it's visible to everyone the folder
-  // is shared with (unlike starring, which is per-user private_info).
+  // Free-text note on the resource itself, so everyone the folder is shared with
+  // sees it.
   description?: string;
   [key: string]: unknown;
 }

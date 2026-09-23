@@ -25,12 +25,6 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
     result = result.filter((f) => f.parentId === (currentFolderId ?? SHARED_ROOT_ID) && !f.isDeleted);
   } else if (activeSidebarTab === "recent") {
     result = result.filter((f) => !f.isFolder && !f.isDeleted);
-  } else if (activeSidebarTab === "starred") {
-    if (currentFolderId) {
-      result = result.filter((f) => f.parentId === currentFolderId && !f.isDeleted);
-    } else {
-      result = result.filter((f) => f.isStarred && !f.isDeleted);
-    }
   } else if (activeSidebarTab === "trash") {
     if (currentFolderId) {
       // Browsing inside a trashed folder — show its children, same as any folder.
@@ -114,13 +108,6 @@ export function getSearchScope(
     result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
   } else if (activeSidebarTab === "recent") {
     result = files.filter((f) => !f.isFolder && !f.isDeleted);
-  } else if (activeSidebarTab === "starred") {
-    if (currentFolderId) {
-      const ids = new Set(collectDescendantIds(files, currentFolderId));
-      result = files.filter((f) => ids.has(f.id) && !f.isDeleted);
-    } else {
-      result = files.filter((f) => f.isStarred && !f.isDeleted);
-    }
   } else if (activeSidebarTab === "trash") {
     if (currentFolderId) {
       const ids = new Set(collectDescendantIds(files, currentFolderId));

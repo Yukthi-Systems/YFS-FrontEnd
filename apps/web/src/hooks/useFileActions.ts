@@ -38,8 +38,6 @@ export function useFileActions({
   fileSystem: {
     createFolder: (name: string, parentId: string | null) => FileItem | null;
     renameItem: (id: string, newName: string) => void;
-    toggleStar: (id: string) => void;
-    starItems: (ids: string[]) => void;
     trashItems: (ids: string[]) => void;
     restoreItems: (ids: string[], destinationId: string | null) => { moved: number; blocked: number; unsupported: number };
     permanentDeleteItems: (ids: string[]) => Promise<{ deleted: number; blocked: number }>;
@@ -102,17 +100,6 @@ export function useFileActions({
       showToast("Renamed", "success");
     }
     setRenameTarget(null);
-  };
-
-  const handleToggleStar = (id: string) => {
-    fileSystem.toggleStar(id);
-    closeContextMenu();
-  };
-
-  const handleBatchStar = (ids: string[]) => {
-    fileSystem.starItems(ids);
-    showToast(`Starred ${ids.length} item${ids.length > 1 ? "s" : ""}`, "success");
-    setCheckedItemIds([]);
   };
 
   const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
@@ -365,8 +352,6 @@ export function useFileActions({
     openRenameModal,
     closeRenameModal,
     handleRenameConfirm,
-    handleToggleStar,
-    handleBatchStar,
     requestTrash,
     requestPermanentDelete,
     requestDeleteVersion,

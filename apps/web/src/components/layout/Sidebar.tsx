@@ -6,7 +6,6 @@ import {
   FolderUp,
   Plus,
   RefreshCw,
-  Star,
   Trash2,
   LogOut,
   Users,
@@ -32,7 +31,6 @@ const SHARE_ITEMS: NavItem[] = [
   { tab: "shared-links", label: "Shared by link", icon: Link2 },
 ];
 const NAV_ITEMS_BOTTOM: NavItem[] = [
-  { tab: "starred", label: "Starred", icon: Star },
   { tab: "trash", label: "Trash", icon: Trash2 },
 ];
 

@@ -5,7 +5,6 @@ import {
   Expand,
   FolderInput,
   CopyPlus,
-  Star,
   Trash2,
   X,
   History,
@@ -244,7 +243,6 @@ export function DetailsDrawer({
   onClose,
   onOpenFull,
   onDownload,
-  onToggleStar,
   onRename,
   onMove,
   onCopy,
@@ -262,7 +260,6 @@ export function DetailsDrawer({
   onClose: () => void;
   onOpenFull: () => void;
   onDownload: () => void;
-  onToggleStar: () => void;
   onRename: () => void;
   onMove: () => void;
   onCopy: () => void;
@@ -390,7 +387,6 @@ export function DetailsDrawer({
           <InfoRow label="Modified">{formatDate(item.modifiedAt)}</InfoRow>
           <InfoRow label="Created">{formatDate(item.createdAt)}</InfoRow>
 
-          {item.isStarred && <InfoRow label="Starred">Yes</InfoRow>}
           {item.isDeleted && <InfoRow label="Status">In Trash</InfoRow>}
           {item.isFolder && item.color && (
             <div className="flex justify-between gap-3 text-xs leading-normal">
@@ -484,12 +480,6 @@ export function DetailsDrawer({
           )}
           {(!shared || effectivePermissions?.can_update) && (
             <div className="flex gap-2">
-              <button
-                onClick={onToggleStar}
-                className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-              >
-                <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} /> {item.isStarred ? "Unstar" : "Star"}
-              </button>
               <button
                 onClick={onRename}
                 disabled={!allowEdit}
