@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Folder, HardDrive } from "lucide-react";
 import type { FileItem } from "../../types/file";
+import { SHARED_ROOT_ID } from "../../types/file";
 import { ModalShell } from "./ModalShell";
 
 interface FolderNode {
@@ -98,11 +99,40 @@ export function MoveCopyModal({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(currentParentId);
 
-  const folders = useMemo(
-    () => files.filter((f) => f.isFolder && !f.isDeleted && f.id !== trashFolderId),
-    [files, trashFolderId]
-  );
-  const tree = useMemo(() => buildTree(folders, null), [folders]);
+  // Items inside a "Shared with you" folder can only be *moved* around within that same
+  // share — never out into our own Drive, which isn't ours to move them to. Copying is
+  // the opposite: taking our own copy of someone's file out of the share is the point,
+  // so only move/restore are scoped. Walking up to SHARED_ROOT_ID finds the share root;
+  // null means these are our own items, rooted at My Drive as usual.
+  const shareRootId = useMemo(() => {
+    if (mode === "copy") return null;
+    let current = files.find((f) => f.id === sourceIds[0]);
+    while (current && current.parentId && current.parentId !== SHARED_ROOT_ID) {
+      current = files.find((f) => f.id === current!.parentId);
+    }
+    return current?.parentId === SHARED_ROOT_ID ? current.id : null;
+  }, [files, sourceIds, mode]);
+
+  const folders = useMemo(() => {
+    const all = files.filter((f) => f.isFolder && !f.isDeleted && f.id !== trashFolderId);
+    if (!shareRootId) return all;
+    const inShare = new Set([shareRootId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const f of all) {
+        if (f.parentId && inShare.has(f.parentId) && !inShare.has(f.id)) {
+          inShare.add(f.id);
+          grew = true;
+        }
+      }
+    }
+    return all.filter((f) => inShare.has(f.id));
+  }, [files, trashFolderId, shareRootId]);
+
+  const shareRoot = shareRootId ? (folders.find((f) => f.id === shareRootId) ?? null) : null;
+  // Own items hang off a "My Drive" root; a share is rooted at the shared folder itself.
+  const tree = useMemo(() => buildTree(folders, shareRootId), [folders, shareRootId]);
 
   // A folder can't be moved/copied into itself or one of its own descendants.
   const disabledIds = useMemo(() => {
@@ -133,7 +163,7 @@ export function MoveCopyModal({
       </p>
       <div className="max-h-72 overflow-y-auto border border-border-main rounded-xl p-2 mb-5">
         <FolderRow
-          node={{ folder: null, children: tree }}
+          node={{ folder: shareRoot, children: tree }}
           depth={0}
           disabledIds={disabledIds}
           selectedId={selectedId}

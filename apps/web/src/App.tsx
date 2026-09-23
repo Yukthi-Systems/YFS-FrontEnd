@@ -503,7 +503,15 @@ function App() {
         />
 
         <div className="flex-1 flex overflow-hidden relative">
-        <UploadDropzone onDropFiles={(items) => enqueueFiles(items, nav.currentFolderId)}>
+        <UploadDropzone
+          onDropFiles={(items) => {
+            if (!canCreateHere) {
+              showToast("You don't have permission to add files to this folder", "error");
+              return;
+            }
+            enqueueFiles(items, nav.currentFolderId);
+          }}
+        >
           <div
             ref={setScrollContainer}
               className="flex-1 overflow-y-auto px-5 py-4 pb-10 flex flex-col gap-4 max-[768px]:px-3"

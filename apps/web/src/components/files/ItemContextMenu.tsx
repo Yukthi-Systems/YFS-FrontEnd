@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
+import { SHARED_ROOT_ID } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 
@@ -67,6 +68,32 @@ export function ItemContextMenu({
   const allowShare = !shared; // can't re-share someone else's folder
 
   const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
+
+  // A share root is someone else's folder as it appears at the top of "Shared with
+  // you" — it isn't in a folder of ours to rename, move, trash or re-share, so it
+  // only gets the two things that make sense on it. Inside it, the share's own
+  // permissions take over as normal.
+  if (item.parentId === SHARED_ROOT_ID) {
+    return (
+      <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
+        {item.isFolder && onOpen && (
+          <button onClick={onOpen} className={itemClass}>
+            <FolderOpen className="w-3.5 h-3.5" /> Open
+          </button>
+        )}
+        {allowDownload && (
+          <button
+            onClick={onDownload}
+            disabled={isItemProcessing(item) || isItemFailed(item)}
+            title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
+            className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
