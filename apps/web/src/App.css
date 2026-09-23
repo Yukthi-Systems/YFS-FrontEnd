@@ -225,6 +225,19 @@ input {
   max-width: 520px;
 }
 
+.modal-content.modal-xl {
+  max-width: 600px;
+}
+
+/* Lets a modal own its own padding so a header/footer can sit flush and stay put
+   while only the middle scrolls. */
+.modal-content.modal-flush {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 @media (max-width: 520px) {
   .modal-overlay {
     align-items: flex-end;
@@ -264,6 +277,13 @@ input {
   font-size: 0.82rem;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* Room for an icon absolutely positioned inside the field. Needs to live here rather
+   than as a pl-* utility: .dialog-input sets the `padding` shorthand, which lands
+   after the utility layer and would reset padding-left back to the default. */
+.dialog-input.has-icon-left {
+  padding-left: 2.15rem;
 }
 
 .dialog-input:focus {
@@ -323,9 +343,9 @@ input[type="date"].dialog-input::-webkit-calendar-picker-indicator {
   color: #fff;
   border: none;
   border-radius: 10px;
-  padding: 0.5rem 0.95rem;
+  padding: 0.6rem 1.1rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: opacity 0.2s;
   box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
@@ -336,13 +356,16 @@ input[type="date"].dialog-input::-webkit-calendar-picker-indicator {
 }
 
 .btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   color: var(--text-h);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0.5rem 0.95rem;
+  padding: 0.6rem 1.1rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
 }

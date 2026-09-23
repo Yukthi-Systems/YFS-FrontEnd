@@ -1,18 +1,12 @@
 import { useState } from "react";
 import { Check, Clock, Copy, FileText, Folder, KeyRound, Link2, Mail, Pencil, Share2, Trash2 } from "lucide-react";
-import type { ExternalShare, InternalSharePermissions } from "@yfs/service";
+import type { ExternalShare } from "@yfs/service";
 import { formatDate } from "../../utils/format";
+import { PERMISSION_FIELDS } from "../common/PermissionPicker";
 
 const shareUrl = (shareId: string) => `${window.location.origin}/share/${shareId}`;
 const isExpired = (iso: string | null) => !!iso && new Date(iso).getTime() < Date.now();
 
-const PERMS: { key: keyof InternalSharePermissions; label: string }[] = [
-  { key: "can_preview", label: "Preview" },
-  { key: "can_download", label: "Download" },
-  { key: "can_create", label: "Create" },
-  { key: "can_update", label: "Edit" },
-  { key: "can_delete", label: "Delete" },
-];
 
 // "Shared by link" view — every external link I've created.
 export function SharedLinksList({
@@ -121,7 +115,7 @@ export function SharedLinksList({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1">
-                  {PERMS.filter(({ key }) => s.permission_set[key]).map(({ key, label }) => (
+                  {PERMISSION_FIELDS.filter(({ key }) => s.permission_set[key]).map(({ key, label }) => (
                     <span
                       key={key}
                       className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent-bg text-accent border border-accent-border"

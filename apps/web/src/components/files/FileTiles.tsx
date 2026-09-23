@@ -4,6 +4,7 @@ import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
+import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -66,12 +67,12 @@ export function FileTiles({
           isSel ? "bg-accent-bg/70! border-accent!" : isChecked ? "bg-accent-bg/70! border-accent-border!" : ""
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
-        <input
-          type="checkbox"
+        <Checkbox
           checked={isChecked}
           onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
-          className={`shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
+          onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+          ariaLabel={`Select ${item.name}`}
+          className={`shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
         />
 
         <div className="shrink-0 w-10 h-10 rounded-lg bg-code-bg flex items-center justify-center overflow-hidden">

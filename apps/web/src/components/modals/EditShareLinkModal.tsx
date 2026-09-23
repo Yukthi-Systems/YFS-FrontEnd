@@ -4,23 +4,9 @@ import { Loader2, X } from "lucide-react";
 import type { ExternalShare, InternalSharePermissions } from "@yfs/service";
 import { useFileSystem } from "../../hooks/useFileSystem";
 import { useToast } from "../../atoms/toast";
+import { Checkbox } from "../common/Checkbox";
+import { PermissionPicker, permsOf } from "../common/PermissionPicker";
 import { ModalShell } from "./ModalShell";
-
-const PERMISSION_FIELDS: { key: keyof InternalSharePermissions; label: string }[] = [
-  { key: "can_preview", label: "Preview" },
-  { key: "can_download", label: "Download" },
-  { key: "can_create", label: "Create" },
-  { key: "can_update", label: "Edit" },
-  { key: "can_delete", label: "Delete" },
-];
-
-const permsOf = (s: InternalSharePermissions): InternalSharePermissions => ({
-  can_preview: s.can_preview,
-  can_download: s.can_download,
-  can_create: s.can_create,
-  can_update: s.can_update,
-  can_delete: s.can_delete,
-});
 
 // Local calendar date an ISO instant falls on (not a raw UTC slice) — must agree with toExpiresIso below.
 const toDateInput = (iso: string | null) => {
@@ -53,25 +39,6 @@ const expiryError = (dateStr: string): string | null => {
 };
 const splitList = (raw: string) => raw.split(",").map((s) => s.trim()).filter(Boolean);
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
-
-function PermissionToggles({
-  value,
-  onChange,
-}: {
-  value: InternalSharePermissions;
-  onChange: (next: InternalSharePermissions) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1">
-      {PERMISSION_FIELDS.map(({ key, label }) => (
-        <label key={key} className="flex items-center gap-1.5 text-[11px] text-text-heading cursor-pointer">
-          <input type="checkbox" checked={value[key]} onChange={(e) => onChange({ ...value, [key]: e.target.checked })} />
-          {label}
-        </label>
-      ))}
-    </div>
-  );
-}
 
 export function EditShareLinkModal({ share, onClose }: { share: ExternalShare; onClose: () => void }) {
   const { updateSharedLink } = useFileSystem();
@@ -119,30 +86,27 @@ export function EditShareLinkModal({ share, onClose }: { share: ExternalShare; o
         </button>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-text-main shrink-0 font-mono truncate">
+      <div className="flex flex-col gap-4">
+        <div className="rounded-xl border border-border-main bg-code-bg/50 px-3 py-2">
+          <span className="text-[11px] text-text-heading font-mono break-all">
             {window.location.origin}/share/{share.share_id}
           </span>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-text-main">Permissions</span>
-          <PermissionToggles value={perms} onChange={setPerms} />
+        <div className="flex flex-col gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-main">Permissions</span>
+          <PermissionPicker value={perms} onChange={setPerms} />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="flex items-center gap-1.5 text-[11px] text-text-heading cursor-pointer">
-            <input
-              type="checkbox"
-              checked={changePassword}
-              onChange={(e) => {
-                setChangePassword(e.target.checked);
-                setPassword("");
-              }}
-            />
-            {share.password_hash ? "Change / remove password" : "Set a password"}
-          </label>
+        <div className="flex flex-col gap-2">
+          <Checkbox
+            checked={changePassword}
+            onChange={(next) => {
+              setChangePassword(next);
+              setPassword("");
+            }}
+            label={share.password_hash ? "Change or remove password" : "Set a password"}
+          />
           {changePassword && (
             <input
               type="password"
