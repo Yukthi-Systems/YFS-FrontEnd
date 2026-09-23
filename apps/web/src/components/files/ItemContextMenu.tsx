@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock } from "lucide-react";
+import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
@@ -15,6 +15,7 @@ export function ItemContextMenu({
   onCopy,
   onVersionHistory,
   onShare,
+  onCopyLink,
   onSetColor,
   onSetIcon,
   onTrash,
@@ -35,6 +36,8 @@ export function ItemContextMenu({
   onCopy: () => void;
   onVersionHistory: () => void;
   onShare: () => void;
+  // Copies a link that opens this item for people who already have access.
+  onCopyLink?: () => void;
   onSetColor: (color: string | null) => void;
   onSetIcon: (icon: string | null) => void;
   onTrash: () => void;
@@ -140,6 +143,11 @@ export function ItemContextMenu({
           {allowShare && (
             <button onClick={onShare} className={itemClass}>
               <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+          )}
+          {onCopyLink && (
+            <button onClick={onCopyLink} className={itemClass}>
+              <Link2 className="w-3.5 h-3.5" /> Copy link
             </button>
           )}
         </>
