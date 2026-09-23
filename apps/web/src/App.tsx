@@ -84,7 +84,6 @@ function App() {
     permanentDeleteItems,
     deleteFileVersion,
     moveItems,
-    copyItem,
     updateFileContent,
   } = useFileSystem();
   const { showToast } = useToast();
@@ -312,7 +311,6 @@ function App() {
       permanentDeleteItems,
       deleteFileVersion,
       moveItems,
-      copyItem,
       updateFileContent,
     },
     enqueueFiles,
@@ -453,7 +451,6 @@ function App() {
       onDownload={() => fileActions.handleDownload(item)}
       onRename={() => fileActions.openRenameModal(item)}
       onMove={() => fileActions.openMoveModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
-      onCopy={() => fileActions.openCopyModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
       onShare={() => shareSettings.openShareModal(item)}
       onCopyLink={isSharedOutTab ? () => handleCopyShareLink(item) : undefined}
@@ -680,7 +677,6 @@ function App() {
             onDownload={() => fileActions.handleDownload(selectedItem)}
             onRename={() => fileActions.openRenameModal(selectedItem)}
             onMove={() => fileActions.openMoveModal([selectedItem.id])}
-            onCopy={() => fileActions.openCopyModal([selectedItem.id])}
             onVersionHistory={() => versionHistory.openVersionHistory(selectedItem)}
             onShare={() => shareSettings.openShareModal(selectedItem)}
             onTrash={() => fileActions.requestTrash([selectedItem.id])}

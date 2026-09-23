@@ -15,11 +15,11 @@ interface PendingConfirm {
 }
 
 interface MoveCopyState {
-  mode: "move" | "copy" | "restore";
+  mode: "move" | "restore";
   ids: string[];
 }
 
-// File/folder CRUD: create, rename, star, trash/restore/delete, move/copy, download, and
+// File/folder CRUD: create, rename, trash/restore/delete, move, download, and
 // content saves. Bundled together since they all share the same fileSystem mutators, toast
 // plumbing, and post-action cleanup (closing the context menu, clearing selection).
 export function useFileActions({
@@ -43,7 +43,6 @@ export function useFileActions({
     permanentDeleteItems: (ids: string[]) => Promise<{ deleted: number; blocked: number }>;
     deleteFileVersion: (item: FileItem, version: number) => Promise<boolean>;
     moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
-    copyItem: (id: string, newParentId: string | null) => { copied: number; blocked: boolean };
     updateFileContent: (id: string, blob: Blob) => Promise<void>;
   };
   enqueueFiles: (items: FileWithRelativePath[], parentId: string | null) => void;
@@ -248,30 +247,6 @@ export function useFileActions({
     closeContextMenu();
   };
 
-  const openCopyModal = (ids: string[]) => {
-    const lockedItems = ids
-      .map((id) => files.find((f) => f.id === id))
-      .filter((f): f is FileItem => !!f && isItemLocked(f));
-    if (lockedItems.length > 0) {
-      if (ids.length === 1) {
-        showToast(`"${lockedItems[0].name}" is locked and cannot be copied`, "error");
-        closeContextMenu();
-        return;
-      }
-      showToast(`Skipping ${lockedItems.length} locked item${lockedItems.length > 1 ? "s" : ""}`, "error");
-      const unlockedIds = ids.filter((id) => !lockedItems.some((item) => item.id === id));
-      if (unlockedIds.length === 0) {
-        closeContextMenu();
-        return;
-      }
-      setMoveCopyState({ mode: "copy", ids: unlockedIds });
-      closeContextMenu();
-      return;
-    }
-    setMoveCopyState({ mode: "copy", ids });
-    closeContextMenu();
-  };
-
   const closeMoveCopyModal = () => setMoveCopyState(null);
 
   const handleMoveCopyConfirm = (destinationId: string | null) => {
@@ -286,16 +261,6 @@ export function useFileActions({
       if (moved > 0) showToast(`Restored ${plural(moved, "item")}`, "success");
       if (blocked > 0) showToast(`Skipped ${plural(blocked, "item")} — locked or cannot restore into itself`, "error");
       if (unsupported > 0) showToast(`Skipped ${plural(unsupported, "file")} — restoring to My Drive root isn't supported yet`, "error");
-    } else {
-      let totalCopied = 0;
-      let anyBlocked = false;
-      moveCopyState.ids.forEach((id) => {
-        const { copied, blocked } = fileSystem.copyItem(id, destinationId);
-        totalCopied += copied;
-        if (blocked) anyBlocked = true;
-      });
-      if (totalCopied > 0) showToast(`Copied ${totalCopied} item${totalCopied > 1 ? "s" : ""}`, "success");
-      if (anyBlocked) showToast("Skipped items — locked or cannot copy into itself", "error");
     }
     setMoveCopyState(null);
     setCheckedItemIds([]);
@@ -364,7 +329,6 @@ export function useFileActions({
     requestLogout,
     moveCopyState,
     openMoveModal,
-    openCopyModal,
     closeMoveCopyModal,
     handleMoveCopyConfirm,
     handleDownload,

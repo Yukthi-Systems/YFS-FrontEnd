@@ -4,7 +4,6 @@ import {
   Download,
   Expand,
   FolderInput,
-  CopyPlus,
   Trash2,
   X,
   History,
@@ -245,7 +244,6 @@ export function DetailsDrawer({
   onDownload,
   onRename,
   onMove,
-  onCopy,
   onVersionHistory,
   onShare,
   onTrash,
@@ -262,7 +260,6 @@ export function DetailsDrawer({
   onDownload: () => void;
   onRename: () => void;
   onMove: () => void;
-  onCopy: () => void;
   onVersionHistory: () => void;
   onShare: () => void;
   onTrash: () => void;
@@ -510,16 +507,6 @@ export function DetailsDrawer({
                   className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
                 >
                   <FolderInput className="w-3.5 h-3.5" /> Move
-                </button>
-              )}
-              {!item.isFolder && (
-                <button
-                  onClick={onCopy}
-                  disabled={locked}
-                  title={locked ? "File is locked and cannot be copied" : undefined}
-                  className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-                >
-                  <CopyPlus className="w-3.5 h-3.5" /> Copy
                 </button>
               )}
             </div>

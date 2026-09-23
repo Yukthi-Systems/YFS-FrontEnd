@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
+import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { SHARED_ROOT_ID } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
@@ -12,7 +12,6 @@ export function ItemContextMenu({
   onDownload,
   onRename,
   onMove,
-  onCopy,
   onVersionHistory,
   onShare,
   onCopyLink,
@@ -32,7 +31,6 @@ export function ItemContextMenu({
   onDownload: () => void;
   onRename: () => void;
   onMove: () => void;
-  onCopy: () => void;
   onVersionHistory: () => void;
   onShare: () => void;
   // Copies a link that opens this item for people who already have access.
@@ -147,16 +145,6 @@ export function ItemContextMenu({
               className={itemClass}
             >
               <FolderInput className="w-3.5 h-3.5" /> Move to…
-            </button>
-          )}
-          {!item.isFolder && (
-            <button
-              onClick={onCopy}
-              disabled={locked}
-              title={locked ? "File is locked and cannot be copied" : undefined}
-              className={itemClass}
-            >
-              <CopyPlus className="w-3.5 h-3.5" /> Copy to…
             </button>
           )}
           {allowShare && (
