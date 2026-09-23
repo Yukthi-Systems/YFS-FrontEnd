@@ -79,6 +79,7 @@ function App() {
     toggleStar,
     starItems,
     setFolderStyle,
+    setItemDescription,
     trashItems,
     restoreItems,
     permanentDeleteItems,
@@ -683,6 +684,7 @@ function App() {
             onShare={() => shareSettings.openShareModal(selectedItem)}
             onTrash={() => fileActions.requestTrash([selectedItem.id])}
             onRestore={() => fileActions.handleRestore([selectedItem.id])}
+            onSaveDescription={(text) => setItemDescription(selectedItem.id, text)}
           />
         )}
         </div>

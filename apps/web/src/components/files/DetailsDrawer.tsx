@@ -16,6 +16,7 @@ import {
   Lock,
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
+import type { ResourceInfo } from "@yfs/service";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
@@ -96,6 +97,83 @@ export const KIND_LABEL: Record<FileItem["type"], string> = {
   other: "File",
 };
 
+// Free-text note stored on the resource itself (resource_info.description), so it's
+// shared with everyone who can see the item rather than being personal.
+function DescriptionSection({
+  value,
+  canEdit,
+  onSave,
+}: {
+  value: string;
+  canEdit: boolean;
+  onSave: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (!editing) {
+    if (!value && !canEdit) return null;
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="data-label">Description</span>
+        {value ? (
+          <p
+            onClick={() => canEdit && (setDraft(value), setEditing(true))}
+            title={canEdit ? "Click to edit" : undefined}
+            className={`text-xs text-text-heading leading-relaxed whitespace-pre-wrap break-words m-0 rounded-lg -mx-1 px-1 py-0.5 ${
+              canEdit ? "cursor-pointer hover:bg-code-bg" : ""
+            }`}
+          >
+            {value}
+          </p>
+        ) : (
+          <button
+            onClick={() => (setDraft(""), setEditing(true))}
+            className="self-start text-xs text-text-main hover:text-accent bg-transparent border-none p-0 cursor-pointer transition"
+          >
+            Add a description
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const commit = () => {
+    if (draft.trim() !== value) onSave(draft);
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="data-label">Description</span>
+      <textarea
+        value={draft}
+        autoFocus
+        rows={3}
+        maxLength={2000}
+        placeholder="What's this for?"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit();
+        }}
+        className="dialog-input resize-y leading-relaxed"
+      />
+      <div className="flex items-center gap-2">
+        <button onClick={commit} className="btn-primary" style={{ width: "auto", padding: "0.35rem 0.8rem" }}>
+          Save
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="text-xs font-semibold text-text-main hover:text-text-heading bg-transparent border-none cursor-pointer px-1"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-xs leading-normal">
@@ -174,6 +252,7 @@ export function DetailsDrawer({
   onShare,
   onTrash,
   onRestore,
+  onSaveDescription,
 }: {
   item: FileItem;
   files: FileItem[];
@@ -191,6 +270,7 @@ export function DetailsDrawer({
   onShare: () => void;
   onTrash: () => void;
   onRestore: () => void;
+  onSaveDescription?: (text: string) => void;
 }) {
   const effectivePermissions = permissions ?? item.sharedIn?.permissions ?? null;
   const shared = effectivePermissions !== null;
@@ -252,6 +332,15 @@ export function DetailsDrawer({
           </div>
           <span className="text-xs text-text-main">{KIND_LABEL[item.type]}</span>
         </div>
+
+        {onSaveDescription && (
+          <DescriptionSection
+            key={item.id}
+            value={(item.resourceInfo as ResourceInfo | undefined)?.description ?? ""}
+            canEdit={allowEdit}
+            onSave={onSaveDescription}
+          />
+        )}
 
         <div className="flex flex-col gap-2.5">
           <InfoRow label="Kind">
