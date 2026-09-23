@@ -19,14 +19,6 @@ export interface FolderCreationInfo {
   // now (ResourceInfo's index signature still accepts them, nothing breaks parsing).
 }
 
-// Presence (true) means "in trash". No metadata beyond that: restoring always goes
-// through an explicit destination picker now rather than auto-returning to
-// trashed_from, and modifiedAt already captures when a trashed item was last
-// touched (i.e. when it was trashed) — so there's nothing else worth stamping here.
-// Older resources created before this change may still carry an object with
-// trashed_from/trashed_at/etc.; any truthy value here still reads as "trashed".
-export type TrashInfo = boolean;
-
 // Per-item UI preferences (Drive-style): folder colour, folder icon. Server-backed
 // so they follow the user across devices. Starred is NOT here — see
 // atoms/userSettings.ts's starredIdsAtom: starring is personal, per-user state, so
@@ -36,9 +28,11 @@ export interface ResourceUiInfo {
   icon?: string; // key from the frontend's fixed folder-icon set
 }
 
+// Nothing here marks an item as trashed: the Trash is an ordinary folder, so being
+// in it is purely a matter of location. Older resources may still carry a legacy
+// trash_info key — it's ignored, the index signature just lets it parse.
 export interface ResourceInfo {
   creation_info?: FolderCreationInfo;
-  trash_info?: TrashInfo | null;
   ui?: ResourceUiInfo;
   // Free-text note on the resource itself, so it's visible to everyone the folder
   // is shared with (unlike starring, which is per-user private_info).

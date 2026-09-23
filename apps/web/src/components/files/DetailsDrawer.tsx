@@ -291,7 +291,6 @@ export function DetailsDrawer({
   };
 
   const creatorName = item.createdBy || (item.resourceInfo as { creation_info?: { user_name?: string } } | undefined)?.creation_info?.user_name;
-  const trashInfo = (item.resourceInfo as { trash_info?: { trashed_by_name?: string; trashed_at?: string; trashed_from_name?: string } } | undefined)?.trash_info;
 
   return (
     <aside
@@ -393,13 +392,6 @@ export function DetailsDrawer({
 
           {item.isStarred && <InfoRow label="Starred">Yes</InfoRow>}
           {item.isDeleted && <InfoRow label="Status">In Trash</InfoRow>}
-          {trashInfo && (
-            <>
-              {trashInfo.trashed_by_name && <InfoRow label="Trashed by">{trashInfo.trashed_by_name}</InfoRow>}
-              {trashInfo.trashed_at && <InfoRow label="Trashed on">{formatDate(trashInfo.trashed_at)}</InfoRow>}
-              {trashInfo.trashed_from_name && <InfoRow label="Trashed from">{trashInfo.trashed_from_name}</InfoRow>}
-            </>
-          )}
           {item.isFolder && item.color && (
             <div className="flex justify-between gap-3 text-xs leading-normal">
               <span className="text-text-main font-semibold">Colour</span>
