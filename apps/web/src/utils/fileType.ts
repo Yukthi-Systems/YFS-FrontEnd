@@ -18,20 +18,27 @@ export const sanitizeName = (name: string): string => {
   return name.replace(/[\/\\]/g, "").replace(/\.\.+/g, "").trim();
 };
 
-// Office-suite formats Collabora opens (the extension list is taken from the live
-// discovery.xml, minus images/PDF/plain-text formats that have dedicated npm viewers
-// below). Everything here is rendered by Collabora — never by a client-side parser.
+// Every format Collabora's own live discovery.xml lists (2026-09-22 dump), EXCEPT the
+// raster/vector image formats it also technically opens (bmp, gif, jpg/jpeg, png, svg,
+// tiff, wmf, emf) — those go through its Draw app, which is a strange way to view a
+// photo compared to the purpose-built ImageLightbox below, so they're deliberately kept
+// out. Everything else Collabora supports opens in Collabora — nothing here gets a
+// client-side parser instead. (pdf/txt/md/csv/tsv used to be excluded in favour of
+// react-pdf/CodeEditor/SheetJS; per 2026-09-23 request, all of them now go to Collabora
+// too, same as everything else on this list.)
 export const COLLABORA_EXTENSIONS = new Set([
   // text documents
   "doc", "docx", "docm", "dot", "dotx", "dotm", "odt", "ott", "odm", "fodt", "rtf",
   "sxw", "stw", "wps", "wpd", "wri", "abw", "fb2", "pages", "hwp", "602", "cwk", "lrf", "mw", "pdb", "sxg",
   // spreadsheets
   "xls", "xlsx", "xlsm", "xlsb", "xlt", "xltx", "xltm", "xla", "xlr", "ods", "ots", "fods", "sxc", "stc",
-  "numbers", "gnumeric", "dif", "dbf", "slk", "wk1", "wks", "wb1", "wq1", "wq2", "qpw", "123",
+  "numbers", "gnumeric", "dif", "dbf", "slk", "wk1", "wks", "wb1", "wq1", "wq2", "qpw", "123", "csv", "tsv",
   // presentations
   "ppt", "pptx", "pptm", "pot", "potx", "potm", "pps", "ppsx", "odp", "otp", "fodp", "sxi", "sti", "sxd", "std", "key",
   // drawings / publisher / diagrams
   "odg", "otg", "fodg", "sxm", "odf", "oth", "otm", "wpg", "cdr", "cgm", "fh", "pub", "vsd", "vsdx", "vss", "p65", "dxf",
+  // plain text / PDF
+  "pdf", "txt", "md",
 ]);
 
 const SPREADSHEET_EXTENSIONS = new Set([
@@ -64,6 +71,11 @@ export const getCollaboraAccentColor = (extension: string | undefined): string =
 };
 
 // Plain-text formats previewed in the CodeMirror viewer without a language grammar.
+// txt/md are also in COLLABORA_EXTENSIONS now — isCollaboraSupported (checked before
+// isTextEditable in ViewerModal's renderContent) wins for server/shared items with a
+// real WOPI file behind them; CodeEditor only still handles them for local-only items
+// (nothing for Collabora to point at) and the rest of this set, which Collabora doesn't
+// support at all.
 const PLAIN_TEXT_EXTENSIONS = new Set(["txt", "text", "log", "md", "markdown", "rst", "ini", "conf", "env", "gitignore"]);
 
 // Source/config/data formats previewed in CodeMirror with syntax highlighting

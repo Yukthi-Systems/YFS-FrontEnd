@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { isItemFailed, isItemProcessing } from "../../utils/format";
-import { isTextEditable, isCollaboraSupported, getCollaboraAccentColor } from "../../utils/fileType";
+import { isTextEditable, isCollaboraSupported } from "../../utils/fileType";
 import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
 import type { CollaboraViewerHandle } from "./CollaboraViewer";
@@ -70,10 +70,6 @@ export function ViewerModal({
   // iframe's hidden form from up here, and know when there's actually a session to submit.
   const collaboraRef = useRef<CollaboraViewerHandle>(null);
   const [collaboraReady, setCollaboraReady] = useState(false);
-  // True once Collabora's own ribbon has actually rendered (not just once a session
-  // exists) — the toolbar strip only takes the document-type accent colour then, so it
-  // doesn't show that colour over a bare "Opening in Collabora…" loading screen.
-  const [collaboraFrameReady, setCollaboraFrameReady] = useState(false);
 
   const viewable = siblings.filter((f) => !f.isFolder);
   const index = viewable.findIndex((f) => f.id === item.id);
@@ -93,7 +89,6 @@ export function ViewerModal({
 
   useEffect(() => {
     setCollaboraReady(false);
-    setCollaboraFrameReady(false);
   }, [item.id]);
 
   // PDFs/office docs are already near-fullscreen, and video/audio have their own player
@@ -151,9 +146,9 @@ export function ViewerModal({
         } else {
           handleClose();
         }
-      } else if (!isMinimized && e.key === "ArrowLeft" && prevItem) {
+      } else if (!isMinimized && !isCollabora && e.key === "ArrowLeft" && prevItem) {
         navigateTo(prevItem);
-      } else if (!isMinimized && e.key === "ArrowRight" && nextItem) {
+      } else if (!isMinimized && !isCollabora && e.key === "ArrowRight" && nextItem) {
         navigateTo(nextItem);
       }
     };
@@ -202,7 +197,7 @@ export function ViewerModal({
             item={item}
             canEdit={canEdit}
             onReadyChange={setCollaboraReady}
-            onFrameReadyChange={setCollaboraFrameReady}
+            onNativeClose={handleClose}
           />
         </Suspense>
       );
@@ -350,69 +345,27 @@ export function ViewerModal({
     >
       {collaboraLayout ? (
         <>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (prevItem) navigateTo(prevItem);
-            }}
-            disabled={!prevItem}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 border-none bg-white/10 hover:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition backdrop-blur-sm"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div className="absolute inset-4 flex flex-col overflow-hidden rounded-2xl shadow-lg bg-bg-main">
-            {/* A real docked strip, not a floating overlay — coloured to match Collabora's
-                own ribbon for this document type (see getCollaboraAccentColor) so it reads
-                as one continuous native bar instead of a disconnected dark pill group. No
-                filename here: Collabora's ribbon already shows it directly below.
-                Stays neutral until collaboraFrameReady — before that, there's no ribbon
-                behind it yet (just "Opening in Collabora…"), so the accent colour would be
-                floating over nothing. */}
-            <div
-              className="flex items-center justify-end gap-1 px-2 py-1.5 shrink-0 transition-colors duration-300"
-              style={{ backgroundColor: collaboraFrameReady ? getCollaboraAccentColor(item.extension) : "#171717" }}
-              onClick={(e) => e.stopPropagation()}
-            >
+          {/* No prev/next here (unlike every other viewer type) — Collabora is a full
+              editing session, not a quick flip-through preview; switching files should
+              be a deliberate close-and-reopen, not an arrow key away mid-edit. inset-0
+              (not inset-4) — Collabora gets the entire viewport, no margin. */}
+          <div className="absolute inset-0 flex flex-col overflow-hidden bg-bg-main">
+            {/* No header bar at all now — Collabora's own ribbon (with its native close
+                button, closebutton=1, wired to onNativeClose above) is the only chrome.
+                Just a floating "Open in new tab" pill in the corner, since that's the one
+                thing Collabora itself has no equivalent for. */}
+            <div className="relative flex-1 min-h-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {renderContent()}
               <button
                 onClick={() => collaboraRef.current?.openInNewTab()}
                 disabled={!collaboraReady}
                 title={collaboraReady ? "Open in a new tab (use this if the editor stays blank)" : "Waiting for the editor session…"}
-                className="border-none bg-transparent hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed p-1.5 rounded-full text-white cursor-pointer flex items-center justify-center transition"
+                className="absolute bottom-4 right-4 z-20 border-none bg-black/40 hover:bg-black/60 disabled:opacity-40 disabled:cursor-not-allowed backdrop-blur-sm p-2.5 rounded-full text-white cursor-pointer flex items-center justify-center transition shadow-lg"
               >
                 <ExternalLink className="w-4 h-4" />
               </button>
-              {!item.isFolder && (
-                <button
-                  onClick={() => onDownload(item)}
-                  disabled={isItemProcessing(item) || isItemFailed(item)}
-                  title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : "Download"}
-                  className="border-none bg-transparent hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed p-1.5 rounded-full text-white cursor-pointer flex items-center justify-center transition"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-              )}
-              <button
-                onClick={handleClose}
-                className="border-none bg-transparent hover:bg-white/20 p-1.5 rounded-full text-white cursor-pointer flex items-center justify-center transition"
-                title="Close (Esc)"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="relative flex-1 min-h-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {renderContent()}
             </div>
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (nextItem) navigateTo(nextItem);
-            }}
-            disabled={!nextItem}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 border-none bg-white/10 hover:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed p-2 rounded-full text-white cursor-pointer flex items-center justify-center transition backdrop-blur-sm"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
         </>
       ) : (
         <>
