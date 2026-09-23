@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Star } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Star, Link2 } from "lucide-react";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
@@ -60,6 +60,7 @@ export function FileListTable({
   onItemContextMenu,
   renderContextMenu,
   onShare,
+  onCopyLink,
   onToggleStar,
   onDragStartItem,
   onDragOverFolder,
@@ -82,6 +83,7 @@ export function FileListTable({
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
   onShare?: (item: FileItem) => void;
+  onCopyLink?: (item: FileItem) => void;
   onToggleStar?: (id: string) => void;
   onDragStartItem: (item: FileItem, e: React.DragEvent) => void;
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
@@ -213,6 +215,18 @@ export function FileListTable({
                         className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
                       >
                         <UserPlus className="w-4 h-4" />
+                      </button>
+                    )}
+                    {onCopyLink && !item.isDeleted && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCopyLink(item);
+                        }}
+                        title="Copy link"
+                        className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
+                      >
+                        <Link2 className="w-4 h-4" />
                       </button>
                     )}
                     <button

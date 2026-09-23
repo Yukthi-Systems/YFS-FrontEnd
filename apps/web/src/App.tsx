@@ -11,6 +11,7 @@ import "./App.css";
 import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
+import { buildAppRoute } from "./utils/appRoute";
 import { getStorageQuota, GB } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
@@ -351,6 +352,18 @@ function App() {
     search.setSearchQuery("");
   }
 
+  // A link to the item as the *recipient* sees it — it lands in their "Shared with you"
+  // tab. Grants no access on its own: whoever opens it still needs an existing share.
+  async function handleCopyShareLink(item: FileItem) {
+    const url = `${window.location.origin}${buildAppRoute("shared", [item.id])}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Link copied — only people you've shared this with can open it", "success");
+    } catch {
+      showToast("Couldn't copy the link to your clipboard", "error");
+    }
+  }
+
   function handleItemDoubleClick(item: FileItem) {
     // In "Shared by you", double-clicking navigates into the folder (in My Drive) or previews the file,
     // matching standard file manager behavior. Sharing remains accessible via context menu and details drawer.
@@ -438,6 +451,7 @@ function App() {
       onCopy={() => fileActions.openCopyModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
       onShare={() => shareSettings.openShareModal(item)}
+      onCopyLink={isSharedOutTab ? () => handleCopyShareLink(item) : undefined}
       onSetColor={(color) => setFolderStyle(item.id, { color })}
       onSetIcon={(icon) => setFolderStyle(item.id, { icon })}
       onTrash={() => fileActions.requestTrash([item.id])}
@@ -589,6 +603,7 @@ function App() {
                       onItemContextMenu={menus.openItemContextMenu}
                       renderContextMenu={renderItemContextMenu}
                       onShare={shareSettings.openShareModal}
+                      onCopyLink={isSharedOutTab ? handleCopyShareLink : undefined}
                       onToggleStar={fileActions.handleToggleStar}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
