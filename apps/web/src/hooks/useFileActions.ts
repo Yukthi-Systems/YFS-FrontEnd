@@ -119,6 +119,7 @@ export function useFileActions({
       showToast(`Skipping ${ids.length - unlockedIds.length} locked item(s)`, "error");
     }
 
+    closeContextMenu();
     setPendingConfirm({
       title: "Move to Trash",
       description: `Are you sure you want to move ${unlockedIds.length > 1 ? `${unlockedIds.length} items` : "this item"} to the Trash? You can restore ${
@@ -149,6 +150,7 @@ export function useFileActions({
     const removable = targets.map((f) => f.id);
     if (removable.length === 0) return;
 
+    closeContextMenu();
     setPendingConfirm({
       title: "Delete Permanently",
       description: `This will permanently delete ${removable.length > 1 ? `${removable.length} items` : "this item"}. This action cannot be undone.`,
@@ -175,6 +177,7 @@ export function useFileActions({
   // file_version <= 1 or for the file's last remaining version, and conceptually
   // "delete the only version" just *is* "delete the file".
   const requestDeleteVersion = (item: FileItem, version: number, isOnlyVersion: boolean) => {
+    closeContextMenu();
     setPendingConfirm({
       title: isOnlyVersion ? "Delete File" : "Delete Version",
       description: isOnlyVersion
