@@ -1134,6 +1134,61 @@ export const renameItem = (id: string, newName: string) => {
   }
 };
 
+// Free-text description, stored on the resource's own info blob. Both edit
+// endpoints replace *_info wholesale, so the existing blob is merged rather than
+// overwritten. Empty string clears the key instead of storing "".
+export const setItemDescription = (id: string, description: string) => {
+  const files = store.get(filesAtom);
+  const target = files.find((f) => f.id === id);
+  if (!target || isItemLocked(target)) return;
+
+  const trimmed = description.trim();
+  const info = { ...((target.resourceInfo ?? {}) as ResourceInfo) };
+  if (trimmed) info.description = trimmed;
+  else delete info.description;
+
+  persist(files.map((f) => (f.id === id ? { ...f, resourceInfo: info, modifiedAt: nowIso() } : f)));
+
+  const tk = authSnapshot.token;
+  if (!tk) return;
+  const shared = sharedWrite(id);
+  if (shared && !shared.perms.can_update) return; // no edit permission — optimistic only
+
+  if (target.isFolder && (target.origin === "server" || target.origin === "shared")) {
+    runMutation(
+      () =>
+        withFreshToken((t) =>
+          apiEditFolder(t, {
+            folderId: id,
+            folderName: target.name,
+            folderInfo: info,
+            sharedFolderId: shared?.sharedFolderId ?? null,
+          })
+        ),
+      { id },
+      notifySyncFailed("Folder description did not sync to API", "Couldn't save the description")
+    );
+  } else if (!target.isFolder && target.origin === "server" && target.fileId) {
+    runMutation(
+      () =>
+        withFreshToken((t) =>
+          apiUpdateFileInfo(t, {
+            folder_id: target.parentId!,
+            file_id: target.fileId!,
+            shared_folder_id: shared?.sharedFolderId ?? null,
+            file_name: target.name,
+            file_info: info,
+            file_type: fileTypeGuess(target),
+            file_version: target.version ?? 1,
+            expected_file_size: target.size,
+          })
+        ),
+      { id },
+      notifySyncFailed("File description did not sync to API", "Couldn't save the description")
+    );
+  }
+};
+
 // Merge a UI patch (color / icon) into an item's resource_info.
 const mergeUi = (f: FileItem, patch: Partial<ResourceUiInfo>): Record<string, unknown> => {
   const info = (f.resourceInfo ?? {}) as ResourceInfo;

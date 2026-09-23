@@ -40,6 +40,9 @@ export interface ResourceInfo {
   creation_info?: FolderCreationInfo;
   trash_info?: TrashInfo | null;
   ui?: ResourceUiInfo;
+  // Free-text note on the resource itself, so it's visible to everyone the folder
+  // is shared with (unlike starring, which is per-user private_info).
+  description?: string;
   [key: string]: unknown;
 }
 
