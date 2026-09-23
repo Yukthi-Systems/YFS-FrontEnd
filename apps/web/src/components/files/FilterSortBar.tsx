@@ -1,4 +1,4 @@
-import { Check, Download, RefreshCw, RotateCcw, Star, Trash2, XCircle, X } from "lucide-react";
+import { Check, Download, RefreshCw, RotateCcw, Trash2, XCircle, X } from "lucide-react";
 import { SORT_FIELD_OPTIONS } from "../../types/file";
 import type { SidebarTab, SortField, SortOrder, ViewMode } from "../../types/file";
 import { Dropdown } from "../common/Dropdown";
@@ -17,7 +17,6 @@ export function FilterSortBar({
   onRefresh,
   refreshing,
   onClearSelection,
-  onBatchStar,
   onBatchTrash,
   onBatchRestore,
   onBatchPermanentDelete,
@@ -37,7 +36,6 @@ export function FilterSortBar({
   onRefresh: () => void;
   refreshing: boolean;
   onClearSelection: () => void;
-  onBatchStar: () => void;
   onBatchTrash: () => void;
   onBatchRestore: () => void;
   onBatchPermanentDelete: () => void;
@@ -98,15 +96,6 @@ export function FilterSortBar({
               >
                 <Download className="w-3.5 h-3.5 text-accent" />
                 <span>Download</span>
-              </button>
-              <button
-                type="button"
-                onClick={onBatchStar}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-amber-400 hover:bg-amber-400/10 rounded-full transition cursor-pointer border-none bg-transparent"
-                title="Star selected"
-              >
-                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-                <span>Star</span>
               </button>
               <button
                 type="button"

@@ -59,9 +59,7 @@ export function useFileNavigation() {
 
   const getBreadcrumbSegments = (files: FileItem[]): BreadcrumbSegment[] => {
     const rootName =
-      activeSidebarTab === "starred"
-        ? "Starred"
-        : activeSidebarTab === "trash"
+      activeSidebarTab === "trash"
         ? "Trash"
         : activeSidebarTab === "shared"
         ? "Shared with you"

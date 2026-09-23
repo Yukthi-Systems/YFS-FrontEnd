@@ -35,7 +35,6 @@ import { isItemLocked } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
-import { starredIdsAtom, setStoredStarredIds } from "../atoms/userSettings";
 import {
   filesAtom,
   isLoadingAtom,
@@ -183,9 +182,6 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
     owner: { name: "me", email: ownerEmailForRow },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    // Starred is personal, per-user state — resolved from the user's own
-    // private_info (starredIdsAtom), not from this shared resource's own data.
-    isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
     createdBy: creatorName,
@@ -225,7 +221,6 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
     owner: { name: "Shared", email: "" },
     modifiedAt: r.updated_at,
     createdAt: r.created_at,
-    isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
     isDeleted: false,
@@ -327,7 +322,6 @@ const mergeServerListing = (
 
     return {
       ...res,
-      isStarred: f.isStarred || res.isStarred || store.get(starredIdsAtom).includes(f.id),
       // Comes from the listing context (inTrash), so the fresh row is always right.
       isDeleted: res.isDeleted,
       share: f.share,
@@ -352,14 +346,14 @@ const mergeServerListing = (
   //      them and fetchFolderPage won't list their children, so a kept row is a
   //      permanent phantom. A just-created one (within the grace window) is spared
   //      in case its create call is still in flight.
-  //    Rows carrying client-only state worth keeping (starred / shared) are never
-  //    dropped, nor is one with a move/trash/restore still in flight —
+  //    Rows carrying client-only state worth keeping (shared) are never dropped,
+  //    nor is one with a move/trash/restore still in flight —
   //    a fresh listing that raced ahead of that mutation is not evidence the row
   //    is really gone.
   return merged.filter((f) => {
     if (f.parentId !== parentId) return true;
     if (incomingIds.has(f.id)) return true;
-    if (f.isStarred || f.share || pendingSyncIds.has(f.id)) return true;
+    if (f.share || pendingSyncIds.has(f.id)) return true;
     if (f.origin === "server") return false;
     // Optimistic folders from createFolder / ensureFolderPath carry a "folder-" id
     // (copied or offline-authored items use other schemes and stay put).
@@ -901,7 +895,6 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
     owner: { name: "me", email: ownerEmail },
     modifiedAt: nowIso(),
     createdAt: nowIso(),
-    isStarred: false,
     isDeleted: false,
     type: "folder",
     resourceInfo: creationInfo,
@@ -1033,7 +1026,6 @@ export const addFile = (input: AddFileInput): FileItem => {
     owner: { name: "me", email: ownerEmail },
     modifiedAt: nowIso(),
     createdAt: nowIso(),
-    isStarred: false,
     isDeleted: false,
     type: input.type,
     extension: input.extension,
@@ -1052,7 +1044,6 @@ export const addFile = (input: AddFileInput): FileItem => {
     // instead of dropping it; otherwise it's a plain replace.
     const existing = prev.find((f) => !f.isFolder && f.parentId === newItem.parentId && f.name === safeName);
     if (existing) {
-      newItem.isStarred = existing.isStarred;
       newItem.isDeleted = existing.isDeleted;
       newItem.share = existing.share;
       if (input.version && input.version > 1 && existing.storageKey) {
@@ -1219,35 +1210,6 @@ const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
     notifySyncFailed("Folder appearance did not sync to API", "Couldn't save that change")
   );
 };
-
-// Starring is personal, per-user state — kept in the user's own private_info
-// (starredIdsAtom), never on the resource itself, so starring something you don't
-// own or that's shared with others only stars it for you. UserSettingsBridge
-// watches this atom and debounce-saves it the same way it does theme/viewMode;
-// the FileItem patch here just keeps the currently-listed items' isStarred flag in
-// sync immediately (see also the store.sub below, for items listed after the fact).
-export const toggleStar = (id: string) => {
-  const current = store.get(starredIdsAtom);
-  const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
-  store.set(starredIdsAtom, next);
-};
-
-export const starItems = (ids: string[]) => {
-  const current = store.get(starredIdsAtom);
-  store.set(starredIdsAtom, Array.from(new Set([...current, ...ids])));
-};
-
-// Keeps every already-listed item's isStarred flag in sync whenever starredIdsAtom
-// changes — covers both toggleStar/starItems above and UserSettingsBridge's
-// initial load-from-server (which can resolve after some folders were already
-// mapped with isStarred defaulted to false).
-store.sub(starredIdsAtom, () => {
-  const ids = store.get(starredIdsAtom);
-  setStoredStarredIds(ids);
-  const current = store.get(filesAtom);
-  const next = current.map((f) => (f.isStarred === ids.includes(f.id) ? f : { ...f, isStarred: ids.includes(f.id) }));
-  if (next.some((f, i) => f !== current[i])) persist(next);
-});
 
 // Folder colour / icon. Pass null to clear either.
 export const setFolderStyle = (id: string, style: { color?: string | null; icon?: string | null }) => {

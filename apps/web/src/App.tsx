@@ -5,7 +5,7 @@ import { useToast } from "./atoms/toast";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { useUserSettings } from "./hooks/useUserSettings";
 import { UserSettingsBridge } from "./components/UserSettingsBridge";
-import { Star, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
@@ -76,8 +76,6 @@ function App() {
     revokeSharedLink,
     createFolder,
     renameItem,
-    toggleStar,
-    starItems,
     setFolderStyle,
     setItemDescription,
     trashItems,
@@ -154,7 +152,7 @@ function App() {
         setRestoringSharedRoute(false);
       })();
     } else if (ancestorIds.length > 0) {
-      // Best-effort breadcrumb hydration for a deep-linked drive/starred/etc path —
+      // Best-effort breadcrumb hydration for a deep-linked drive/trash/etc path —
       // the leaf's own content loads via the effect below regardless.
       (async () => {
         for (const id of ancestorIds) await loadFolder(id);
@@ -301,8 +299,6 @@ function App() {
     fileSystem: {
       createFolder,
       renameItem,
-      toggleStar,
-      starItems,
       trashItems,
       restoreItems,
       permanentDeleteItems,
@@ -448,7 +444,6 @@ function App() {
       permissions={getSharedPermissions(item.id)}
       onOpen={() => handleItemDoubleClick(item)}
       onDownload={() => fileActions.handleDownload(item)}
-      onToggleStar={() => fileActions.handleToggleStar(item.id)}
       onRename={() => fileActions.openRenameModal(item)}
       onMove={() => fileActions.openMoveModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onCopy={() => fileActions.openCopyModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
@@ -558,7 +553,6 @@ function App() {
                     onRefresh={handleRefresh}
                     refreshing={refreshing}
                     onClearSelection={() => selection.setCheckedItemIds([])}
-                    onBatchStar={() => fileActions.handleBatchStar(selection.checkedItemIds)}
                     onBatchTrash={() => fileActions.requestTrash(selection.checkedItemIds)}
                     onBatchRestore={() => fileActions.handleRestore(selection.checkedItemIds)}
                     onBatchPermanentDelete={() => fileActions.requestPermanentDelete(selection.checkedItemIds)}
@@ -568,13 +562,7 @@ function App() {
                   {isFolderLoading ? (
                     viewSkeleton
                   ) : listItems.length === 0 ? (
-                    nav.activeSidebarTab === "starred" ? (
-                      <EmptyState
-                        icon={<Star className="w-14 h-14 mb-4 text-amber-400 opacity-60 fill-amber-400/20" />}
-                        title="No Starred Items"
-                        description="Star important files and folders from the menu to find them quickly here."
-                      />
-                    ) : nav.activeSidebarTab === "trash" && !nav.currentFolderId ? (
+                    nav.activeSidebarTab === "trash" && !nav.currentFolderId ? (
                       <EmptyState
                         icon={<Trash2 className="w-14 h-14 mb-4 opacity-50 text-neutral-400" />}
                         title="Trash is Empty"
@@ -602,7 +590,6 @@ function App() {
                       renderContextMenu={renderItemContextMenu}
                       onShare={shareSettings.openShareModal}
                       onCopyLink={isSharedOutTab ? handleCopyShareLink : undefined}
-                      onToggleStar={fileActions.handleToggleStar}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
@@ -676,7 +663,6 @@ function App() {
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
             onDownload={() => fileActions.handleDownload(selectedItem)}
-            onToggleStar={() => fileActions.handleToggleStar(selectedItem.id)}
             onRename={() => fileActions.openRenameModal(selectedItem)}
             onMove={() => fileActions.openMoveModal([selectedItem.id])}
             onCopy={() => fileActions.openCopyModal([selectedItem.id])}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FolderOpen, Star, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
+import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, CopyPlus, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
@@ -9,7 +9,6 @@ export function ItemContextMenu({
   permissions = null,
   onOpen,
   onDownload,
-  onToggleStar,
   onRename,
   onMove,
   onCopy,
@@ -30,7 +29,6 @@ export function ItemContextMenu({
   // Folders only — opens the folder (same as double-click).
   onOpen?: () => void;
   onDownload: () => void;
-  onToggleStar: () => void;
   onRename: () => void;
   onMove: () => void;
   onCopy: () => void;
@@ -90,12 +88,6 @@ export function ItemContextMenu({
           className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-        </button>
-      )}
-      {allowEdit && (
-        <button onClick={onToggleStar} className={itemClass}>
-          <Star className={`w-3.5 h-3.5 ${item.isStarred ? "text-yellow-400 fill-yellow-400" : ""}`} />{" "}
-          {item.isStarred ? "Unstar" : "Star"}
         </button>
       )}
       {allowEdit && (
