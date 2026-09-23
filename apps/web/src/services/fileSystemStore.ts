@@ -171,7 +171,6 @@ const collectDescendantIds = (files: FileItem[], rootId: string): string[] => {
 // Map a raw API resource (folder or file) into the app's FileItem shape.
 const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
-  const trash = info?.trash_info ?? null;
   const ui = info?.ui;
 
   const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
@@ -191,8 +190,9 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
     icon: ui?.icon,
     createdBy: creatorName,
     isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
-    // trash_info in resource_info is the source of truth for "is trashed".
-    isDeleted: !!trash,
+    // Location is the only thing that makes something trashed; a listing under the
+    // Trash folder is flagged by fetchFolderPage's inTrash check, not from here.
+    isDeleted: false,
     resourceInfo: info,
     origin: "server" as const,
   };
@@ -213,7 +213,6 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
   const isFolder = r.is_resource_folder !== false;
   const { type, extension } = isFolder ? { type: "folder" as const, extension: undefined } : categorizeByName(r.resource_name);
-  const trash = info?.trash_info ?? null;
   const ui = info?.ui;
   const creatorName = (info?.creation_info as { user_name?: string } | undefined)?.user_name;
 
@@ -229,7 +228,7 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
     isStarred: store.get(starredIdsAtom).includes(r.resource_id),
     color: ui?.color,
     icon: ui?.icon,
-    isDeleted: !!trash,
+    isDeleted: false,
     type,
     extension: extension || undefined,
     fileId: isFolder ? undefined : r.resource_id,
@@ -329,7 +328,8 @@ const mergeServerListing = (
     return {
       ...res,
       isStarred: f.isStarred || res.isStarred || store.get(starredIdsAtom).includes(f.id),
-      isDeleted: f.isFolder ? f.isDeleted || res.isDeleted : res.isDeleted,
+      // Comes from the listing context (inTrash), so the fresh row is always right.
+      isDeleted: res.isDeleted,
       share: f.share,
       versions: f.versions,
       blobUrl: f.blobUrl,
@@ -352,14 +352,14 @@ const mergeServerListing = (
   //      them and fetchFolderPage won't list their children, so a kept row is a
   //      permanent phantom. A just-created one (within the grace window) is spared
   //      in case its create call is still in flight.
-  //    Rows carrying client-only state worth keeping (starred / trashed / shared)
-  //    are never dropped, nor is one with a move/trash/restore still in flight —
+  //    Rows carrying client-only state worth keeping (starred / shared) are never
+  //    dropped, nor is one with a move/trash/restore still in flight —
   //    a fresh listing that raced ahead of that mutation is not evidence the row
   //    is really gone.
   return merged.filter((f) => {
     if (f.parentId !== parentId) return true;
     if (incomingIds.has(f.id)) return true;
-    if (f.isStarred || f.isDeleted || f.share || pendingSyncIds.has(f.id)) return true;
+    if (f.isStarred || f.share || pendingSyncIds.has(f.id)) return true;
     if (f.origin === "server") return false;
     // Optimistic folders from createFolder / ensureFolderPath carry a "folder-" id
     // (copied or offline-authored items use other schemes and stay put).
@@ -1270,143 +1270,20 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
   patchFolderUi(id, patch);
 };
 
-// Trashing = mark resource_info.trash_info true AND move the item into the Trash
-// folder. For server folders/files both are real API calls (PATCH /folders/edit or
-// /files/update, then PUT /folders/move or /files/move); the client mirrors them
-// optimistically. Files need the full FileOpsRequest shape (see
-// renameItem/moveItems) rather than just {file_id, file_name, file_info}.
+// Trash is just a folder: trashing moves the item into it, restoring moves it back
+// out to a destination the caller picked (see MoveCopyModal's "restore" mode).
+// Nothing is stamped on the resource — whether something is in the Trash is decided
+// by where it lives, which moveItems already maintains.
 export const trashItems = (ids: string[]) => {
   const trashId = store.get(trashFolderIdAtom);
-  const files = store.get(filesAtom);
-  const unlockedIds = ids.filter((id) => {
-    const item = files.find((f) => f.id === id);
-    return !isItemLocked(item);
-  });
-  if (unlockedIds.length === 0) return;
-  const targets = new Set(unlockedIds);
-  const descendantIds = new Set(unlockedIds.flatMap((id) => getDescendantIds(id)));
-  const roots = files.filter((f) => targets.has(f.id));
-
-  persist(
-    files.map((f) => {
-      if (targets.has(f.id)) {
-        return {
-          ...f,
-          isDeleted: true,
-          parentId: trashId ?? f.parentId,
-          resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: true },
-          modifiedAt: nowIso(),
-        };
-      }
-      if (descendantIds.has(f.id)) return { ...f, isDeleted: true };
-      return f;
-    })
-  );
-
-  if (authSnapshot.token) {
-    roots
-      .filter((f) => f.isFolder && f.origin === "server")
-      .forEach((f) => {
-        const folderInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: true };
-        runMutation(
-          () =>
-            trackPendingSync(
-              f.id,
-              withFreshToken(async (t) => {
-                await apiEditFolder(t, { folderId: f.id, folderName: f.name, folderInfo });
-                if (trashId) await apiMoveFolder(t, { folderId: f.id, newParentFolderId: trashId });
-              })
-            ),
-          { id: f.id },
-          notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
-        );
-      });
-
-    roots
-      .filter((f): f is FileItem & { fileId: string; parentId: string } => !f.isFolder && f.origin === "server" && !!f.fileId && !!f.parentId)
-      .forEach((f) => {
-        const fileInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: true };
-        const opsShape = {
-          folder_id: f.parentId,
-          file_id: f.fileId,
-          file_name: f.name,
-          file_info: fileInfo,
-          file_type: fileTypeGuess(f),
-          file_version: f.version ?? 1,
-          expected_file_size: f.size,
-        };
-        runMutation(
-          () =>
-            trackPendingSync(
-              f.id,
-              withFreshToken(async (t) => {
-                await apiUpdateFileInfo(t, opsShape);
-                if (trashId) await apiMoveFile(t, trashId, opsShape);
-              })
-            ),
-          { id: f.id },
-          notifySyncFailed("Trash did not sync to API", "Couldn't move that to Trash")
-        );
-      });
-  }
+  if (!trashId) return;
+  moveItems(ids, trashId);
 };
 
-// Restore no longer auto-returns an item to where it was trashed from — the caller
-// picks a destination the same way "Move to…" does (see MoveCopyModal's "restore"
-// mode), so this just clears the trash marker and hands off to moveItems for the
-// actual relocation (same blocked/unsupported bookkeeping, same API calls).
 export const restoreItems = (
   ids: string[],
   destinationId: string | null
-): { moved: number; blocked: number; unsupported: number } => {
-  const targets = new Set(ids);
-  const files = store.get(filesAtom);
-  const descendantIds = new Set(ids.flatMap((id) => getDescendantIds(id)));
-
-  persist(
-    files.map((f) => {
-      if (targets.has(f.id)) {
-        return { ...f, isDeleted: false, resourceInfo: { ...(f.resourceInfo ?? {}), trash_info: null } };
-      }
-      if (descendantIds.has(f.id)) return { ...f, isDeleted: false };
-      return f;
-    })
-  );
-
-  if (authSnapshot.token) {
-    targets.forEach((id) => {
-      const f = files.find((x) => x.id === id);
-      if (!f || f.origin !== "server") return;
-      const clearedInfo: ResourceInfo = { ...(f.resourceInfo ?? {}), trash_info: null };
-      if (f.isFolder) {
-        runMutation(
-          () => withFreshToken((t) => apiEditFolder(t, { folderId: id, folderName: f.name, folderInfo: clearedInfo })),
-          { id },
-          notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
-        );
-      } else if (f.fileId && f.parentId) {
-        runMutation(
-          () =>
-            withFreshToken((t) =>
-              apiUpdateFileInfo(t, {
-                folder_id: f.parentId!,
-                file_id: f.fileId!,
-                file_name: f.name,
-                file_info: clearedInfo,
-                file_type: fileTypeGuess(f),
-                file_version: f.version ?? 1,
-                expected_file_size: f.size,
-              })
-            ),
-          { id },
-          notifySyncFailed("Restore did not sync to API", "Couldn't restore that from Trash")
-        );
-      }
-    });
-  }
-
-  return moveItems(ids, destinationId);
-};
+): { moved: number; blocked: number; unsupported: number } => moveItems(ids, destinationId);
 
 // Permanent delete, unlike trash/restore/move above, is NOT optimistic — this is
 // irreversible, so an item only disappears once the server actually confirms it's
@@ -1563,6 +1440,12 @@ export const moveItems = (
   const files = store.get(filesAtom);
   const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
   const next = files.map((f) => f);
+  // "Trashed" is purely a matter of where something lives, so a move is the only
+  // thing that changes it — into the Trash subtree or back out of it.
+  const trashId = store.get(trashFolderIdAtom);
+  const intoTrash =
+    newParentId !== null && (newParentId === trashId || !!next.find((f) => f.id === newParentId)?.isDeleted);
+  const movedIds: string[] = [];
 
   for (const id of ids) {
     const item = next.find((f) => f.id === id);
@@ -1611,10 +1494,16 @@ export const moveItems = (
 
     item.parentId = newParentId;
     item.modifiedAt = nowIso();
+    item.isDeleted = intoTrash;
+    movedIds.push(id);
     moved++;
   }
 
-  if (moved > 0) persist(next);
+  if (moved > 0) {
+    const subtree = new Set(movedIds.flatMap((id) => getDescendantIds(id)));
+    for (const f of next) if (subtree.has(f.id)) f.isDeleted = intoTrash;
+    persist(next);
+  }
 
   const tk = authSnapshot.token;
   if (tk) {
