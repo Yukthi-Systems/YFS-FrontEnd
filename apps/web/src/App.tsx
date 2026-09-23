@@ -65,6 +65,7 @@ function App() {
     getPagination,
     getSharedPermissions,
     trashFolderId,
+    idRemap,
     sharedOut,
     sharedOutLoading,
     sharedOutLoaded,
@@ -160,6 +161,13 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
+
+  // A folder created a moment ago swaps its temp id for the server's UUID when the
+  // listing lands; if we're standing inside it, follow that swap.
+  useEffect(() => {
+    nav.replacePathIds(idRemap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idRemap]);
 
   // Pull the current folder's children from YFS-Main-API whenever navigation changes.
   useEffect(() => {
