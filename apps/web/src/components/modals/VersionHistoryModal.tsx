@@ -28,7 +28,10 @@ export function VersionHistoryModal({
   // Once loaded, no older versions means the current one is the file's only version —
   // there's nothing left to "version-delete" it down to, so deleting it means deleting
   // the file itself (the caller routes this to DELETE /files/delete/file instead of
-  // /delete/version, which the server rejects for a file's last/only version anyway).
+  // /delete/version). When older versions DO exist, deleting the current/latest one is
+  // just an ordinary version delete — the server has no "can't delete the latest" rule
+  // (only file_version <= 1 is rejected), it just becomes the next-highest remaining
+  // version once this one's gone.
   const isOnlyVersion = !loading && olderVersions.length === 0;
   return (
     <ModalShell onClose={onClose}>
@@ -45,11 +48,11 @@ export function VersionHistoryModal({
               {formatDate(item.modifiedAt)} · {formatBytes(item.size)}
             </div>
           </div>
-          {isOnlyVersion && canDelete && (
+          {!loading && canDelete && (
             <button
               onClick={() => onDeleteVersion(latestVersion)}
               className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 cursor-pointer transition"
-              title="Delete this file (it's the only version)"
+              title={isOnlyVersion ? "Delete this file (it's the only version)" : "Delete this version"}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>

@@ -1,4 +1,4 @@
-import { AlertCircle, Download, FolderInput, Pencil, X, Loader2 } from "lucide-react";
+import { AlertCircle, Download, FolderInput, Pencil, Trash2, X, Loader2 } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { CompactPreview, InfoRow, KIND_LABEL } from "../files/DetailsDrawer";
@@ -11,18 +11,22 @@ export function SharedDetailsPanel({
   item,
   canEdit,
   canMove,
+  canDelete,
   onClose,
   onOpenFolder,
   onRename,
   onMove,
+  onDelete,
 }: {
   item: FileItem;
   canEdit: boolean;
   canMove: boolean;
+  canDelete: boolean;
   onClose: () => void;
   onOpenFolder: () => void;
   onRename: () => void;
   onMove: () => void;
+  onDelete: () => void;
 }) {
   return (
     <aside
@@ -97,6 +101,14 @@ export function SharedDetailsPanel({
               className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <FolderInput className="w-3.5 h-3.5" /> Move…
+            </button>
+          )}
+          {item.isFolder && canDelete && (
+            <button
+              onClick={onDelete}
+              className="w-full py-2 bg-transparent border border-red-500/40 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
             </button>
           )}
           {!item.isFolder && (
