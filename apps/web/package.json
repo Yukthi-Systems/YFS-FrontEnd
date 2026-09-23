@@ -18,6 +18,7 @@
     "@uiw/react-codemirror": "^4.25.11",
     "@yfs/service": "*",
     "@yfs/utils": "*",
+    "axios": "^1.20.0",
     "jotai": "^3.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.25.0",

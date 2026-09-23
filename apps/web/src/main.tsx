@@ -9,12 +9,16 @@ import { AuthBridge } from './components/AuthBridge.tsx'
 import { FileSystemBridge } from './components/FileSystemBridge.tsx'
 import { SharedFileView } from './components/share/SharedFileView.tsx'
 import { ShareEndedView } from './components/share/ShareEndedView.tsx'
+import { CollaboraStandaloneView } from './components/viewers/CollaboraStandaloneView.tsx'
 
 // Shared-link view is a separate, unauthenticated tree — it deliberately skips
 // AuthBridge/FileSystemBridge since a link visitor isn't logged in.
 const path = window.location.pathname
 const isSharedRoute = path.startsWith('/share/')
 const isShareEnded = path === '/share-ended'
+// Also unauthenticated — see CollaboraStandaloneView, the WOPI access_token handed off
+// from the opening tab is this page's whole authorization.
+const isCollaboraStandalone = path === '/collabora'
 
 createRoot(document.getElementById('root')!).render(
   // <StrictMode>
@@ -23,6 +27,8 @@ createRoot(document.getElementById('root')!).render(
         <ThemeEffect />
         {isShareEnded ? (
           <ShareEndedView />
+        ) : isCollaboraStandalone ? (
+          <CollaboraStandaloneView />
         ) : isSharedRoute ? (
           <SharedFileView />
         ) : (
