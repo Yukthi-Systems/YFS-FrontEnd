@@ -514,11 +514,16 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     pageState.set(key, { loaded: offset + resources.length, hasMore });
     store.set(remoteErrorAtom, null);
 
-    const inTrash = parentId !== null && parentId === store.get(trashFolderIdAtom);
+    // Anything under the Trash folder is trashed, at any depth: either a direct child
+    // of Trash, or a descendant of a folder that's already flagged (matches what
+    // trashItems does locally for descendants).
+    const inTrash =
+      parentId !== null &&
+      (parentId === store.get(trashFolderIdAtom) ||
+        (store.get(filesAtom).find((f) => f.id === parentId)?.isDeleted ?? false));
     const mapped = resources.map((r) => {
       const item = mapResource(r, ownerEmail);
-      // Direct children of the Trash folder are, by definition, trashed — keep
-      // the flag true even for items trashed on another device.
+      // Keep the flag true even for items trashed on another device.
       if (inTrash) item.isDeleted = true;
       if (shared) {
         item.origin = "shared";

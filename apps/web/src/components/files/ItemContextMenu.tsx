@@ -58,9 +58,11 @@ export function ItemContextMenu({
   const allowEdit = !shared || effectivePermissions.can_update; // rename, colour/icon, star
   const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
   // Move to Trash is client-only (see fileSystemStore.ts trashItems) — deliberately not
-  // offered for shared items regardless of permission, unrelated to whether a real
-  // delete endpoint exists server-side (it does now, for both files and folders).
-  const allowDelete = !shared && !item.isDeleted;
+  // offered for shared items regardless of permission, since trash is scoped to the
+  // owner's own drive. Permanent delete hits a real backend endpoint though, so it's
+  // allowed for shared items when the share grants can_delete.
+  const allowTrash = !shared && !item.isDeleted;
+  const allowPermanentDelete = (!shared || effectivePermissions.can_delete) && !item.isDeleted;
   const allowShare = !shared; // can't re-share someone else's folder
 
   const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
@@ -72,7 +74,7 @@ export function ItemContextMenu({
           <Lock className="w-3 h-3 text-amber-500" /> File is locked
         </div>
       )}
-      {item.isFolder && !item.isDeleted && onOpen && (
+      {item.isFolder && onOpen && (
         <button onClick={onOpen} className={itemClass}>
           <FolderOpen className="w-3.5 h-3.5" /> Open
         </button>
@@ -209,8 +211,8 @@ export function ItemContextMenu({
           </button>
         </>
       ) : (
-        allowDelete && (
-          <>
+        <>
+          {allowTrash && (
             <button
               onClick={onTrash}
               disabled={locked}
@@ -219,10 +221,12 @@ export function ItemContextMenu({
             >
               <Trash2 className="w-3.5 h-3.5" /> Move to Trash
             </button>
-            {/* Skips Trash entirely — DELETE /files/delete/file or /folders/delete
-                straight away, same confirm dialog as the Trash-tab version above. A
-                different icon from "Move to Trash" so two destructive actions in a
-                row don't read as duplicates of each other. */}
+          )}
+          {allowPermanentDelete && (
+            // Skips Trash entirely — DELETE /files/delete/file or /folders/delete
+            // straight away, same confirm dialog as the Trash-tab version above. A
+            // different icon from "Move to Trash" so two destructive actions in a
+            // row don't read as duplicates of each other.
             <button
               onClick={onPermanentDelete}
               disabled={locked}
@@ -231,8 +235,8 @@ export function ItemContextMenu({
             >
               <XCircle className="w-3.5 h-3.5" /> Delete Permanently
             </button>
-          </>
-        )
+          )}
+        </>
       )}
     </div>
   );

@@ -32,8 +32,13 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
       result = result.filter((f) => f.isStarred && !f.isDeleted);
     }
   } else if (activeSidebarTab === "trash") {
-    // Top-level trashed items only (a trashed folder brings its subtree with it).
-    result = result.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
+    if (currentFolderId) {
+      // Browsing inside a trashed folder — show its children, same as any folder.
+      result = result.filter((f) => f.parentId === currentFolderId);
+    } else {
+      // Top-level trashed items only (a trashed folder brings its subtree with it).
+      result = result.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
+    }
   } else if (activeSidebarTab === "shared-out" || activeSidebarTab === "shared-links") {
     // Rendered from their own context state, not the file tree.
     result = [];
@@ -117,7 +122,12 @@ export function getSearchScope(
       result = files.filter((f) => f.isStarred && !f.isDeleted);
     }
   } else if (activeSidebarTab === "trash") {
-    result = files.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
+    if (currentFolderId) {
+      const ids = new Set(collectDescendantIds(files, currentFolderId));
+      result = files.filter((f) => ids.has(f.id));
+    } else {
+      result = files.filter((f) => f.isDeleted && (trashFolderId ? f.parentId === trashFolderId : true));
+    }
   } else {
     result = [];
   }
