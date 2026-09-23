@@ -294,6 +294,11 @@ function App() {
 
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
 
+  useEffect(() => {
+    selection.resetSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav.currentFolderId, nav.activeSidebarTab]);
+
   const marquee = useMarqueeSelection({
     container: scrollContainer,
     checkedItemIds: selection.checkedItemIds,
