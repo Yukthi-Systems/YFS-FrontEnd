@@ -4,6 +4,7 @@ import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserP
 import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
+import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
 
@@ -103,10 +104,11 @@ export function FileListTable({
         <thead>
           <tr onMouseDown={(e) => e.stopPropagation()}>
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={items.length > 0 && items.every((item) => checkedItemIds.includes(item.id))}
+                indeterminate={items.some((item) => checkedItemIds.includes(item.id))}
                 onChange={onSelectAllToggle}
+                ariaLabel="Select all"
               />
             </th>
             <SortableHeader label="Name" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
@@ -148,7 +150,11 @@ export function FileListTable({
                 }}
               >
                 <td className="px-3 py-2 border-b border-border-main text-center" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={isChecked} onChange={(e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)} />
+                  <Checkbox
+                    checked={isChecked}
+                    onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+                    ariaLabel={`Select ${item.name}`}
+                  />
                 </td>
                 <td className="px-3 py-2 border-b border-border-main">
                   <div className="flex items-center gap-2.5 text-[0.85rem] font-medium text-text-heading overflow-hidden whitespace-nowrap">
