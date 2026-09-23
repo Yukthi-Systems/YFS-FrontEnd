@@ -174,6 +174,21 @@ export const editPublicFolder = async (
   });
 };
 
+// PATCH /share/public/folders/delete/{folder_id} — permanently deletes a folder (and
+// everything under it) inside a shared-folder link. Requires the session's can_delete;
+// the server also rejects a folder outside the share and the share's own root folder.
+// Despite the name this is a PATCH, not a DELETE (routes/shares.rs) — no request body,
+// folder_id travels in the path. Purges recursively in the background, same as the
+// signed-in app's DELETE /folders/delete — this call just queues it (200 once queued,
+// not once finished).
+export const deletePublicFolder = async (publicSessionToken: string, folderId: string): Promise<void> => {
+  await apiRequest(`/share/public/folders/delete/${folderId}`, {
+    method: "PATCH",
+    parseJson: false,
+    headers: { [PUBLIC_HEADER]: publicSessionToken },
+  });
+};
+
 // PUT /share/public/folders/move — re-parent a folder inside a shared-folder link.
 // Both the folder and the new parent must be under the share. Requires can_create
 // AND can_update.

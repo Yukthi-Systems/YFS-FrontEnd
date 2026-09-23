@@ -3,12 +3,17 @@ import { FileWarning } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { useCollabora, type CollaboraEditorSession } from "../../hooks/useCollabora";
 import { COLLABORA_BASE_URL } from "../../services/collaboraClient";
+import { storeCollaboraHandoff } from "../../services/collaboraHandoff";
 
 // Exposed to ViewerModal so its header toolbar (next to Download) can trigger the
 // same "open in a new tab" POST this component used to render its own button for —
 // the button moved up into the shared header, this is what it now calls. Also lets
 // ViewerModal ask Collabora to flush a save before it tears the iframe down on close.
 export interface CollaboraViewerHandle {
+  // Opens /collabora?h=<handoff id> in a new tab — our own origin, Collabora loaded in
+  // an iframe on that page, not a direct top-level navigation to Collabora's own
+  // domain. See services/collaboraHandoff.ts for how the session crosses tabs without
+  // the access_token ever appearing in a URL.
   openInNewTab: () => void;
   // Posts WOPI's documented "Close_Session" message into the iframe, which tells
   // Collabora's own server component (coolwsd) to save (if there are unsaved edits)
@@ -48,21 +53,34 @@ export const CollaboraViewer = forwardRef<
     // hold off colouring the toolbar strip until Collabora's ribbon is behind it, so the
     // colour doesn't show against a bare "Opening in Collabora…" loading screen.
     onFrameReadyChange?: (ready: boolean) => void;
+    // Fires when Collabora's own native close button (buildCollaboraActionUrl's
+    // closebutton=1) is clicked — its UI_Close postMessage. The caller should treat this
+    // exactly like its own close button, not just unmount: Collabora's default reaction
+    // to a click (self-destroying its document, unsaved) is disabled as soon as the
+    // frame is ready specifically so this callback — not Collabora — decides how the
+    // close actually happens.
+    onNativeClose?: () => void;
   }
->(function CollaboraViewer({ item, canEdit, onReadyChange, onFrameReadyChange }, ref) {
+>(function CollaboraViewer({ item, canEdit, onReadyChange, onFrameReadyChange, onNativeClose }, ref) {
   const { getEditorSession } = useCollabora();
   const [session, setSession] = useState<CollaboraEditorSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [frameReady, setFrameReady] = useState(false);
   const [frameStalled, setFrameStalled] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const tabFormRef = useRef<HTMLFormElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const frameName = `collabora-frame-${item.id}`;
   // Mirrors `frameReady` for code that needs the latest value inside a closure captured
   // once (effect cleanups, the beforeunload listener) rather than one pinned to whatever
   // render created it.
   const frameReadyRef = useRef(false);
+  // Same idea for onNativeClose — read inside the [session] effect's onMessage handler,
+  // which must NOT re-run (and re-submit the form) just because the parent re-rendered
+  // and handed down a new function identity.
+  const onNativeCloseRef = useRef(onNativeClose);
+  useEffect(() => {
+    onNativeCloseRef.current = onNativeClose;
+  }, [onNativeClose]);
 
   // Posts WOPI's "Close_Session" message into the iframe — see CollaboraViewerHandle's
   // requestExitSave doc for what this actually triggers on Collabora's side. Shared by
@@ -76,9 +94,20 @@ export const CollaboraViewer = forwardRef<
   };
 
   useImperativeHandle(ref, () => ({
-    openInNewTab: () => tabFormRef.current?.submit(),
+    openInNewTab: () => {
+      if (!session) return;
+      const id = storeCollaboraHandoff({
+        actionUrl: session.actionUrl,
+        accessToken: session.accessToken,
+        accessTokenTtl: session.accessTokenTtl,
+        fileName: item.name,
+      });
+      // "noopener" — the new tab gets no window.opener back to us, same isolation a
+      // target="_blank" form submit already had.
+      window.open(`/collabora?h=${id}`, "_blank", "noopener");
+    },
     requestExitSave: sendCloseSession,
-  }), []);
+  }), [session, item.name]);
 
   useEffect(() => {
     onReadyChange?.(!!session);
@@ -119,10 +148,25 @@ export const CollaboraViewer = forwardRef<
     // Collabora's embedded page posts JSON messages (App_LoadingStatus, …) to its parent
     // once it starts. Any message from its origin proves the embed isn't blocked.
     const onMessage = (e: MessageEvent) => {
-      if (e.origin === COLLABORA_BASE_URL) {
+      if (e.origin !== COLLABORA_BASE_URL) return;
+      if (!frameReadyRef.current) {
         setFrameReady(true);
         frameReadyRef.current = true;
+        // Stop Collabora from self-destructing its own document (unsaved) the instant
+        // its native close button is clicked — see buildCollaboraActionUrl's
+        // closebutton=1 and the UI_Close handling below.
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ MessageId: "Disable_Default_UIAction", Values: { action: "UI_Close", disable: true } }),
+          COLLABORA_BASE_URL
+        );
       }
+      let payload: { MessageId?: string };
+      try {
+        payload = JSON.parse(e.data);
+      } catch {
+        return; // Not every message from Collabora's origin is JSON we need to act on.
+      }
+      if (payload.MessageId === "UI_Close") onNativeCloseRef.current?.();
     };
     window.addEventListener("message", onMessage);
     const timer = window.setTimeout(() => setFrameStalled(true), FRAME_READY_TIMEOUT_MS);
@@ -162,12 +206,6 @@ export const CollaboraViewer = forwardRef<
   return (
     <div className="w-full h-full flex flex-col gap-2">
       <form ref={formRef} action={session.actionUrl} target={frameName} method="POST" className="hidden">
-        {tokenFields}
-      </form>
-      {/* Same POST, but into a new top-level tab. Collabora only allows itself and its
-          configured frame-ancestors to embed it, so if the app's origin isn't on that list
-          the iframe below is blocked by the browser — a top-level tab isn't subject to it. */}
-      <form ref={tabFormRef} action={session.actionUrl} target="_blank" method="POST" className="hidden">
         {tokenFields}
       </form>
       {frameStalled && !frameReady && (

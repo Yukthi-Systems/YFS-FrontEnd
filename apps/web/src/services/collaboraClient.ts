@@ -1,4 +1,6 @@
+import axios from "axios";
 import { requestWopiSession, type FileWopiRequest, type WopiSession } from "@yfs/service";
+import { COLLABORA_BASE_URL } from "./collaboraConstants";
 
 // Collabora Online (WOPI editor) integration. The Storage API already hosts the WOPI
 // endpoints Collabora needs (GET/POST /wopi/files/{fileID}...); this client only
@@ -6,7 +8,7 @@ import { requestWopiSession, type FileWopiRequest, type WopiSession } from "@yfs
 // Collabora's own discovery.xml, and relays the session YFS-Main-API mints
 // (POST /files/wopi/session/create/{to_write} — see files.ts).
 
-export const COLLABORA_BASE_URL = "https://collabora-1.files.test.yukthi.net";
+export { COLLABORA_BASE_URL } from "./collaboraConstants";
 const DISCOVERY_URL = `${COLLABORA_BASE_URL}/hosting/discovery`;
 
 // Fallback used when discovery.xml can't be fetched client-side (confirmed CORS-blocked
@@ -41,13 +43,13 @@ let discoveryFailed = false;
 
 const fetchDiscovery = (): Promise<Document> => {
   if (!discoveryPromise) {
-    discoveryPromise = fetch(DISCOVERY_URL, { credentials: "omit" })
+    // withCredentials: false is axios's default (mirrors fetch's credentials: "omit"
+    // this replaced) — no cookies on this cross-origin request either way. axios
+    // rejects on a non-2xx status itself, same as the old `!res.ok` check.
+    discoveryPromise = axios
+      .get<string>(DISCOVERY_URL, { withCredentials: false, responseType: "text" })
       .then((res) => {
-        if (!res.ok) throw new Error(`Collabora discovery request failed with status ${res.status}`);
-        return res.text();
-      })
-      .then((xml) => {
-        const doc = new DOMParser().parseFromString(xml, "text/xml");
+        const doc = new DOMParser().parseFromString(res.data, "text/xml");
         if (doc.getElementsByTagName("parsererror").length > 0) {
           throw new Error("Collabora discovery response was not valid XML");
         }
@@ -101,11 +103,21 @@ export const resolveCollaboraAction = async (
 
 // Collabora's discovery urlsrc already ends in "?" (e.g. ".../cool.html?") in every
 // action we've seen, but build the separator defensively rather than assume it.
+//
+// closebutton=1 is a real Collabora loader query param (confirmed straight from this
+// deployment's own global.js: `closeButtonEnabled: c(coolParams.get("closebutton"))`,
+// 2026-09-23) — it makes Collabora render its own native close (X) icon in the ribbon,
+// hidden by default. Clicking it fires a `UI_Close` postMessage and then, unless the
+// host has disabled that default action, immediately tears down Collabora's own
+// document *without saving*. CollaboraViewer/CollaboraStandaloneView both post
+// `Disable_Default_UIAction` for it as soon as the frame is ready, and treat the
+// resulting UI_Close message as a request to run our own exit-save-then-close flow
+// instead — see their onMessage handlers.
 export const buildCollaboraActionUrl = (action: CollaboraAction, wopiSrc: string): string => {
   const sep = action.urlsrc.endsWith("?") || action.urlsrc.endsWith("&")
     ? ""
     : action.urlsrc.includes("?") ? "&" : "?";
-  return `${action.urlsrc}${sep}WOPISrc=${encodeURIComponent(wopiSrc)}`;
+  return `${action.urlsrc}${sep}WOPISrc=${encodeURIComponent(wopiSrc)}&closebutton=1`;
 };
 
 export const collaboraClient = {
