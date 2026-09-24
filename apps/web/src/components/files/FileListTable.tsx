@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Link2 } from "lucide-react";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import { formatBytes, formatDate, getOwnerDisplay, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import { useAuth } from "../../hooks/useAuth";
 import { getItemIcon } from "./FileIcon";
 import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
@@ -66,6 +67,7 @@ export function FileListTable({
   onDragOverFolder,
   onDragLeaveFolder,
   onDropOnFolder,
+  showOwner = true,
 }: {
   items: FileItem[];
   selectedItemId: string | null;
@@ -88,8 +90,10 @@ export function FileListTable({
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
+  showOwner?: boolean;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
+  const { user } = useAuth();
 
   const handleSort = (field: SortField) => {
     if (field === sortField) onToggleSortOrder();
@@ -110,7 +114,9 @@ export function FileListTable({
               />
             </th>
             <SortableHeader label="Name" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
+            {showOwner && (
+              <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
+            )}
             <SortableHeader
               label="Last Modified"
               field="modifiedAt"
@@ -129,6 +135,7 @@ export function FileListTable({
             const isChecked = checkedItemIds.includes(item.id);
             const isDragOver = item.isFolder && dragOverFolderId === item.id;
             const locked = isItemLocked(item);
+            const owner = getOwnerDisplay(item, user);
             return (
               <tr
                 key={item.id}
@@ -165,9 +172,14 @@ export function FileListTable({
                     )}
                   </div>
                 </td>
-                <td className="px-3 py-2 border-b border-border-main text-[0.8rem] text-text-heading font-medium max-[640px]:hidden truncate">
-                  {item.createdBy || item.owner.name}
-                </td>
+                {showOwner && (
+                  <td
+                    className="px-3 py-2 border-b border-border-main text-[0.8rem] text-text-heading font-medium max-[640px]:hidden truncate"
+                    title={owner.email || undefined}
+                  >
+                    {owner.label}
+                  </td>
+                )}
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main max-[860px]:hidden">{formatDate(item.modifiedAt)}</td>
                 <td className="px-3 py-2 border-b border-border-main text-xs text-text-main">
                   {item.isFolder ? (

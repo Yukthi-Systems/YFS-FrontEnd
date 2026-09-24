@@ -1,32 +1,26 @@
-import { AlertCircle, Download, FolderInput, Pencil, Trash2, X, Loader2 } from "lucide-react";
+import { AlertCircle, FolderInput, FolderOpen, Info, Pencil, X, Loader2 } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { CompactPreview, InfoRow, KIND_LABEL } from "../files/DetailsDrawer";
 
-// Read-only counterpart to DetailsDrawer for the anonymous /share/<id> view: same
-// look and single-click trigger (see useFileSelection), trimmed to what a public
-// visitor can actually do — no owner/versioning/trash affordances, and no preview
-// or download since there's still no public endpoint for either (see publicSession.ts).
+// DetailsDrawer's counterpart for the anonymous /share/<id> view, trimmed to what a
+// public visitor can do — there's no public endpoint to preview, download or delete.
 export function SharedDetailsPanel({
   item,
   canEdit,
   canMove,
-  canDelete,
   onClose,
   onOpenFolder,
   onRename,
   onMove,
-  onDelete,
 }: {
   item: FileItem;
   canEdit: boolean;
   canMove: boolean;
-  canDelete: boolean;
   onClose: () => void;
   onOpenFolder: () => void;
   onRename: () => void;
   onMove: () => void;
-  onDelete: () => void;
 }) {
   return (
     <aside
@@ -84,7 +78,7 @@ export function SharedDetailsPanel({
               onClick={onOpenFolder}
               className="flex items-center justify-center gap-2 w-full py-2 bg-accent text-white font-semibold rounded-xl hover:shadow-md cursor-pointer transition-all"
             >
-              <FolderInput className="w-4 h-4" /> Open
+              <FolderOpen className="w-4 h-4" /> Open
             </button>
           )}
           {item.isFolder && canEdit && (
@@ -103,18 +97,10 @@ export function SharedDetailsPanel({
               <FolderInput className="w-3.5 h-3.5" /> Move…
             </button>
           )}
-          {item.isFolder && canDelete && (
-            <button
-              onClick={onDelete}
-              className="w-full py-2 bg-transparent border border-red-500/40 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Delete
-            </button>
-          )}
           {!item.isFolder && (
             <div className="flex gap-2 items-start bg-code-bg border border-border-main text-text-main p-2.5 rounded-xl text-[11px] leading-normal">
-              <Download className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-60" />
-              <span>Preview and download for shared content aren&apos;t available yet.</span>
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-60" />
+              <span>Opening and downloading files from a shared link isn&apos;t available yet.</span>
             </div>
           )}
         </div>

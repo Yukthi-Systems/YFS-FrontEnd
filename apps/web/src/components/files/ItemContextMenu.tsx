@@ -115,7 +115,7 @@ export function ItemContextMenu({
           <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
         </button>
       )}
-      {allowEdit && (
+      {allowEdit && !item.isDeleted && (
         <button
           onClick={onRename}
           disabled={locked}
