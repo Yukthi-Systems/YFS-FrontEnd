@@ -45,33 +45,29 @@ jobs:
             rjyspl/yfs-ui:latest
             rjyspl/yfs-ui:${{ steps.tag.outputs.TAG }}
 
-  # Deploy disabled for now.
-  # deploy:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  #     - name: Configure SSH
-  #       uses: webfactory/ssh-agent@v0.5.3
-  #       with:
-  #         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-  #     - name: Deploy to Server
-  #       env:
-  #         SERVER_IP: ${{ secrets.SERVER_IP }}
-  #         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  #         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-  #       run: |
-  #         # Copy the docker-compose.yaml file to the server (Replace with existing file)
-  #         # TODO: Uncomment the below line for production deployment based on the tag on push
-  #         # scp -o StrictHostKeyChecking=no docker-compose.yaml root@$SERVER_IP:/srv/yfs-ui/docker-compose.yaml
-
-  #         # Connect and restart the service
-  #         ssh -o StrictHostKeyChecking=no root@$SERVER_IP << 'EOF'
-  #           cd /srv/yfs-ui
-  #           docker compose pull
-  #           docker compose up -d
-  #           docker ps
-  #         EOF
+      - name: Deploy to Server
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+        run: |
+          ssh -o StrictHostKeyChecking=no root@$SERVER_IP << 'EOF'
+            set -e
+            cd /srv/yfs-ui
+            # The image has no URLs baked in; without runtime config the app can't reach the API.
+            test -f .env || { echo "Missing /srv/yfs-ui/.env"; exit 1; }
+            grep -q "env_file" docker-compose.y*ml || { echo "docker-compose on the server has no env_file: .env"; exit 1; }
+            docker compose pull
+            docker compose up -d
+            docker ps
+          EOF
