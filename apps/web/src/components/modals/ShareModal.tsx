@@ -789,6 +789,22 @@ function LinksTab({
   );
 }
 
+function LinkStatus({ removed, saved, dirty }: { removed: boolean; saved: boolean; dirty: boolean }) {
+  const [dot, text] = removed
+    ? ["bg-red-500", "Removed when you save"]
+    : !saved
+      ? ["bg-accent", "New · active once you save"]
+      : dirty
+        ? ["bg-amber-500", "Unsaved changes"]
+        : ["bg-green-500", "Active"];
+  return (
+    <span className="flex items-center gap-1.5 text-[10px] text-text-main pl-0.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+      {text}
+    </span>
+  );
+}
+
 function LinkCard({
   link: l,
   dirty,
@@ -819,45 +835,30 @@ function LinkCard({
 
   return (
     <div className={`${CARD} overflow-hidden transition ${l.removed ? "opacity-60" : ""}`}>
-      <div className="flex items-center gap-2 p-3">
-        <div className="shrink-0 w-7 h-7 rounded-lg bg-accent-bg flex items-center justify-center">
-          <Link2 className="w-3.5 h-3.5 text-accent" />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          {saved ? (
-            <div className="font-mono text-[11px] text-text-heading truncate" title={url}>
-              {url}
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] text-text-main shrink-0 font-mono">{origin}/share/</span>
+      <div className="flex items-start gap-1.5 p-3">
+        <div className="min-w-0 flex-1 flex flex-col gap-1">
+          <div
+            className="flex items-center h-8 px-2.5 rounded-lg border border-border-main bg-code-bg font-mono text-[11px] min-w-0 transition focus-within:border-accent"
+            title={url}
+          >
+            <span className="text-text-main truncate min-w-0">{window.location.host}/share/</span>
+            {saved ? (
+              <span className="text-text-heading shrink-0">{l.shareId}</span>
+            ) : (
               <input
                 value={l.shareId}
                 onChange={(e) => onPatch({ shareId: e.target.value })}
                 aria-label="Link address"
-                className="dialog-input flex-1 min-w-0 font-mono text-[11px] py-1"
+                className="flex-1 min-w-[10ch] p-0 bg-transparent border-none outline-none text-text-heading font-mono text-[11px]"
               />
-            </div>
-          )}
-          {!saved && <div className="text-[10px] text-text-main mt-1">Not active until you save.</div>}
+            )}
+          </div>
+          <LinkStatus removed={l.removed} saved={saved} dirty={dirty} />
         </div>
 
-        {!l.removed &&
-          (saved ? <Pill tone={dirty ? "amber" : "accent"}>{dirty ? "Edited" : "Active"}</Pill> : <Pill tone="accent">New</Pill>)}
-        {l.removed && <Pill tone="red">Removing</Pill>}
-
-        <button
-          type="button"
-          onClick={copy}
-          disabled={!saved || l.removed}
-          title={saved ? "Copy link" : "Save changes first to activate this link"}
-          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-main bg-bg-main text-[11px] font-semibold text-text-heading cursor-pointer transition hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-border-main disabled:hover:text-text-heading"
-        >
+        <IconButton onClick={copy} disabled={!saved || l.removed} title={saved ? (copied ? "Copied" : "Copy link") : "Save changes first to activate this link"}>
           {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copied" : "Copy"}
-        </button>
-
+        </IconButton>
         <IconButton
           onClick={onToggleRemoved}
           title={l.removed ? "Keep link" : "Remove link"}

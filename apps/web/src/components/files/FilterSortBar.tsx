@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Check, Download, RefreshCw, RotateCcw, Trash2, XCircle, X } from "lucide-react";
 import { SORT_FIELD_OPTIONS } from "../../types/file";
-import type { SidebarTab, SortField, SortOrder, ViewMode } from "../../types/file";
+import type { SidebarTab, SortField, SortOrder } from "../../types/file";
 import { Dropdown } from "../common/Dropdown";
 import { Breadcrumbs, type BreadcrumbSegment } from "../layout/Breadcrumbs";
 
@@ -53,23 +53,25 @@ export function RefreshButton({ onRefresh, refreshing }: { onRefresh: () => void
   );
 }
 
-// List view sorts via the table's column headers instead, so this renders nothing there.
+// Shown in every view, list included — the table's column headers are a second way to sort.
 export function SortControls({
-  viewMode,
   sortField,
   onSortFieldChange,
   sortOrder,
   onToggleSortOrder,
+  onRefresh,
+  refreshing,
 }: {
-  viewMode: ViewMode;
   sortField: SortField;
   onSortFieldChange: (field: SortField) => void;
   sortOrder: SortOrder;
   onToggleSortOrder: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
-  if (viewMode === "list") return null;
   return (
     <div className="flex items-center gap-2 shrink-0">
+      <RefreshButton onRefresh={onRefresh} refreshing={refreshing} />
       <Dropdown value={sortField} options={SORT_FIELD_OPTIONS} onChange={onSortFieldChange} align="end" />
       <button
         onClick={onToggleSortOrder}
@@ -87,7 +89,6 @@ export function FilterSortBar({
   onBreadcrumbNavigate,
   activeSidebarTab,
   checkedCount,
-  viewMode,
   sortField,
   onSortFieldChange,
   sortOrder,
@@ -104,9 +105,6 @@ export function FilterSortBar({
   onBreadcrumbNavigate: (index: number) => void;
   activeSidebarTab: SidebarTab;
   checkedCount: number;
-  // The list view sorts via clickable column headers instead — this dropdown is
-  // only needed as a sort trigger for grid/tiles views, which have no headers.
-  viewMode: ViewMode;
   sortField: SortField;
   onSortFieldChange: (field: SortField) => void;
   sortOrder: SortOrder;
@@ -123,7 +121,6 @@ export function FilterSortBar({
     <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <Breadcrumbs segments={breadcrumbSegments} onNavigate={onBreadcrumbNavigate} />
-        <RefreshButton onRefresh={onRefresh} refreshing={refreshing} />
       </div>
 
       {checkedCount > 0 && (
@@ -185,11 +182,12 @@ export function FilterSortBar({
       )}
 
       <SortControls
-        viewMode={viewMode}
         sortField={sortField}
         onSortFieldChange={onSortFieldChange}
         sortOrder={sortOrder}
         onToggleSortOrder={onToggleSortOrder}
+        onRefresh={onRefresh}
+        refreshing={refreshing}
       />
     </div>
   );
