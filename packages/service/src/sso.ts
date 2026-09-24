@@ -1,3 +1,21 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
+import { readEnv } from "./env";
 import {
   openLoginPopup,
   redirectToLogin,
@@ -8,11 +26,9 @@ import { ssoLogin } from "./auth";
 import type { BackendUserInfo, SsoProfile } from "./types";
 
 // App identifier registered with the Yukthi SSO service.
-export const SSO_APP_ID = import.meta.env.VITE_SSO_APP_ID || "chat";
+export const SSO_APP_ID = readEnv("VITE_SSO_APP_ID");
 
-// Appended to the return URL when a blocked popup forces a full-page SSO redirect.
-// Its presence on the next load means the SSO cookie is already set, so we skip the
-// popup and go straight to the backend token exchange.
+// Added to the return URL after a blocked-popup redirect; the SSO cookie is already set on return.
 export const SSO_REDIRECT_PARAM = "sso_redirect";
 
 const trimUrl = (url: string) => url.replace(/\/$/, "");
@@ -27,8 +43,7 @@ export interface SsoAuthResponse {
   };
 }
 
-// The SSO silent-auth check posts the signed-in user's session payload back to us.
-// Field names vary, so read both snake_case and camelCase and look one level deep.
+// Field names vary, so read snake_case and camelCase, one level deep.
 export const extractSsoProfile = (message: unknown): SsoProfile => {
   const data = (message ?? {}) as Record<string, unknown>;
   const source = {
@@ -77,16 +92,14 @@ export const extractSsoProfile = (message: unknown): SsoProfile => {
   };
 };
 
-// Exchange the SSO-Session-ID cookie for a YFS access token, and enrich it with
-// whatever profile the SSO silent-auth check exposes. `ssoPayload` lets a caller
-// that already ran the silent check pass its result instead of re-running it.
+// Exchanges the SSO cookie for a YFS token. Pass `ssoPayload` to skip re-running the silent check.
 const completeSsoLogin = async (ssoUrl: string, ssoPayload?: unknown): Promise<SsoAuthResponse> => {
   let profileSource = ssoPayload;
   if (profileSource === undefined) {
     try {
       profileSource = await checkSilentAuth(trimUrl(ssoUrl), SSO_APP_ID);
     } catch {
-      profileSource = null; // silent check is best-effort; /auth/login is the source of truth
+      profileSource = null; // best-effort; /auth/login is authoritative
     }
   }
 
@@ -94,9 +107,7 @@ const completeSsoLogin = async (ssoUrl: string, ssoPayload?: unknown): Promise<S
   return { data: { ...payload, sso_profile: extractSsoProfile(profileSource) } };
 };
 
-// Interactive login. Opens the SSO popup (falling back to a full-page redirect if the
-// browser blocks it), then runs the backend token exchange. Also handles the case where
-// we've just landed back from that redirect.
+// Popup login, falling back to a full-page redirect when blocked.
 export const openSsoPopupAndAuthenticate = async (ssoUrl: string): Promise<SsoAuthResponse> => {
   const url = new URL(window.location.href);
   if (url.searchParams.get(SSO_REDIRECT_PARAM) === "1") {
@@ -120,9 +131,7 @@ export const openSsoPopupAndAuthenticate = async (ssoUrl: string): Promise<SsoAu
   return completeSsoLogin(ssoUrl);
 };
 
-// Non-interactive login used on app start: if the SSO service already has a live
-// session (cookie present), exchange it for a YFS token. Rejects when there's no
-// session — the caller then shows the login screen.
+// Exchanges an existing SSO session for a token; rejects when there's none.
 export const silentSsoAuthenticate = async (ssoUrl: string): Promise<SsoAuthResponse> => {
   const ssoPayload = await checkSilentAuth(trimUrl(ssoUrl), SSO_APP_ID);
   return completeSsoLogin(ssoUrl, ssoPayload);

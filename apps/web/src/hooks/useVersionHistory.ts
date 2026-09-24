@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useMemo, useState } from "react";
 import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
@@ -16,8 +33,7 @@ export function useVersionHistory({
   const [versionHistoryItemId, setVersionHistoryItemId] = useState<string | null>(null);
   const item = files.find((f) => f.id === versionHistoryItemId) ?? null;
 
-  // Real version numbers from the server (POST /files/get-info), not the local
-  // FileItem.version — that's only ever right if this tab is what last uploaded it.
+  // Server versions; the local FileItem.version can be stale.
   const { data: fileInfo, isLoading: isLoadingVersions } = useFileInfo(item, !!versionHistoryItemId);
   const { downloadFileVersion } = useDownload();
 

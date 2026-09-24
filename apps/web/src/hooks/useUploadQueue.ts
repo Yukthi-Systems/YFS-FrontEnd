@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef } from "react";
 import { useAtom } from "jotai";
 import { type FileUploadRequest, type UploadSession } from "@yfs/service";
@@ -19,20 +36,13 @@ import { uploadTasksAtom, type UploadTask, type FileWithRelativePath } from "../
 
 export type { UploadTask, FileWithRelativePath } from "../atoms/uploadQueue";
 
-// POST /files/upload wants a folder_id; the user's root isn't a folder row here,
-// so send "" and let the API map it to the root. TODO: confirm with the real handler.
+// The user's root isn't a folder row; the API takes "".
 const ROOT_FOLDER_ID = "";
 const toParentId = (folderId: string): string | null => (folderId === ROOT_FOLDER_ID ? null : folderId);
 
-// Module-level, not useRef: useUploadQueue() is called from more than one component
-// (App.tsx runs enqueueFiles/runUpload, UploadTray.tsx calls pause/resume/cancel) —
-// a useRef here would give each call site its own private, disconnected copy, so
-// pause/cancel from the tray could never reach the handle App's instance created.
-// In-flight tus handles, keyed by task id.
+// Module-level so App (starts uploads) and UploadTray (pauses/cancels) share the same handles.
 const activeHandles = new Map<string, UploadHandle>();
-// Tasks cancelled before their turn in the concurrency pool came up (still resolving
-// folders, or queued behind UPLOAD_CONCURRENCY other files) — no handle exists yet to
-// cancel, so the worker checks this instead before starting.
+// Cancelled before a handle existed; workers check this before starting.
 const cancelledPending = new Set<string>();
 let taskCounter = 0;
 
@@ -41,11 +51,10 @@ export const useUploadQueue = () => {
   const { files, ensureFolderPath, addFile, loadFolder, getSharedFolderId, buildCreationInfo } = useFileSystem();
   const [tasks, setTasks] = useAtom(uploadTasksAtom);
 
-  // Async upload runs span renders — read live context off refs.
+  // Uploads span renders, so read live context from a ref.
   const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken });
   ctxRef.current = { token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken };
 
-  // Auto-pause on network loss and auto-resume when connectivity restores
   useEffect(() => {
     const handleOffline = () => {
       activeHandles.forEach((handle, id) => {
@@ -113,8 +122,7 @@ export const useUploadQueue = () => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Resolve the folder chain for one relative path to a real folder id, caching per
-  // distinct path so siblings in a folder upload share the work.
+  // Cached per path so sibling files share the work.
   const resolvePathFolderId = async (
     folderSegments: string[],
     rootParentId: string | null,
@@ -129,7 +137,7 @@ export const useUploadQueue = () => {
   };
 
   const runUpload = async (items: FileWithRelativePath[], parentId: string | null, taskIds: string[]) => {
-    // 1. Resolve every file's target folder (creating folders as needed).
+    // 1. Resolve every file's target folder, creating folders as needed.
     const folderCache = new Map<string, string | null>();
     const planned: (PlannedUpload | null)[] = [];
     for (let i = 0; i < items.length; i++) {
@@ -154,9 +162,7 @@ export const useUploadQueue = () => {
       .filter((x): x is { plan: PlannedUpload; taskId: string } => x !== null);
     if (live.length === 0) return;
 
-    // 2. Request an upload session and push bytes for each file — one
-    //    POST /files/upload call per file (it isn't a batch endpoint), capped
-    //    concurrency.
+    // 2. One upload session per file, with capped concurrency.
     await runPool(live, UPLOAD_CONCURRENCY, async ({ plan, taskId }) => {
       if (cancelledPending.delete(taskId)) return;
 
@@ -176,8 +182,6 @@ export const useUploadQueue = () => {
           file_id: fileId,
           shared_folder_id: plan.sharedFolderId,
           file_name: plan.fileName,
-          // Stamps creation_info.user_id, same as folder creation — otherwise
-          // "Created By" can't be resolved once this file round-trips through a listing.
           file_info: buildCreationInfo(),
           file_type: fileTypeOf(plan.file),
           file_version: fileVersion,
@@ -215,7 +219,6 @@ export const useUploadQueue = () => {
           version: session.file_version,
         });
         updateTask(taskId, { status: "done", progress: 100 });
-        // Auto-clear successes like toasts; errors stay until dismissed.
         setTimeout(() => dismissTask(taskId), 4000);
       } catch (err) {
         const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -234,10 +237,7 @@ export const useUploadQueue = () => {
       }
     });
 
-    // 3. Re-list every touched folder so server rows replace the optimistic ones.
-    //    The Storage API confirms the committed version to YFS-Main-API through a
-    //    server-side callback that can land a beat after the upload response, so
-    //    re-list again shortly after to pick up the real row + its version.
+    // 3. Re-list touched folders, and again shortly after for the server's version callback.
     const touched = new Set(live.map((x) => x.plan.targetFolderId));
     const relist = () => touched.forEach((folderId) => loadFolder(toParentId(folderId), { force: true }));
     relist();
@@ -249,8 +249,7 @@ export const useUploadQueue = () => {
   const enqueueFiles = (items: FileWithRelativePath[], parentId: string | null) => {
     if (items.length === 0) return;
 
-    // Files can't live at the My Drive root — the backend requires a folder_id.
-    // Folder uploads (relativePath carries a subfolder) are fine; they nest.
+    // Files can't live at the My Drive root; the backend requires a folder_id.
     let accepted = items;
     if (parentId === null) {
       const rejected = items.filter((it) => !hasSubfolder(it));
@@ -274,7 +273,6 @@ export const useUploadQueue = () => {
     }
     if (accepted.length === 0) return;
 
-    // A task per file, up front, so the tray fills immediately.
     const taskIds = accepted.map(() => {
       taskCounter += 1;
       return `upload-${taskCounter}`;
@@ -291,7 +289,6 @@ export const useUploadQueue = () => {
 
     runUpload(accepted, parentId, taskIds).catch((err) => {
       console.error("Upload run failed", err);
-      // Anything from this run still mid-flight is now stuck — surface it.
       const stuck = new Set(taskIds);
       setTasks((prev) =>
         prev.map((t) =>

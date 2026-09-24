@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { getFileBasicInfo, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
@@ -7,34 +24,19 @@ import { downloadClient } from "../services/downloadClient";
 import { withAuthRetry } from "../utils/authRetry";
 import type { FileItem } from "../types/file";
 
-// POST /files/download wants a folder_id; the user's root isn't a folder row here,
-// so send "" like the upload flow does (see useUploadQueue.ts).
+// The user's root isn't a folder row; the API takes "".
 const ROOT_FOLDER_ID = "";
 const DEFAULT_MIME = "application/octet-stream";
 
-// YFS-Files-Api's /download/{fileID} (media/service.go BuildHeaders) sends
-// Content-Disposition: attachment for everything except these — images, video,
-// audio, and PDF always come back inline, regardless of intent. For "attachment"
-// types, a plain navigation to session.url triggers a real native browser download
-// (the browser recognizes it isn't a page to render and doesn't even leave the
-// current one) with zero fetch/CORS involved — the `?token=` query param on the URL
-// is exactly what makes that possible without an Authorization header. Inline types
-// need the bytes read in JS instead (to force a save via a local blob: URL), which
-// does require the Storage API to allow CORS on that route.
+// Served inline by YFS-Files-Api, so these need a blob download; other types download via plain navigation.
 const INLINE_FORCED_TYPES = new Set<FileItem["type"]>(["image", "video", "audio", "pdf"]);
 
-// Fetches a file's real bytes for zip/batch download or preview: server-backed
-// files (own or internally shared) go through YFS-Main-API's download session, then
-// a direct GET against the Storage API. Anything else falls back to the local blob
-// cache (a file uploaded in this tab, or a seeded demo item) — there's no server
-// content for those.
+// Server files go through a download session; local-only files fall back to the blob cache.
 export function useDownload() {
   const { token, refreshAccessToken } = useAuth();
   const { getSharedFolderId } = useFileSystem();
 
-  // A batch/zip download can span many requests over a noticeable stretch of time —
-  // read the live token at call time (like useUploadQueue's ctxRef) instead of
-  // closing over whatever was current when this render's fetchBlob was created.
+  // Read the live token; batch downloads outlast a render.
   const tokenRef = useRef(token);
   tokenRef.current = token;
 
@@ -49,11 +51,7 @@ export function useDownload() {
     expected_file_size: item.size,
   });
 
-  // item.version is only trustworthy if this tab is what last touched the file —
-  // same staleness the upload/replace bug had. Ask the server for the real latest
-  // version before downloading instead of trusting local state. Falls back to
-  // whatever's locally known rather than blocking the download if the lookup itself
-  // fails (offline, transient error, etc).
+  // Ask the server for the latest version; fall back to local state if that fails.
   const resolveLatestVersion = async (item: FileItem): Promise<number> => {
     if (!item.fileId || !item.parentId) return item.version ?? 1;
     try {
@@ -123,13 +121,7 @@ export function useDownload() {
     return true;
   };
 
-  // Downloads a specific past version (Version History) rather than whatever's
-  // current. Always fetches real bytes into a blob (unlike downloadFile's
-  // navigation shortcut for non-inline types) — a plain navigation can't be pointed
-  // at a particular version with a version-distinguishing filename, and the
-  // server's own Content-Disposition doesn't vary by version anyway. This does mean
-  // it needs the Storage API's CORS fix (see progress.md item 1) for every file
-  // type, not just images/video/audio/PDF.
+  // Always fetches bytes into a blob so the saved name can include the version.
   const downloadFileVersion = async (item: FileItem, version: number): Promise<boolean> => {
     if (item.isFolder || !item.fileId || (item.origin !== "server" && item.origin !== "shared")) return false;
     const session = await requestSession(buildRequest(item, version));
@@ -141,8 +133,7 @@ export function useDownload() {
   return { fetchBlob, downloadFile, downloadFileVersion, getStreamUrl };
 }
 
-// Media streaming hook (video, audio, image): fetches the direct session URL which
-// carries ?token= and is served inline, enabling native streaming/seeking without CORS.
+// Media streams straight from the session URL (inline, ?token=), no CORS needed.
 export function useStreamUrl(item: FileItem | null) {
   const { getStreamUrl } = useDownload();
 

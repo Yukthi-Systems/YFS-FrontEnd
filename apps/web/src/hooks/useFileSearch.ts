@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileItem, SidebarTab } from "../types/file";
 import { getSearchScope, getNameMatches } from "../utils/fileQueries";
@@ -35,10 +52,7 @@ function buildSnippet(text: string, query: string): SearchSnippet | undefined {
   };
 }
 
-// Full-text search: name matches are synchronous and instant (same substring check as
-// always, just widened to the whole recursive section instead of one folder); content
-// matches run in a debounced async pass over whatever didn't already match by name, reusing
-// each viewer's own content-extraction logic via extractSearchableText.
+// Name matches are instant; content matches run debounced over the rest.
 export function useFileSearch({
   files,
   activeSidebarTab,

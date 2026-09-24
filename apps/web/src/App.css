@@ -1,9 +1,25 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 input {
   font: inherit;
   box-sizing: border-box;
 }
 
-/* Premium SSO Login and Dashboard Styles */
 .app-container {
   min-height: 100svh;
   display: flex;
@@ -187,7 +203,6 @@ input {
   animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-
 /* Modal Confirmation Dialog Styles */
 .modal-overlay {
   position: fixed;
@@ -227,8 +242,7 @@ input {
   max-width: 600px;
 }
 
-/* Lets a modal own its own padding so a header/footer can sit flush and stay put
-   while only the middle scrolls. */
+/* Caller owns padding, e.g. for a sticky header/footer. */
 .modal-content.modal-flush {
   padding: 0;
   overflow: hidden;
@@ -277,9 +291,7 @@ input {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-/* Room for an icon absolutely positioned inside the field. Needs to live here rather
-   than as a pl-* utility: .dialog-input sets the `padding` shorthand, which lands
-   after the utility layer and would reset padding-left back to the default. */
+/* Not a pl-* utility: .dialog-input's padding shorthand would override it. */
 .dialog-input.has-icon-left {
   padding-left: 2.15rem;
 }
@@ -299,8 +311,7 @@ select.dialog-input {
   cursor: pointer;
 }
 
-/* Native date input: keep it the same height as text inputs and left-align its
-   value with the rest of the form (the built-in field is taller by default). */
+/* Match text-input height and alignment. */
 input[type="date"].dialog-input {
   min-height: 2.1rem;
   line-height: 1.2;

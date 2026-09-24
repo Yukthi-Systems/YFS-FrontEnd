@@ -1,11 +1,26 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useRef, useState } from "react";
 import type { FileItem } from "../types/file";
 import { getRangeSelection } from "../utils/selection";
 
 const DOUBLE_CLICK_WINDOW_MS = 400;
 
-// Row selection: single-select (opens the details drawer), shift/ctrl multi-select for
-// batch actions, and manual double-click detection for opening an item.
 export function useFileSelection({
   listItems,
   onOpenItem,
@@ -17,11 +32,7 @@ export function useFileSelection({
   const [checkedItemIds, setCheckedItemIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
 
-  // Selecting an item opens the details drawer, which reflows the file list (it's a flex
-  // sibling, not an overlay) — if that reflow happens on the first click of a double-click,
-  // the row moves before the second click lands. So double-click is detected manually via
-  // click timestamps, and the actual select-and-open-drawer effect of a single click is
-  // deferred until we're sure a second click isn't coming.
+  // Single-click select is deferred so the drawer's reflow can't move the row before a double-click's second click.
   const lastClickRef = useRef<{ id: string; time: number } | null>(null);
   const pendingSelectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -64,8 +75,6 @@ export function useFileSelection({
     const now = Date.now();
     const last = lastClickRef.current;
     if (last && last.id === item.id && now - last.time < DOUBLE_CLICK_WINDOW_MS) {
-      // Second click of a double-click: cancel the pending single-click select (it never
-      // reflowed the layout, since it was deferred) and open the item instead.
       lastClickRef.current = null;
       if (pendingSelectRef.current) {
         clearTimeout(pendingSelectRef.current);
@@ -77,9 +86,6 @@ export function useFileSelection({
     lastClickRef.current = { id: item.id, time: now };
     setSelectionAnchorId(item.id);
 
-    // Defer selecting (which opens the details drawer and reflows the file list) until
-    // we're sure this isn't the first half of a double-click — otherwise the reflow
-    // would move the row out from under the second click before it lands.
     if (pendingSelectRef.current) clearTimeout(pendingSelectRef.current);
     pendingSelectRef.current = setTimeout(() => {
       pendingSelectRef.current = null;

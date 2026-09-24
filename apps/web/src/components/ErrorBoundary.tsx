@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, Home, RefreshCw, RotateCcw } from "lucide-react";
 
@@ -8,8 +25,7 @@ interface Props {
 interface State {
   error: Error | null;
   componentStack: string | null;
-  // Short, human-quotable id so a screenshot of this page can be matched to the
-  // console/log entry recorded at the same moment.
+  // Short id to match a screenshot with its console entry.
   errorId: string | null;
   occurredAt: string | null;
   detailsOpen: boolean;
@@ -72,8 +88,6 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   };
 
-  // Re-mounts the subtree without a full page load. Often enough on its own, since
-  // most crashes come from one bad render rather than corrupted state.
   private tryAgain = () => this.setState(INITIAL);
 
   render() {

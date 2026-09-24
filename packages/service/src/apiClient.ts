@@ -1,11 +1,27 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { getApiUrl, HttpError } from "./http";
 
 // Header the API expects the short-lived access token in (see middleware/auth.rs).
 export const SESSION_HEADER = "x-session-access-id";
 
 export interface ApiRequestOptions extends Omit<RequestInit, "headers"> {
-  // Access token to send in the SESSION_HEADER. Omit for unauthenticated calls
-  // (e.g. /auth/login, which authenticates via the SSO-Session-ID cookie instead).
+  // Omit for unauthenticated calls.
   accessToken?: string | null;
   headers?: Record<string, string>;
   // Parse and return the JSON body. When false, the raw Response is returned.
@@ -21,9 +37,7 @@ export interface ApiResult<T> {
 
 const EXPOSED_HEADERS = ["x-refresh-id-token", "x-session-expiry"];
 
-// Single entry point for every authenticated call to YFS-Main-API. Always sends
-// credentials so the SSO-Session-ID cookie rides along (needed by /auth/login,
-// /auth/refresh and the session-validity check inside /auth/session).
+// Every YFS-Main-API call; credentials are sent so the SSO cookie rides along.
 export async function apiRequest<T = unknown>(
   path: string,
   options: ApiRequestOptions = {}
@@ -54,9 +68,7 @@ export async function apiRequest<T = unknown>(
   }
 
   if (!res.ok) {
-    // YFS-Main-API's error body is always `{ "error": "<message>" }` (see
-    // src/models/errors.rs) — parse it out so callers/toasts show that message
-    // instead of the raw JSON text.
+    // Errors are always `{ "error": "<message>" }`.
     let message = "";
     try {
       const text = await res.text();

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
@@ -23,8 +40,7 @@ export function ItemContextMenu({
   className = "",
 }: {
   item: FileItem;
-  // The caller's permissions when `item` lives in a "Shared with me" subtree; null
-  // for the user's own items (full control).
+  // Share permissions for items inside "Shared with me"; null for own items.
   permissions?: InternalSharePermissions | null;
   // Folders only — opens the folder (same as double-click).
   onOpen?: () => void;
@@ -57,20 +73,14 @@ export function ItemContextMenu({
   const allowDownload = !shared || effectivePermissions.can_download;
   const allowEdit = !shared || effectivePermissions.can_update; // rename, colour/icon, star
   const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
-  // Move to Trash is client-only (see fileSystemStore.ts trashItems) — deliberately not
-  // offered for shared items regardless of permission, since trash is scoped to the
-  // owner's own drive. Permanent delete hits a real backend endpoint though, so it's
-  // allowed for shared items when the share grants can_delete.
+  // Trash belongs to the owner's drive, so it's never offered for shared items.
   const allowTrash = !shared && !item.isDeleted;
   const allowPermanentDelete = (!shared || effectivePermissions.can_delete) && !item.isDeleted;
   const allowShare = !shared; // can't re-share someone else's folder
 
   const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
 
-  // A share root is someone else's folder as it appears at the top of "Shared with
-  // you" — it isn't in a folder of ours to rename, move, trash or re-share, so it
-  // only gets the two things that make sense on it. Inside it, the share's own
-  // permissions take over as normal.
+  // A share root isn't ours to rename, move, trash or re-share.
   if (item.parentId === SHARED_ROOT_ID) {
     return (
       <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
@@ -238,10 +248,7 @@ export function ItemContextMenu({
             </button>
           )}
           {allowPermanentDelete && (
-            // Skips Trash entirely — DELETE /files/delete/file or /folders/delete
-            // straight away, same confirm dialog as the Trash-tab version above. A
-            // different icon from "Move to Trash" so two destructive actions in a
-            // row don't read as duplicates of each other.
+            // Skips Trash; distinct icon from "Move to Trash".
             <button
               onClick={onPermanentDelete}
               disabled={locked}

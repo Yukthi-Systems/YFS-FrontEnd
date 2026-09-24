@@ -1,44 +1,46 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { apiRequest } from "./apiClient";
 
-// File upload/download against YFS-Main-API's /files scope.
-//
-//   POST /files/upload    body: FileOpsRequest (one file)  -> UploadSession[] (always
-//                          exactly one element — YFS-Main-API relays the Storage API's
-//                          /sessions/upload response verbatim, which is array-shaped
-//                          because it also serves batched internal callers)
-//   POST /files/download  body: FileOpsRequest (one file)  -> DownloadSession[] (same
-//                          array-of-one relay as upload, confirmed against a live
-//                          response 2026-09-12 — the array-vs-object mismatch flagged
-//                          earlier is fixed backend-side)
-//
-// Delete/Replace, batching, and shared-folder upload targets aren't wired up
-// server-side yet (see routes/files.rs and models/files_folders.rs; shared_folder_id
-// is accepted but unused by the upload handler). Request/response shapes mirror the
-// Rust (files_folders::FileOpsRequest) and Go (models.UploadSession /
-// models.DownloadSession) structs — don't invent fields either side doesn't have.
+// File upload/download/metadata calls under YFS-Main-API's /files scope.
 
 export interface FileUploadRequest {
-  folder_id: string; // real folders.folder_id UUID (the immediate parent)
-  file_id?: string | null; // omit for a brand-new file; required for file_version > 1
+  folder_id: string; // immediate parent folder id
+  file_id?: string | null;
   shared_folder_id?: string | null; // accepted but not yet acted on server-side
   file_name: string;
   file_info: Record<string, unknown>; // UI metadata (colour, icon, …); {} if none
   file_type: string; // MIME, e.g. "text/plain"
-  file_version: number; // 1 for a new file; otherwise must be exactly latest + 1
+  file_version: number; // 1 for a new file, otherwise latest + 1
   expected_file_size: number; // bytes
 }
 
-// models.UploadSession (YFS-Files-Api) — one issued upload slot for exactly one file.
+// One upload slot for one file (YFS-Files-Api models.UploadSession).
 export interface UploadSession {
   file_name: string;
   expected_file_size: number;
-  token: string; // opaque Storage-API session token — sent as `Authorization: Bearer` to tus
-  file_id: string; // logical files.file_id (stable across versions)
+  token: string; // sent as `Authorization: Bearer` to tus
+  file_id: string; // stable across versions
   file_version: number;
   folder_id: string;
   owner_id: string;
   expires_at: string; // RFC3339
-  base_url: string; // Storage API origin — the tus endpoint is `${base_url}/upload/tus/`
+  base_url: string; // tus endpoint is `${base_url}/upload/tus/`
 }
 
 // POST /files/upload — one file per call.
@@ -53,11 +55,6 @@ export const requestFileUpload = async (accessToken: string, req: FileUploadRequ
   return session;
 };
 
-// FileOpsRequest — same body shape as upload/download. PATCH /files/update actually
-// deserializes into the full FileOpsRequest server-side (routes/files.rs
-// update_file_info), so folder_id/file_type/file_version/expected_file_size are
-// required even though only file_name and file_info get written — this narrower
-// shape will fail to deserialize until the update-file work extends it.
 export interface FileInfoEdit {
   folder_id: string;
   file_id: string;
@@ -69,9 +66,7 @@ export interface FileInfoEdit {
   expected_file_size: number;
 }
 
-// PATCH /files/update — rename / edit a file's UI metadata (not its bytes). Mounted
-// server-side now, but see FileInfoEdit above — the request body sent today is
-// missing fields the handler requires.
+// PATCH /files/update — rename or edit metadata, not content.
 export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): Promise<void> => {
   await apiRequest("/files/update", {
     accessToken,
@@ -81,8 +76,6 @@ export const updateFileInfo = async (accessToken: string, edit: FileInfoEdit): P
   });
 };
 
-// Same FileOpsRequest shape as FileUploadRequest — file_id is required (not optional)
-// since a download always targets an existing file/version.
 export interface FileDownloadRequest {
   folder_id: string;
   file_id: string;
@@ -94,10 +87,7 @@ export interface FileDownloadRequest {
   expected_file_size: number;
 }
 
-// One issued download slot for exactly one file — mirrors UploadSession's shape.
-// `url` already carries the token as a `?token=` query param, good for one GET
-// against the Storage API (e.g. straight into an <a>/<img>/<video> src, or fetch()
-// with an `Authorization: Bearer <token>` header — either works).
+// `url` already carries `?token=`, so it can be used directly as a src or fetched.
 export interface DownloadSession {
   file_name: string;
   file_id: string;
@@ -109,8 +99,7 @@ export interface DownloadSession {
   expires_at: string; // RFC3339
 }
 
-// POST /files/download — one file per call, mirrors /files/upload (including the
-// array-of-one response shape).
+// POST /files/download — one file per call; the response is an array of one.
 export const requestFileDownload = async (accessToken: string, req: FileDownloadRequest): Promise<DownloadSession> => {
   const { data } = await apiRequest<(Omit<DownloadSession, "token"> & { token?: string; access_token?: string })[]>(
     "/files/download",
@@ -122,12 +111,10 @@ export const requestFileDownload = async (accessToken: string, req: FileDownload
   );
   const session = data?.[0];
   if (!session) throw new Error("Download session response was empty");
-  // The Storage API's download session names the token `access_token` (upload sessions
-  // still use `token`) — accept either so a Storage build change can't leave it undefined.
+  // Download sessions name it `access_token`, upload sessions `token`.
   return { ...session, token: session.access_token ?? session.token ?? "" };
 };
 
-// database::files::BasicFileInfo (YFS-Main-API) — what POST /files/get-info returns.
 export interface FileBasicInfo {
   file_id: string;
   folder_id: string;
@@ -140,11 +127,7 @@ export interface FileBasicInfo {
   updated_at: string; // RFC3339
 }
 
-// POST /files/get-info — same FileOpsRequest shape as download, and it's validated
-// server-side as a Download op too: file_version must already be in the response's
-// own available_versions, which is exactly what you don't know yet. Pass 1 — every
-// file that's completed its first upload has a version 1, so it's always a valid
-// guess purely to get past that check and read the real available_versions/is_locked.
+// POST /files/get-info — validated like a download, so pass version 1, which always exists.
 export const getFileBasicInfo = async (accessToken: string, req: FileDownloadRequest): Promise<FileBasicInfo> => {
   const { data } = await apiRequest<FileBasicInfo>("/files/get-info", {
     accessToken,
@@ -154,11 +137,7 @@ export const getFileBasicInfo = async (accessToken: string, req: FileDownloadReq
   return data;
 };
 
-// Same FileOpsRequest shape as FileUploadRequest/FileDownloadRequest — folder_id is
-// the file's *current* parent (not the destination), required for the source-side
-// permission check. destinationFolderId is a required path segment server-side
-// (routes/files.rs move_file), so moving a file to root isn't representable against
-// this endpoint at all — there's no way to pass "no parent" for a file move.
+// folder_id is the current parent; files can't be moved to root.
 export interface FileMoveRequest {
   folder_id: string;
   file_id: string;
@@ -184,20 +163,15 @@ export const moveFile = async (
   });
 };
 
-// Same FileOpsRequest shape as FileDownloadRequest — Rust resolves the real storage path
-// server-side, same as download/upload. Whether the session is editable is a path
-// parameter (`to_write`), not a body field; the server checks real write permission
-// against it (shared folders need the "update" share permission).
+// Write access is a path parameter (`to_write`), not a body field.
 export type FileWopiRequest = FileDownloadRequest;
 
-// Normalized WOPI grant. YFS-Main-API relays the Storage API's session object as-is:
-// `url` is the WOPI host URL for the file (hand it to Collabora as WOPISrc, don't fetch
-// it directly) and the token is `access_token` (older Storage builds call it `token`).
+// `url` is the WOPISrc to hand to Collabora, not something to fetch.
 export interface WopiSession {
   wopi_src: string;
   token: string;
   expires_at: string; // RFC3339
-  access_token_ttl: number; // epoch ms — the value WOPI's access_token_ttl expects
+  access_token_ttl: number; // epoch ms, as WOPI's access_token_ttl expects
 }
 
 interface RawWopiSession {
@@ -208,17 +182,10 @@ interface RawWopiSession {
   access_token_ttl?: number;
 }
 
-// Same FileOpsRequest shape as FileDownloadRequest — file_version is the specific
-// older version to delete. Server requires it to be > 1 (the current/latest version
-// can't be deleted this way, only replaced by a new upload or removed entirely via
-// deleteFile below) and to already be one of the file's available_versions.
+// file_version is the older version to delete; must be > 1.
 export type FileVersionDeleteRequest = FileDownloadRequest;
 
-// DELETE /files/delete/version — permanently deletes one older version's bytes off the
-// storage server plus its file_versions row, and updates the owner's quota. 204 No
-// Content on success; throws HttpError (see apiClient.ts) on failure — most commonly a
-// 400 if file_version is 1 or isn't an available version, or a 403 on a shared file
-// without SharedPermission::Delete.
+// DELETE /files/delete/version — 204 on success.
 export const deleteFileVersion = async (accessToken: string, req: FileVersionDeleteRequest): Promise<void> => {
   await apiRequest("/files/delete/version", {
     accessToken,
@@ -228,14 +195,10 @@ export const deleteFileVersion = async (accessToken: string, req: FileVersionDel
   });
 };
 
-// Same FileOpsRequest shape — file_version just needs to name *a* version that exists
-// (validated server-side against available_versions); deleting the file removes every
-// version's bytes and row, not only the one named here.
+// Deleting a file removes every version, not just the one named.
 export type FileDeleteRequest = FileDownloadRequest;
 
-// DELETE /files/delete/file — permanently deletes every version of the file (across
-// however many storage servers they're hosted on) plus its files/file_versions rows,
-// and updates the owner's quota. 204 No Content on success.
+// DELETE /files/delete/file — removes every version; 204 on success.
 export const deleteFile = async (accessToken: string, req: FileDeleteRequest): Promise<void> => {
   await apiRequest("/files/delete/file", {
     accessToken,

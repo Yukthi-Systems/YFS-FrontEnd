@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
@@ -19,9 +36,7 @@ interface MoveCopyState {
   ids: string[];
 }
 
-// File/folder CRUD: create, rename, trash/restore/delete, move, download, and
-// content saves. Bundled together since they all share the same fileSystem mutators, toast
-// plumbing, and post-action cleanup (closing the context menu, clearing selection).
+// File/folder actions with their toasts and post-action cleanup.
 export function useFileActions({
   files,
   currentFolderId,
@@ -142,12 +157,7 @@ export function useFileActions({
     });
   };
 
-  // Permanent delete: local-only items (created offline, origin !== "server"/"shared")
-  // are always droppable, whatever they are. Server-backed files go through
-  // DELETE /files/delete/file, server-backed folders through DELETE /folders/delete
-  // (recursive, purges its whole subtree). fileSystem.permanentDeleteItems sorts out
-  // which of `removable` actually succeeds and reports real counts back — it's not
-  // optimistic, this is irreversible.
+  // Not optimistic: permanentDeleteItems reports what actually succeeded.
   const requestPermanentDelete = (ids: string[]) => {
     if (ids.length === 0) return;
     const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
@@ -172,14 +182,7 @@ export function useFileActions({
     });
   };
 
-  // DELETE /files/delete/version — removes one older version from Version History.
-  // Confirmed the same way as every other destructive action here, not optimistic:
-  // the modal's list only drops the version once the server actually confirms it.
-  //
-  // isOnlyVersion (Version History's "no older versions" case) routes to
-  // fileSystem.permanentDeleteItems instead — the server rejects /delete/version for a
-  // file_version <= 1 or for the file's last remaining version, and conceptually
-  // "delete the only version" just *is* "delete the file".
+  // Deleting the only version deletes the file; the server rejects /delete/version for it.
   const requestDeleteVersion = (item: FileItem, version: number, isOnlyVersion: boolean) => {
     closeContextMenu();
     setPendingConfirm({
@@ -203,10 +206,7 @@ export function useFileActions({
     });
   };
 
-  // Restore no longer auto-returns an item to where it was trashed from — it opens
-  // the same destination-picker modal "Move to…" uses (see MoveCopyModal's
-  // "restore" mode / handleMoveCopyConfirm below), so the user always chooses where
-  // it lands.
+  // Restore opens the destination picker so the user chooses where it goes.
   const handleRestore = (ids: string[]) => {
     if (ids.length === 0) return;
     setMoveCopyState({ mode: "restore", ids });
@@ -286,8 +286,7 @@ export function useFileActions({
       return;
     }
 
-    // blobUrl-only files resolve instantly (no real fetch), so only announce the
-    // ones that actually hit the network — otherwise this toast outlives the download.
+    // Only announce real network downloads.
     if (item.origin === "server" || item.origin === "shared") showToast(`Downloading "${item.name}"…`, "info");
     try {
       const ok = await downloadFile(item);

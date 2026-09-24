@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, FileText, Folder, Info, Link2, Loader2, Lock, Plus, Search, Trash2, Undo2, Users, X } from "lucide-react";
@@ -32,8 +49,7 @@ const DEFAULT_PERMS: InternalSharePermissions = {
 };
 
 const newShareId = () => Math.random().toString(36).slice(2, 12);
-// Extract the *local* calendar date an ISO instant falls on (not a raw UTC slice —
-// see toExpiresIso below for why the two have to agree).
+// Local calendar date, matching toExpiresIso.
 const toDateInput = (iso: string | null) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -71,7 +87,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went
 interface PersonRow {
   userId: string;
   email: string;
-  name?: string; // public_info.display_name, when the user has set one
+  name?: string;
   base: InternalSharePermissions | null; // null = not yet on the server
   perms: InternalSharePermissions;
   removed: boolean;
@@ -245,8 +261,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
     if (shareQuery.isError) showToast(errMsg(shareQuery.error), "error");
   }, [shareQuery.isError, shareQuery.error, showToast]);
 
-  // Reset the editable drafts to match the server truth whenever fresh data lands —
-  // on first load and again after a save (which invalidates this query).
+  // Reset drafts whenever fresh server data lands.
   useEffect(() => {
     if (!shareQuery.data) return;
     setPeople(shareQuery.data.rows);
@@ -268,8 +283,6 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
 
   const loading = !!token && shareQuery.isPending;
 
-  // Debounced same-organization user search: debouncing is a UI concern (kept as a
-  // plain timer), the fetch itself is a query keyed on the debounced value.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedEmailQuery(emailQuery.trim()), 300);
     return () => clearTimeout(timer);
@@ -415,8 +428,7 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
 
       if (errors.length) throw new Error(errors[0]);
     },
-    // Always refresh from the server after a save attempt — some items may have
-    // succeeded even if others failed.
+    // Some items may have succeeded even if others failed.
     onSettled: () => queryClient.invalidateQueries({ queryKey: shareQueryKey }),
     onSuccess: () => showToast("Sharing updated", "success"),
     onError: (err) => showToast(errMsg(err), "error"),

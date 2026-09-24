@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { getDefaultStore } from "jotai";
 import type { FileItem, FileVersion, ShareSettings } from "../types/file";
 import { SHARED_ROOT_ID } from "../types/file";
@@ -51,30 +68,22 @@ import {
   type AddFileInput,
 } from "../atoms/fileSystem";
 
-// Client-side file-system store: the entire tree (root + shared + trash) held as one
-// flat FileItem[] in filesAtom, plus the mutation/sync logic that keeps it in step
-// with YFS-Main-API. A singleton, wired to the signed-in user by
-// components/FileSystemBridge.tsx; components read it via hooks/useFileSystem.ts.
-// Deliberately still one flat tree rather than Query's per-resource cache — search,
-// breadcrumbs and the trash view all need the whole thing at once. Reads go through
-// queryClient.fetchQuery (see folderQueryKey), writes through queryClient mutations
-// (see runMutation).
+// Singleton file tree (drive, shared, trash) kept in sync with YFS-Main-API; read via hooks/useFileSystem.ts.
 
 const store = getDefaultStore();
 
 const STORAGE_KEY = "yfs_fs_cache";
 const ROOT_KEY = "__root__";
-// A real root folder that holds trashed items. Auto-created on first login.
+// Real root folder holding trashed items; created on first login.
 const TRASH_FOLDER_NAME = "Trash";
 
-// Auth/user snapshot, kept fresh by FileSystemBridge every render.
 interface AuthSnapshot {
   token: string | null;
   userId: string | null;
   refreshAccessToken: () => Promise<string | null>;
 }
 let authSnapshot: AuthSnapshot = { token: null, userId: null, refreshAccessToken: async () => null };
-let ownerEmail = "me@example.com";
+let ownerEmail = "";
 let userName: string | undefined;
 
 export function setAuthSnapshot(next: AuthSnapshot) {
@@ -82,23 +91,14 @@ export function setAuthSnapshot(next: AuthSnapshot) {
 }
 
 export function setUserSnapshot(email: string | undefined, name: string | undefined) {
-  ownerEmail = email || "me@example.com";
+  ownerEmail = email || "";
   userName = name;
 }
 
-// How many rows we've pulled for each folder key and whether the server has more.
-// (Caching/dedup of the actual network requests is queryClient's job now — see
-// folderQueryKey below — this Map only tracks pagination bookkeeping for the UI.)
+// Pagination bookkeeping per folder; request caching itself lives in queryClient.
 const pageState = new Map<string, { loaded: number; hasMore: boolean }>();
 
-// Ids with an in-flight move/trash/restore API call (fired via runMutation, never
-// awaited by the caller). mergeServerListing must not let a listing fetched while
-// one of these is still pending clobber its optimistic parentId/isDeleted — the
-// fetch can easily land before the server has processed the move, and would
-// otherwise revert the local change (or, in "force" mode, drop the row outright,
-// since it looks like a server-origin item the fresh listing doesn't know about).
-// Cleared once the mutation settles, success or failure, so a later listing can
-// reconcile normally.
+// Ids with an in-flight move/trash/restore; listings must not overwrite their optimistic state.
 const pendingSyncIds = new Set<string>();
 
 const trackPendingSync = <T,>(id: string, promise: Promise<T>): Promise<T> => {
@@ -106,37 +106,27 @@ const trackPendingSync = <T,>(id: string, promise: Promise<T>): Promise<T> => {
   return promise.finally(() => pendingSyncIds.delete(id));
 };
 
-// Thrown by a page queryFn when withFreshToken couldn't get a usable token (no
-// session, or a failed refresh). Distinguishes "silently abort, already handled by
-// authStore" from a real fetch failure that should surface to the user.
+// Token unavailable (authStore already handled it) — abort quietly instead of surfacing an error.
 class AuthUnavailableError extends Error {}
 
-// One queryClient entry per (folder key, page offset) — plain queries, not
-// useInfiniteQuery, since this store is a singleton with no component of its own
-// to own an infinite-query observer. staleTime: Infinity means a page fetched once
-// is never silently refetched; "force" mode below explicitly invalidates first.
+// One query per (folder, offset); staleTime Infinity, so "force" invalidates explicitly.
 const folderQueryKey = (key: string, offset: number) => ["folder", key, offset] as const;
 
 const nowIso = () => new Date().toISOString();
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
 
-// Optimistic rows carry a client-made id ("folder-<ts>-<rand>") until the create
-// lands and a listing swaps in the server's UUID. Every folder id the API takes is a
-// UUID path/body param, so sending a temp one comes back as a 400 ("UUID parsing
-// failed") — guard any call that passes an id straight through.
+// Optimistic rows use temp ids until the server UUID arrives; the API 400s on non-UUIDs.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isServerId = (id: string | null): boolean => id === null || UUID_RE.test(id);
 
 interface SharedSubtree {
-  rootId: string; // the folder from "Shared with me" (share endpoint's shared_folder_id)
+  rootId: string;
   ownerUserId: string;
   ownerEmail?: string;
   permissions: InternalSharePermissions;
 }
 
-// Walk up from `folderId` to the "Shared with me" root it belongs to (the item
-// directly under SHARED_ROOT_ID). Returns that share's id + owner + permissions so a
-// nested folder can be listed through the share endpoint, or null if it isn't shared.
+// Finds the "Shared with me" root above a folder, or null if it isn't shared.
 const sharedSubtreeContext = (files: FileItem[], folderId: string): SharedSubtree | null => {
   const byId = new Map(files.map((f) => [f.id, f]));
   let cur = byId.get(folderId);
@@ -159,7 +149,6 @@ const sharedSubtreeContext = (files: FileItem[], folderId: string): SharedSubtre
   return null;
 };
 
-// All descendant ids of a folder (recursive). Non-folders have no descendants.
 const collectDescendantIds = (files: FileItem[], rootId: string): string[] => {
   const result: string[] = [];
   const queue = [rootId];
@@ -175,7 +164,6 @@ const collectDescendantIds = (files: FileItem[], rootId: string): string[] => {
   return result;
 };
 
-// Map a raw API resource (folder or file) into the app's FileItem shape.
 const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
   const ui = info?.ui;
@@ -194,8 +182,7 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
     icon: ui?.icon,
     createdBy: creatorName,
     isLocked: Boolean((r as { is_locked?: boolean }).is_locked ?? (info as { is_locked?: boolean } | undefined)?.is_locked),
-    // Location is the only thing that makes something trashed; a listing under the
-    // Trash folder is flagged by fetchFolderPage's inTrash check, not from here.
+    // Trash state is set by fetchFolderPage's inTrash check.
     isDeleted: false,
     resourceInfo: info,
     origin: "server" as const,
@@ -206,13 +193,10 @@ const mapResource = (r: BackendResource, ownerEmailForRow: string): FileItem => 
   }
 
   const { type, extension } = categorizeByName(r.resource_name);
-  // resource_id IS files.file_id for a file row (see get_folders_and_files /
-  // get_root_folders in YFS-Main-API's database/folders.rs) — needed for any
-  // per-file call (download, update, move), not just ones this tab uploaded.
+  // resource_id is the file_id for file rows.
   return { ...common, isFolder: false, type, extension: extension || undefined, fileId: r.resource_id };
 };
 
-// Map a "shared with me" folder or file into a FileItem parked under SHARED_ROOT_ID.
 const mapSharedResource = (r: InternalSharedResource): FileItem => {
   const info = (r.resource_info ?? undefined) as ResourceInfo | undefined;
   const isFolder = r.is_resource_folder !== false;
@@ -249,11 +233,7 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
 const creatorIdOf = (item: FileItem): string | undefined =>
   (item.resourceInfo as ResourceInfo | undefined)?.creation_info?.user_id;
 
-// Resolves each item's creator display name from creation_info.user_id, live, via
-// public_info.display_name (falling back to the email local-part) — the same
-// pattern already used to resolve a shared folder's owner below. Cached per user id
-// through the query client, so the same creator seen across many pages/folders in a
-// session costs one GET /user/user-by-id call, not one per item.
+// Resolves creator names from creation_info.user_id, cached per user.
 const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
   const userIds = [...new Set(items.map(creatorIdOf).filter((id): id is string => !!id))];
   if (userIds.length === 0) return;
@@ -275,29 +255,22 @@ const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
           item.createdByEmail = user.email;
         }
       } catch {
-        /* leave unresolved — createdBy just stays unset for this item */
       }
     })
   );
 };
 
-// Grace window for a just-created optimistic folder whose server create call may
-// still be in flight. Past this, a local-only folder that a full server listing of
-// its parent didn't include is treated as orphaned (nothing ever retries these).
+// How long an unsynced optimistic folder survives a listing that doesn't include it.
 const LOCAL_FOLDER_GRACE_MS = 30_000;
 
-// Merge a fresh server listing of one folder into the current tree, preserving any
-// client-only state (stars, trash, shares, uploaded blobs) and reconciling optimistic
-// folders created offline against their now-real server ids.
+// Merges a server listing into the tree, keeping client-only state and swapping temp ids.
 const mergeServerListing = (
   prev: FileItem[],
   parentId: string | null,
   incoming: FileItem[],
   mode: "append" | "force" | "initial" = "initial"
 ): FileItem[] => {
-  // 1. Match optimistic local rows (offline folders, just-uploaded files) to their
-  //    server counterparts by kind + parent + name so the temp id is swapped for the
-  //    real one instead of showing a duplicate.
+  // Match optimistic rows to server rows by kind + parent + name.
   const idRemap = new Map<string, string>();
   for (const res of incoming) {
     const local = prev.find(
@@ -315,17 +288,14 @@ const mergeServerListing = (
   if (idRemap.size) {
     store.set(idRemapAtom, (prev) => ({ ...prev, ...Object.fromEntries(idRemap) }));
     working = prev
-      .filter((f) => !idRemap.has(f.id)) // drop the temp folder; the server version replaces it
+      .filter((f) => !idRemap.has(f.id))
       .map((f) => (f.parentId && idRemap.has(f.parentId) ? { ...f, parentId: idRemap.get(f.parentId)! } : f));
   }
 
   const workingIds = new Set(working.map((f) => f.id));
   const incomingIds = new Set(incoming.map((f) => f.id));
 
-  // 2. Upsert every incoming resource, keeping client-only fields on existing rows.
-  //    An id with a move/trash/restore mutation still in flight keeps its optimistic
-  //    fields untouched — a listing fetched mid-flight reflects the pre-move server
-  //    state and would otherwise stomp the local parentId/isDeleted right back.
+  // Upsert incoming rows; rows with a pending mutation keep their optimistic fields.
   const merged: FileItem[] = working.map((f) => {
     if (pendingSyncIds.has(f.id)) return f;
     const res = incoming.find((r) => r.id === f.id);
@@ -333,7 +303,6 @@ const mergeServerListing = (
 
     return {
       ...res,
-      // Comes from the listing context (inTrash), so the fresh row is always right.
       isDeleted: res.isDeleted,
       share: f.share,
       versions: f.versions,
@@ -347,27 +316,14 @@ const mergeServerListing = (
     if (!workingIds.has(res.id)) merged.push(res);
   }
 
-  // When appending or initially upserting a page, preserve other pages. Only a forced full refresh drops rows.
   if (mode !== "force") return merged;
 
-  // 3. Drop rows that are direct children of this folder but aren't in the fresh
-  //    listing:
-  //    - server rows that vanished server-side (deleted elsewhere)
-  //    - orphaned optimistic folders whose create never landed — nothing retries
-  //      them and fetchFolderPage won't list their children, so a kept row is a
-  //      permanent phantom. A just-created one (within the grace window) is spared
-  //      in case its create call is still in flight.
-  //    Rows carrying client-only state worth keeping (shared) are never dropped,
-  //    nor is one with a move/trash/restore still in flight —
-  //    a fresh listing that raced ahead of that mutation is not evidence the row
-  //    is really gone.
+  // Force mode: drop children missing from the listing, except shared rows, pending mutations and fresh optimistic folders.
   return merged.filter((f) => {
     if (f.parentId !== parentId) return true;
     if (incomingIds.has(f.id)) return true;
     if (f.share || pendingSyncIds.has(f.id)) return true;
     if (f.origin === "server") return false;
-    // Optimistic folders from createFolder / ensureFolderPath carry a "folder-" id
-    // (copied or offline-authored items use other schemes and stay put).
     if (f.origin === "local" && f.isFolder && f.id.startsWith("folder-")) {
       const age = Date.now() - Date.parse(f.createdAt);
       return Number.isFinite(age) && age <= LOCAL_FOLDER_GRACE_MS;
@@ -376,9 +332,6 @@ const mergeServerListing = (
   });
 };
 
-// Exported so hooks/useFileSystem.ts can build a reactive getPagination() closed
-// over its own useAtomValue(pageInfoAtom) subscription (a plain store.get() here
-// wouldn't re-render callers when pagination state changes).
 export const pageKeyFor = (parentId: string | null, shared?: boolean) => (shared ? SHARED_ROOT_ID : (parentId ?? ROOT_KEY));
 
 const setPageLoading = (key: string, loading: boolean, hasMore?: boolean, loaded?: boolean) =>
@@ -404,24 +357,17 @@ const persist = (updated: FileItem[]) => {
   saveCache(updated);
 };
 
-// FileItem.type is our own coarse category ("image", "video", "other", …), not a
-// MIME type — FileOpsRequest.file_type wants an actual MIME string. We don't track
-// the original one, so this is a best-guess fallback for anything not already a
-// real MIME-ish category name.
+// Best-guess MIME type; we only track a coarse category.
 export const fileTypeGuess = (item: FileItem): string => (item.type === "other" ? "application/octet-stream" : item.type);
 
-// Metadata stamped into a new folder's folder_info, or a new file's file_info
-// (echoed back as resource_info) — this is where the "Created By" column comes from
-// once the item round-trips through a listing. created_at/parent_folder_id aren't
-// duplicated here — the resource's own top-level created_at/parent_folder_id
-// (BackendResource.created_at / .parent_folder_id) already cover both.
+// Stamped into folder_info/file_info; drives the "Created by" column.
 export const buildCreationInfo = (): ResourceInfo => ({
   creation_info: {
     user_id: authSnapshot.userId ?? undefined,
   },
 });
 
-// Runs an API call with the current token; on 401/400 refreshes once and retries.
+// Runs an API call, refreshing the token once on 401/400.
 const withFreshToken = async <T,>(fn: (token: string) => Promise<T>): Promise<T | undefined> => {
   const current = authSnapshot.token;
   if (!current) return undefined;
@@ -437,10 +383,7 @@ const withFreshToken = async <T,>(fn: (token: string) => Promise<T>): Promise<T 
   }
 };
 
-// Fires a background write as a real queryClient mutation (the same MutationCache
-// primitive useMutation is built on), fire-and-forget since callers here are plain
-// functions, not components. Failures don't roll the optimistic local edit back —
-// createFolder is the one exception, with its own rollback inside onError.
+// Fire-and-forget write through the MutationCache; no rollback except createFolder's own.
 const runMutation = <TVariables>(
   mutationFn: (variables: TVariables) => Promise<unknown>,
   variables: TVariables,
@@ -448,13 +391,10 @@ const runMutation = <TVariables>(
 ) => {
   const mutation = queryClient.getMutationCache().build(queryClient, { mutationFn, onError });
   mutation.execute(variables).catch(() => {
-    // onError above already handled/logged it; swallow so this fire-and-forget
-    // call doesn't produce an unhandled promise rejection.
+    // onError already handled it; avoid an unhandled rejection.
   });
 };
 
-// Common runMutation onError: log for debugging, toast the (now backend-provided,
-// see apiClient.ts) message for the user.
 const notifySyncFailed = (context: string, fallback: string) => (err: unknown) => {
   console.warn(context, err);
   showToast(err instanceof Error ? err.message : fallback, "error");
@@ -462,27 +402,20 @@ const notifySyncFailed = (context: string, fallback: string) => (err: unknown) =
 
 const inFlightFolderPages = new Set<string>();
 
-// One folder page fetch. `mode` picks the intent:
-//   "initial" — first visit; a no-op if the page is already cached (staleTime: Infinity)
-//   "force"   — re-fetch page 1, resetting the scroll position
-//   "append"  — pull the next page for infinite scroll
+// "initial" uses cache, "force" refetches page 1, "append" loads the next page.
 const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force" | "append") => {
   if (!authSnapshot.token) return;
   const key = parentId ?? ROOT_KEY;
 
-  // A folder inside a "Shared with me" folder is listed through the share endpoint
-  // as the folder's owner, not the normal listing.
+  // Folders inside a share are listed through the share endpoint.
   const currentFiles = store.get(filesAtom);
   const shared = parentId !== null ? sharedSubtreeContext(currentFiles, parentId) : null;
 
-  // Client-only folders (created offline, not yet synced) have no server listing.
-  // Shared-subtree folders do (via the share endpoint), so don't skip those.
+  // Unsynced local folders have no server listing.
   if (parentId !== null && !shared) {
     const folder = currentFiles.find((f) => f.id === parentId);
     if (folder && folder.origin !== "server") return;
   }
-  // Belt and braces: never put a non-UUID in the request path, even if the row it
-  // came from has already been remapped away and so isn't found above.
   if (!isServerId(parentId)) return;
 
   const state = pageState.get(key) ?? { loaded: 0, hasMore: true };
@@ -494,8 +427,6 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
 
   const offset = mode === "append" ? state.loaded : 0;
   const queryKey = folderQueryKey(key, offset);
-  // Force resets to page 1 and drops every cached page for this folder, so a later
-  // "append" naturally re-fetches rather than returning a stale pre-force page.
   if (mode === "force" && offset === 0) {
     await queryClient.invalidateQueries({ queryKey: ["folder", key] });
   }
@@ -522,16 +453,13 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     pageState.set(key, { loaded: offset + resources.length, hasMore });
     store.set(remoteErrorAtom, null);
 
-    // Anything under the Trash folder is trashed, at any depth: either a direct child
-    // of Trash, or a descendant of a folder that's already flagged (matches what
-    // trashItems does locally for descendants).
+    // Anything under Trash, at any depth, is trashed.
     const inTrash =
       parentId !== null &&
       (parentId === store.get(trashFolderIdAtom) ||
         (store.get(filesAtom).find((f) => f.id === parentId)?.isDeleted ?? false));
     const mapped = resources.map((r) => {
       const item = mapResource(r, ownerEmail);
-      // Keep the flag true even for items trashed on another device.
       if (inTrash) item.isDeleted = true;
       if (shared) {
         item.origin = "shared";
@@ -572,7 +500,6 @@ export const loadMoreFolder = (parentId: string | null) => fetchFolderPage(paren
 
 let inFlightShared = false;
 
-// Shared-with-me folders, paged the same way. `mode` matches fetchFolderPage.
 const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
   if (!authSnapshot.token) return;
   const key = SHARED_ROOT_ID;
@@ -606,8 +533,6 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
     pageState.set(key, { loaded: offset + shared.length, hasMore });
     store.set(remoteErrorAtom, null);
 
-    // Resolve each owner once so the list shows who shared the folder — prefer
-    // their public_info.display_name, fall back to the email local-part.
     const owners = new Map<string, { name: string; email: string }>();
     await Promise.all(
       [...new Set(shared.map((s) => s.user_id))].map(async (ownerId) => {
@@ -619,12 +544,10 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
             owners.set(ownerId, { name: displayName || owner.email.split("@")[0], email: owner.email });
           }
         } catch {
-          /* leave unresolved */
         }
       })
     );
 
-    // Shared-in folders are read-only leaves — no client state to preserve.
     const mapped = shared.map((s) => {
       const item = mapSharedResource(s);
       const owner = owners.get(s.user_id);
@@ -636,7 +559,6 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
     });
     await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
-      // "force" replaces the whole bucket; "append" and "initial" add/merge without dropping
       const kept = mode === "force" ? prev.filter((f) => f.origin !== "shared") : prev;
       const seen = new Set(kept.map((f) => f.id));
       const next = [...kept, ...mapped.filter((m) => !seen.has(m.id))];
@@ -665,7 +587,7 @@ export const loadMoreSharedFolders = () => fetchSharedPage("append");
 const SHARED_OUT_QUERY_KEY = ["sharedOut"] as const;
 const SHARED_LINKS_QUERY_KEY = ["sharedLinks"] as const;
 
-// Folders I've shared out. One row per recipient, so dedupe by folder id.
+// One row per recipient, so dedupe by folder id.
 export const loadSharedOut = async (opts?: { force?: boolean }) => {
   if (!authSnapshot.token) return;
   if (opts?.force) await queryClient.invalidateQueries({ queryKey: SHARED_OUT_QUERY_KEY });
@@ -744,7 +666,7 @@ export const updateSharedLink = async (shareId: string, input: UpdateExternalSha
             ...s,
             permission_set: input.permissions,
             share_info: input.shareInfo ?? s.share_info,
-            // Presence-only sentinel — the real hash never lives client-side.
+            // Presence-only sentinel; the real hash never reaches the client.
             password_hash: input.updatePassword ? (input.rawPassword ? "set" : null) : s.password_hash,
             phones_for_otp: input.phonesForOtp ?? [],
             emails_for_otp: input.emailsForOtp ?? [],
@@ -773,7 +695,7 @@ export const setItemLocked = (id: string, isLocked: boolean) => {
 
 export const getDescendantIds = (id: string) => collectDescendantIds(store.get(filesAtom), id);
 
-// Regenerate blob: URLs (which don't survive a reload) from bytes kept in IndexedDB.
+// blob: URLs don't survive a reload, so rebuild them from IndexedDB.
 const hydrateBlobs = async (items: FileItem[]): Promise<FileItem[]> => {
   const hydrateOne = async (storageKey: string | undefined): Promise<string | undefined> => {
     if (!storageKey) return undefined;
@@ -797,7 +719,6 @@ const hydrateBlobs = async (items: FileItem[]): Promise<FileItem[]> => {
   );
 };
 
-// Resolve the "Trash" root folder, creating it on first login if it's missing.
 const ensureTrashFolder = async (): Promise<string | null> => {
   const known = store
     .get(filesAtom)
@@ -809,8 +730,6 @@ const ensureTrashFolder = async (): Promise<string | null> => {
 
   if (!authSnapshot.token) return null;
 
-  // List root first; only create if it's genuinely absent (saves a doomed create
-  // call on every login after the first).
   const readRoot = async () =>
     withFreshToken((t) => listRootFolders(t, { limit: PAGE_SIZE, offset: 0 })).catch((err) => {
       console.warn("ensureTrashFolder: could not read root listing", err);
@@ -847,8 +766,6 @@ const ensureTrashFolder = async (): Promise<string | null> => {
   return match.resource_id;
 };
 
-// Clears every bucket back to signed-out defaults. Called by FileSystemBridge when
-// isAuthenticated flips false.
 export const resetFileSystem = () => {
   store.set(filesAtom, []);
   store.set(isLoadingAtom, false);
@@ -859,8 +776,7 @@ export const resetFileSystem = () => {
   store.set(sharedLinksAtom, []);
   store.set(sharedLinksLoadingAtom, false);
   store.set(sharedLinksLoadedAtom, false);
-  // Drop every cached page too — otherwise a later login (possibly as a different
-  // user) would see this session's stale, never-expiring (staleTime: Infinity) pages.
+  // Cached pages never go stale, so clear them for the next user.
   queryClient.removeQueries({ queryKey: ["folder"] });
   queryClient.removeQueries({ queryKey: SHARED_OUT_QUERY_KEY });
   queryClient.removeQueries({ queryKey: SHARED_LINKS_QUERY_KEY });
@@ -868,10 +784,7 @@ export const resetFileSystem = () => {
   store.set(pageInfoAtom, {});
 };
 
-// Boot sequence on sign-in: hydrate the cached tree, then pull the live root listing
-// over it, then make sure Trash exists. `signal.cancelled` lets the caller (the
-// isAuthenticated effect in FileSystemBridge) abandon a stale run if auth flips again
-// mid-flight.
+// Boot on sign-in; `signal.cancelled` abandons a stale run.
 export const bootFileSystem = async (signal: { cancelled: boolean }) => {
   store.set(isLoadingAtom, true);
 
@@ -888,13 +801,11 @@ export const bootFileSystem = async (signal: { cancelled: boolean }) => {
   store.set(filesAtom, hydrated);
   store.set(isLoadingAtom, false);
 
-  // Pull the live root listing over the cached tree, then make sure Trash exists.
   await loadFolder(null, { force: true });
   if (!signal.cancelled) await ensureTrashFolder();
 };
 
-// Optimistic local create; if signed in, also create it server-side and re-sync the
-// parent so the temp id is swapped for the real one.
+// Optimistic create, then sync server-side and swap in the real id.
 export const createFolder = (name: string, parentId: string | null): FileItem | null => {
   const safeName = sanitizeName(name);
   if (!safeName) return null;
@@ -925,17 +836,12 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
 
   const tk = authSnapshot.token;
   if (tk) {
-    // The parent's own create may still be in flight, leaving it with a temp id the
-    // API can't parse. Keep the folder locally and let the caller retry once the
-    // parent is real, rather than firing a request that's guaranteed to 400.
+    // Parent is still a temp id; the request would 400.
     if (!isServerId(parentId)) {
       showToast("That folder is still being saved — try again in a moment", "error");
       return newFolder;
     }
-    // Creating inside a "Shared with me" folder: the API needs shared_folder_id to
-    // check the caller's share permissions and write as the folder's owner. It's the
-    // id of the folder actually shared with the user (the shared-subtree root), not
-    // the immediate parent — the two differ for a nested subfolder.
+    // shared_folder_id is the share root, not the immediate parent.
     const sharedFolderId = parentId !== null ? (sharedSubtreeContext(store.get(filesAtom), parentId)?.rootId ?? null) : null;
     runMutation(
       () =>
@@ -950,10 +856,7 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
       { parentId, safeName },
       (err) => {
         notifySyncFailed("Folder create did not sync to API", "Couldn't create the folder")(err);
-        // Roll the optimistic row back — nothing retries local folders and
-        // fetchFolderPage won't list their children, so a kept row becomes a
-        // permanent phantom. Then re-list in case the create actually landed
-        // (e.g. a unique-name conflict) so it reappears as a real server row.
+        // Roll back (nothing retries local folders), then re-list in case the create actually landed.
         store.set(filesAtom, (prev) => {
           const updated = prev.filter((f) => f.id !== newFolder.id);
           saveCache(updated);
@@ -967,12 +870,8 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
   return newFolder;
 };
 
-// Resolve a folder chain to real server ids, creating missing links. See the
-// FileSystemContextType doc on ensureFolderPath. Returns the deepest folder id, or
-// null on failure.
+// Resolves a folder path to server ids, creating missing folders. Returns the deepest id, or null.
 export const ensureFolderPath = async (segments: string[], rootParentId: string | null): Promise<string | null> => {
-  // Uploading into a folder whose own create hasn't come back yet: its id is still a
-  // temp one the API can't parse, so there's nothing to hang the upload off.
   if (!isServerId(rootParentId)) {
     showToast("That folder is still being saved — try again in a moment", "error");
     return null;
@@ -993,15 +892,13 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
 
     const tk = authSnapshot.token;
     if (!tk) {
-      // Signed out — fall back to an optimistic local folder.
       const local = known ?? createFolder(segment, parentId);
       if (!local) return null;
       parentId = local.id;
       continue;
     }
 
-    // Create it (a unique-name conflict just means it already exists), then read
-    // the parent's listing back to learn the real id.
+    // A name conflict means it already exists; re-list to learn its id.
     try {
       await withFreshToken((t) =>
         apiCreateFolder(t, {
@@ -1068,9 +965,7 @@ export const addFile = (input: AddFileInput): FileItem => {
   };
 
   store.set(filesAtom, (prev) => {
-    // The backend keeps one row per (folder, file_name); mirror that here. If this
-    // upload bumped the version, fold the previous content into the version history
-    // instead of dropping it; otherwise it's a plain replace.
+    // One row per (folder, name); a version bump moves the old content into history.
     const existing = prev.find((f) => !f.isFolder && f.parentId === newItem.parentId && f.name === safeName);
     if (existing) {
       newItem.isDeleted = existing.isDeleted;
@@ -1097,8 +992,6 @@ export const addFile = (input: AddFileInput): FileItem => {
   return newItem;
 };
 
-// For an item inside a "Shared with me" subtree: the shared root id to send as
-// shared_folder_id, plus the caller's permissions. null for the user's own items.
 const sharedWrite = (id: string): { sharedFolderId: string; perms: InternalSharePermissions } | null => {
   const ctx = sharedSubtreeContext(store.get(filesAtom), id);
   return ctx ? { sharedFolderId: ctx.rootId, perms: ctx.permissions } : null;
@@ -1116,7 +1009,7 @@ export const renameItem = (id: string, newName: string) => {
   if (!tk || !target) return;
   const shared = sharedWrite(id);
 
-  // edit replaces *_info wholesale — carry the existing info through.
+  // Edit replaces *_info wholesale, so carry the existing info through.
   if (target.isFolder && (target.origin === "server" || target.origin === "shared")) {
     if (shared && !shared.perms.can_update) return; // no edit permission — optimistic only
     runMutation(
@@ -1154,9 +1047,7 @@ export const renameItem = (id: string, newName: string) => {
   }
 };
 
-// Free-text description, stored on the resource's own info blob. Both edit
-// endpoints replace *_info wholesale, so the existing blob is merged rather than
-// overwritten. Empty string clears the key instead of storing "".
+// Merged into the existing info blob; empty string clears it.
 export const setItemDescription = (id: string, description: string) => {
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);
@@ -1209,15 +1100,12 @@ export const setItemDescription = (id: string, description: string) => {
   }
 };
 
-// Merge a UI patch (color / icon) into an item's resource_info.
 const mergeUi = (f: FileItem, patch: Partial<ResourceUiInfo>): Record<string, unknown> => {
   const info = (f.resourceInfo ?? {}) as ResourceInfo;
   return { ...info, ui: { ...(info.ui ?? {}), ...patch } };
 };
 
-// Persist a resource_info.ui change for a folder (PATCH /folders/edit, which
-// replaces folder_info — so send the whole merged object). Works for the user's
-// own folders and for shared folders where the caller has can_update.
+// PATCH /folders/edit replaces folder_info, so send the whole merged object.
 const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
   const target = store.get(filesAtom).find((f) => f.id === id);
   if (!target?.isFolder || !authSnapshot.token) return;
@@ -1240,7 +1128,6 @@ const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
   );
 };
 
-// Folder colour / icon. Pass null to clear either.
 export const setFolderStyle = (id: string, style: { color?: string | null; icon?: string | null }) => {
   const patch: Partial<ResourceUiInfo> = {};
   if ("color" in style) patch.color = style.color ?? undefined;
@@ -1262,10 +1149,7 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
   patchFolderUi(id, patch);
 };
 
-// Trash is just a folder: trashing moves the item into it, restoring moves it back
-// out to a destination the caller picked (see MoveCopyModal's "restore" mode).
-// Nothing is stamped on the resource — whether something is in the Trash is decided
-// by where it lives, which moveItems already maintains.
+// Trash is a folder: trashing and restoring are moves.
 export const trashItems = (ids: string[]) => {
   const trashId = store.get(trashFolderIdAtom);
   if (!trashId) return;
@@ -1277,10 +1161,7 @@ export const restoreItems = (
   destinationId: string | null
 ): { moved: number; blocked: number; unsupported: number } => moveItems(ids, destinationId);
 
-// Permanent delete, unlike trash/restore/move above, is NOT optimistic — this is
-// irreversible, so an item only disappears once the server actually confirms it's
-// gone (or was never the server's to begin with). Awaited by the caller rather than
-// fired via runMutation, so the confirm dialog can report real success/failure counts.
+// Not optimistic — items disappear only once the server confirms.
 export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: number; blocked: number }> => {
   const files = store.get(filesAtom);
   const targets = ids
@@ -1294,16 +1175,11 @@ export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: nu
     return { deleted: 0, blocked: ids.length };
   }
 
-  // Local-only items (never touched the server) can just be dropped, folders included —
-  // there's nothing server-side to reconcile, so their descendants go with them.
   const localOnly = targets.filter((f) => f.origin !== "server" && f.origin !== "shared");
   const removeIds = new Set(localOnly.flatMap((f) => [f.id, ...getDescendantIds(f.id)]));
 
   const serverFolders = targets.filter((f) => f.isFolder && (f.origin === "server" || f.origin === "shared"));
-  // DELETE /folders/delete purges a folder's whole subtree recursively server-side, so a
-  // file/folder that's already inside one of `serverFolders` gets deleted along with it —
-  // giving it its own separate delete call too would be redundant (and could easily race
-  // the folder's own background purge into a 400/404).
+  // Folder deletes purge their subtree server-side; don't delete descendants separately.
   const coveredByFolderDelete = new Set(serverFolders.flatMap((f) => getDescendantIds(f.id)));
   const serverFiles = targets.filter(
     (f): f is FileItem & { fileId: string; parentId: string } =>
@@ -1366,20 +1242,14 @@ export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: nu
   return { deleted: removeIds.size, blocked };
 };
 
-// DELETE /files/delete/version — removes one older version of a file (never the
-// current/latest one; the server enforces file_version > 1). Also awaited rather than
-// optimistic, same reasoning as permanentDeleteItems. Invalidates the file's cached
-// available_versions (see useFileInfo/useVersionHistory) so the modal drops it from the
-// list on success rather than needing a manual refresh.
+// Deletes an older version (never the current one).
 export const deleteFileVersion = async (item: FileItem, version: number): Promise<boolean> => {
   if (item.isFolder || !item.fileId || !item.parentId) return false;
   if (isItemLocked(item)) {
     showToast("File is locked and its versions cannot be deleted", "error");
     return false;
   }
-  // Server-enforced (routes/files.rs delete_any_file_version): version 1 can never be
-  // deleted alone. The UI (VersionHistoryModal) already disables that button; this is a
-  // backstop for any other caller, so it fails clearly instead of round-tripping to a 400.
+  // The server never allows deleting version 1 on its own.
   if (version <= 1) {
     showToast("The first version can't be deleted on its own — delete the whole file instead", "error");
     return false;
@@ -1432,8 +1302,6 @@ export const moveItems = (
   const files = store.get(filesAtom);
   const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
   const next = files.map((f) => f);
-  // "Trashed" is purely a matter of where something lives, so a move is the only
-  // thing that changes it — into the Trash subtree or back out of it.
   const trashId = store.get(trashFolderIdAtom);
   const intoTrash =
     newParentId !== null && (newParentId === trashId || !!next.find((f) => f.id === newParentId)?.isDeleted);
@@ -1452,14 +1320,12 @@ export const moveItems = (
       continue;
     }
     if (item.parentId === newParentId) continue;
-    // The destination's own create may still be in flight — its temp id would 400.
     if (!isServerId(newParentId)) {
       blocked++;
       continue;
     }
 
-    // PUT /files/move/{destination_folder_id} requires a real destination folder
-    // UUID — there's no way to move a file to root against that endpoint.
+    // PUT /files/move needs a destination folder; files can't move to root.
     if (!item.isFolder && newParentId === null) {
       unsupported++;
       continue;
@@ -1511,8 +1377,6 @@ export const moveItems = (
         notifySyncFailed("Folder move did not sync to API", "Couldn't move that folder")
       );
     });
-    // fileMoves is always empty when newParentId is null (files are filtered out as
-    // "unsupported" above), so apiMoveFile's non-null destination is always valid here.
     fileMoves.forEach(({ id, fileId, sharedFolderId, sourceFolderId, fileName, fileInfo, fileType, fileVersion, expectedFileSize }) => {
       runMutation(
         () =>

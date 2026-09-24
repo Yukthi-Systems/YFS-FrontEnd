@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useRef, useState } from "react";
 
 export interface MarqueeRect {
@@ -12,13 +29,7 @@ const DRAG_THRESHOLD_PX = 4;
 const rectsIntersect = (a: DOMRect, b: MarqueeRect): boolean =>
   a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
 
-// Windows-style click-and-drag rectangle selection: mousedown on empty background
-// starts a drag; any rendered item under `container` with a `data-item-id`
-// attribute that the rectangle overlaps gets selected, live, as the drag moves.
-// Holding Ctrl/Cmd at drag-start adds to the existing selection instead of
-// replacing it. Coordinates are viewport-relative throughout (getBoundingClientRect
-// on both the rectangle and each item), so this stays correct even if the
-// container scrolls mid-drag — no manual scroll-offset math needed.
+// Drag-rectangle selection over elements with `data-item-id`; Ctrl/Cmd adds to the selection.
 export function useMarqueeSelection({
   container,
   checkedItemIds,
@@ -46,8 +57,6 @@ export function useMarqueeSelection({
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    // Never start a drag-select from an item, or from a button/input/link inside
-    // the background chrome (filter bar, breadcrumbs, etc.).
     const target = e.target as HTMLElement;
     if (target.closest("[data-item-id], button, a, input, textarea, select")) return;
 
@@ -78,9 +87,7 @@ export function useMarqueeSelection({
       setMarqueeRect(null);
       if (!dragging) return;
 
-      // A real drag ended — swallow the click it produces so it doesn't also fire
-      // onItemClick (on whatever's under the cursor) or clear the selection via the
-      // background's own click handler.
+      // Swallow the click that ends a real drag.
       if (!container) return;
       const swallow = (ev: MouseEvent) => {
         ev.stopPropagation();

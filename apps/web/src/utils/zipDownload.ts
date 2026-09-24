@@ -1,9 +1,23 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import JSZip from "jszip";
 import type { FileItem } from "../types/file";
 
-// Builds the zip's internal folder structure by walking descendants from each root item,
-// using each root's own name as the top-level path inside the archive. `parentPath` is the
-// prefix (already ending in "/", or "") that this item's own name gets appended to.
 const collectFilesForZip = (roots: FileItem[], allFiles: FileItem[]): { path: string; item: FileItem }[] => {
   const result: { path: string; item: FileItem }[] = [];
 
@@ -33,10 +47,7 @@ const triggerBlobDownload = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-// Zips one or more items (folders recursively, or a flat multi-selection) and triggers a
-// browser download. `fetchBlob` resolves one item's real bytes (server download session,
-// or the local blob cache) — items it can't resolve (no server content, no local blob) are
-// skipped rather than failing the whole archive.
+// Items `fetchBlob` can't resolve are skipped, not fatal.
 export const downloadAsZip = async (
   roots: FileItem[],
   allFiles: FileItem[],
@@ -47,8 +58,6 @@ export const downloadAsZip = async (
   const zip = new JSZip();
   let skipped = 0;
 
-  // One file's session/fetch failing (e.g. a locked file, an expired token) shouldn't
-  // sink the whole archive — count it as skipped like "no content" and keep going.
   await Promise.all(
     entries.map(async ({ path, item }) => {
       try {

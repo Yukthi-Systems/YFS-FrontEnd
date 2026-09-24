@@ -1,15 +1,26 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { QueryClient } from '@tanstack/react-query'
 import { HttpError } from '@yfs/service'
 
 const MAX_API_RETRIES = 3;
 
-// Every query/mutation in the app runs through this one QueryClient (including
-// services/fileSystemStore.ts's fire-and-forget writes, which build mutations off
-// it directly) — so this is the single global cap. Retries only on failure, and
-// only for errors that might actually succeed on a retry (network blips, 5xx);
-// a 4xx from the API means the request itself was rejected and won't succeed no
-// matter how many more times we ask, so those fail immediately instead of
-// retrying up to the cap for no reason.
+// Retry only network errors and 5xx; a 4xx won't succeed on retry.
 const shouldRetry = (failureCount: number, error: unknown): boolean => {
   if (failureCount >= MAX_API_RETRIES) return false;
   if (error instanceof HttpError && error.status >= 400 && error.status < 500) return false;

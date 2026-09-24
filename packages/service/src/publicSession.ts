@@ -1,19 +1,25 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { apiRequest } from "./apiClient";
 import { PAGE_SIZE } from "./types";
 import type { BackendResource, InternalSharePermissions, PageQuery } from "./types";
 
-// Anonymous access to an external share (the /share/<share_id> page). No YFS
-// account — a short-lived public session (Redis, ~3h) stands in for one.
-// Mirrors src/routes/auth.rs (/public/*), src/routes/shares.rs and
-// src/middleware/auth.rs. The session token rides in the x-public-session-id
-// header on every call after createPublicSession.
-//
-// NOTE: folder shares can now be browsed (GET /share/public/folders/list/under/{id}).
-// There is still no public endpoint to download a file or fetch a single-file
-// share, so file shares can only show metadata.
-//
-// The folder endpoints live under /share/public/folders/*; the session endpoints
-// (/public/session, /public/validate/*, /public/logout) stay under /public/*.
+// Anonymous access to external shares (/share/<id>). The session token goes in x-public-session-id.
 
 const PUBLIC_HEADER = "x-public-session-id";
 
@@ -23,13 +29,11 @@ export interface PublicSession {
   is_password_protected: boolean;
   is_email_otp_protected: boolean;
   is_phone_otp_protected: boolean;
-  is_file_share: boolean; // true = the share targets a file, false = a folder
+  is_file_share: boolean;
   expires_at: string | null; // RFC3339
 }
 
-// POST /public/session/{share_id} — mint a session for a share. If the share has
-// no restrictions the session is already active; otherwise validate below first.
-// 400 if the share doesn't exist or has expired.
+// POST /public/session/{share_id} — already active unless the share is protected; 400 if missing or expired.
 export const createPublicSession = async (shareId: string): Promise<PublicSession> => {
   const { data } = await apiRequest<PublicSession>(`/public/session/${encodeURIComponent(shareId)}`, {
     method: "POST",
@@ -37,9 +41,7 @@ export const createPublicSession = async (shareId: string): Promise<PublicSessio
   return data;
 };
 
-// POST /public/validate/password — check the visitor's password and activate the
-// session. Keep using the same token afterwards (the server re-keys it in place).
-// 400 on a wrong password or an expired / unrestricted share.
+// POST /public/validate/password — activates the session; keep using the same token.
 export const validatePublicSessionPassword = async (
   publicSessionToken: string,
   rawPassword: string
@@ -52,7 +54,6 @@ export const validatePublicSessionPassword = async (
   });
 };
 
-// One external share's targets + the visitor's permissions on it.
 export interface PublicSessionInfo {
   share_id: string;
   created_by: string;
@@ -61,8 +62,7 @@ export interface PublicSessionInfo {
   permission_set: InternalSharePermissions;
 }
 
-// GET /public/session — details for the active session. 401 until the session is
-// active (i.e. after the password step for a protected share).
+// GET /public/session — 401 until the session is active.
 export const getPublicSession = async (publicSessionToken: string): Promise<PublicSessionInfo> => {
   const { data } = await apiRequest<PublicSessionInfo>("/public/session", {
     headers: { [PUBLIC_HEADER]: publicSessionToken },
@@ -70,7 +70,6 @@ export const getPublicSession = async (publicSessionToken: string): Promise<Publ
   return data;
 };
 
-// DELETE /public/logout — end the session.
 export const publicLogout = async (publicSessionToken: string): Promise<void> => {
   await apiRequest("/public/logout", {
     method: "DELETE",
@@ -85,9 +84,7 @@ const pageParams = (page: Partial<PageQuery> = {}): string => {
   return `?limit=${limit}&offset=${offset}`;
 };
 
-// Anonymous-visitor stand-in for the authenticated creation_info the main app
-// stamps into folder_info. No user_id/user_name — the visitor has no account;
-// instead it records that the folder was created through a public share link.
+// Stands in for creation_info when an anonymous visitor creates a folder.
 export interface AnonymousFolderCreationInfo {
   anonymous: true;
   created_via_share_id: string; // the external share the visitor came through
@@ -107,9 +104,7 @@ export const buildAnonymousCreationInfo = (
   },
 });
 
-// GET /share/public/folders/list/under/{requestFolderId} — direct children of a
-// folder inside a shared-folder link. `requestFolderId` must be the share target
-// or a folder under it. Only valid for folder shares.
+// GET /share/public/folders/list/under/{id} — folder shares only.
 export const listPublicFolderChildren = async (
   publicSessionToken: string,
   requestFolderId: string,
@@ -122,14 +117,7 @@ export const listPublicFolderChildren = async (
   return data ?? [];
 };
 
-// POST /share/public/folders/create — create a folder inside a shared-folder link.
-// `parentFolderId` must be the share target or a folder under it. The API doesn't
-// echo the folder back — re-list the parent afterwards. Gate on the session's
-// can_create in the UI; the endpoint itself doesn't check it.
-//
-// folder_info carries an anonymous creation_info (see buildAnonymousCreationInfo):
-// pass `shareId` and it's stamped in automatically, merged under any extra
-// `folderInfo` the caller supplies.
+// POST /share/public/folders/create — no echo; re-list the parent. The endpoint doesn't check can_create.
 export const createPublicFolder = async (
   publicSessionToken: string,
   params: {
@@ -155,8 +143,7 @@ export const createPublicFolder = async (
   });
 };
 
-// PATCH /share/public/folders/edit — rename / update a folder inside a
-// shared-folder link. Requires the session's can_update.
+// PATCH /share/public/folders/edit — requires can_update.
 export const editPublicFolder = async (
   publicSessionToken: string,
   params: { folderId: string; folderName: string; folderInfo?: Record<string, unknown> }
@@ -174,9 +161,7 @@ export const editPublicFolder = async (
   });
 };
 
-// PUT /share/public/folders/move — re-parent a folder inside a shared-folder link.
-// Both the folder and the new parent must be under the share. Requires can_create
-// AND can_update.
+// PUT /share/public/folders/move — requires can_create and can_update.
 export const movePublicFolder = async (
   publicSessionToken: string,
   params: { folderId: string; newParentFolderId: string }

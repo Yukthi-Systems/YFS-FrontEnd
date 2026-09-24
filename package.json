@@ -2,6 +2,16 @@
   "name": "yfs-monorepo",
   "private": true,
   "version": "0.0.0",
+  "description": "Web UI for Yukthi File System (YFS) — file storage, sharing and document editing.",
+  "license": "GPL-3.0-only",
+  "author": "Yukthi Systems Private Limited",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yukthi-Systems/YFS-FrontEnd.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Yukthi-Systems/YFS-FrontEnd/issues"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -9,6 +19,7 @@
   "scripts": {
     "dev": "npm run dev -w @yfs/web",
     "build": "npm run build -w @yfs/web",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint -w @yfs/web"
   }
 }

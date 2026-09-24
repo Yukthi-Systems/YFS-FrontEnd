@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { apiRequest } from "./apiClient";
 import { PAGE_SIZE } from "./types";
 import type {
@@ -28,8 +45,7 @@ export const listSharingIn = async (
   return data ?? [];
 };
 
-// GET /share/internal/list/sharing-out — folders I have shared with other users
-// (one row per recipient).
+// GET /share/internal/list/sharing-out — one row per recipient.
 export const listSharingOut = async (
   accessToken: string,
   page?: Partial<PageQuery>
@@ -41,11 +57,7 @@ export const listSharingOut = async (
   return data ?? [];
 };
 
-// GET /share/internal/list/under/{sharedFolderId}/{requestFolderId} — direct children
-// (folders + files) of a folder that lives inside a folder shared with me.
-// `sharedFolderId` is the top folder from listSharingIn; `requestFolderId` is the one
-// being opened (may equal `sharedFolderId` for the shared root itself). 400 if the
-// requested folder isn't under the share or I lack access.
+// GET /share/internal/list/under/{sharedFolderId}/{requestFolderId} — `sharedFolderId` is the share root from listSharingIn.
 export const listSharedFolderChildren = async (
   accessToken: string,
   sharedFolderId: string,
@@ -59,8 +71,7 @@ export const listSharedFolderChildren = async (
   return data ?? [];
 };
 
-// GET /share/internal/info/sharing-out/{folderId} — every user this folder is
-// shared with (by me), with their permissions.
+// GET /share/internal/info/sharing-out/{folderId} — every recipient with their permissions.
 export const getFolderShareInfo = async (
   accessToken: string,
   folderId: string
@@ -72,9 +83,7 @@ export const getFolderShareInfo = async (
   return data ?? [];
 };
 
-// POST /share/internal/create — share one of my folders with one user.
-// 403 if sharing is disabled for the org, 400 for self/unknown user, 404 for a
-// folder that isn't mine.
+// POST /share/internal/create — 403 if sharing is disabled for the org.
 export const createInternalShare = async (
   accessToken: string,
   params: { folderId: string; sharedWithUserId: string; permissions: InternalSharePermissions }

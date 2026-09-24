@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import type { FileItem, SidebarTab, SortField, SortOrder } from "../types/file";
 import { SHARED_ROOT_ID } from "../types/file";
 
@@ -63,10 +80,7 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
   return result;
 }
 
-// All descendant ids of a folder, recursive. `rootId: null` means "the whole tree from the
-// top" (top-level items have parentId === null, so the BFS just starts there). This is a
-// pure, files-array-based counterpart to the private helper of the same name in
-// services/fileSystemStore.ts (which only ever needs a real id, never the whole-tree case).
+// `rootId: null` means the whole tree.
 export function collectDescendantIds(files: FileItem[], rootId: string | null): string[] {
   const result: string[] = [];
   const queue: (string | null)[] = [rootId];
@@ -82,9 +96,7 @@ export function collectDescendantIds(files: FileItem[], rootId: string | null): 
   return result;
 }
 
-// The recursive candidate set for a full-text/name search within the current section —
-// unlike normal browsing (direct children only), search should look at every descendant,
-// since the point is finding something you don't remember the exact location of.
+// Search covers all descendants, not just direct children.
 export function getSearchScope(
   files: FileItem[],
   params: {

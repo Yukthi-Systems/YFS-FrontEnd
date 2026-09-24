@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -21,8 +38,7 @@ import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
 import type { CollaboraViewerHandle } from "./CollaboraViewer";
 
-// pdf.js, CodeMirror, and SheetJS are heavy — only pull them into a bundle
-// when a file of that type is actually opened.
+// Heavy viewers are loaded on demand.
 const PdfViewer = lazy(() => import("./PdfViewer").then((m) => ({ default: m.PdfViewer })));
 const SpreadsheetViewer = lazy(() => import("./SpreadsheetViewer").then((m) => ({ default: m.SpreadsheetViewer })));
 const CodeEditor = lazy(() => import("./CodeEditor").then((m) => ({ default: m.CodeEditor })));
@@ -33,11 +49,7 @@ const CollaboraViewer = lazy(() =>
 
 const WORD_EXTENSIONS = new Set(["doc", "docx"]);
 
-// How long to hold the iframe open after asking Collabora to save-and-close (see
-// CollaboraViewerHandle.requestExitSave) before we unmount it regardless. Collabora
-// doesn't post back a confirmation we listen for, so this is a fixed grace period, not
-// a real handshake — long enough for a save PUT to the WOPI host to go out, short
-// enough that closing the viewer still feels instant.
+// Grace period after asking Collabora to save before unmounting it (no confirmation is sent back).
 const COLLABORA_EXIT_SAVE_GRACE_MS = 500;
 
 const ViewerLoading = () => <div className="text-sm text-text-main text-center py-16">Loading viewer…</div>;
@@ -57,17 +69,13 @@ export function ViewerModal({
   onNavigate: (item: FileItem) => void;
   onDownload: (item: FileItem) => void;
   onSaveContent: (id: string, blob: Blob) => void;
-  // The caller's permissions when `item` lives in a "Shared with me" subtree; null
-  // for the user's own items (full control) — same convention as ItemContextMenu.
+  // Share permissions for items inside "Shared with me"; null for own items.
   permissions?: InternalSharePermissions | null;
 }) {
   const canEdit = !permissions || permissions.can_update;
   const [isPiPActive, setIsPiPActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  // User-toggled "full view" for previews that default to a compact box (text, code, CSV, images).
   const [isExpanded, setIsExpanded] = useState(false);
-  // Lets the header's "Open in new tab" button (next to Download) drive the Collabora
-  // iframe's hidden form from up here, and know when there's actually a session to submit.
   const collaboraRef = useRef<CollaboraViewerHandle>(null);
   const [collaboraReady, setCollaboraReady] = useState(false);
 
@@ -78,9 +86,6 @@ export function ViewerModal({
 
   const isCollabora = isCollaboraSupported(item);
 
-  // PDFs and office-suite documents (rendered via Collabora when server-backed) get a
-  // near-fullscreen viewport instead of the narrower default box, since they're read as
-  // full pages rather than a quick preview.
   const isOfficeDoc =
     item.type === "pdf" ||
     item.type === "spreadsheet" ||
@@ -91,15 +96,10 @@ export function ViewerModal({
     setCollaboraReady(false);
   }, [item.id]);
 
-  // PDFs/office docs are already near-fullscreen, and video/audio have their own player
-  // controls — the expand toggle only applies to the rest.
   const canToggleExpand = !isOfficeDoc && item.type !== "video" && item.type !== "audio";
   const isFullView = isOfficeDoc || (canToggleExpand && isExpanded);
 
-  // Ask Collabora to save-and-close first, then hold the grace period before actually
-  // running `action` (unmounting via onClose, or swapping `item` via onNavigate) —
-  // otherwise we'd just yank the iframe out from under it and lose anything edited
-  // since its last autosave. No-op wrapper for every other file type.
+  // Ask Collabora to save, wait the grace period, then run `action`.
   const withCollaboraExitSave = (action: () => void) => {
     if (!isCollabora) {
       action();
@@ -111,7 +111,6 @@ export function ViewerModal({
 
   const handleClose = () => {
     if (isPiPActive && !isMinimized) {
-      // If PiP is actively playing, dock to bottom-right mini player instead of terminating PiP!
       setIsMinimized(true);
       return;
     }
@@ -127,14 +126,11 @@ export function ViewerModal({
     if (isPiPActive) {
       setIsMinimized(true);
     } else {
-      // Routed through handleClose (not onClose directly) so a backdrop click gets the
-      // same Collabora exit-save handling as the X button / Escape.
+      // Via handleClose so a backdrop click also saves Collabora edits.
       handleClose();
     }
   };
 
-  // Wraps onNavigate the same way handleClose wraps onClose — switching to a sibling
-  // file is just as much "leaving" the current Collabora session as closing the modal is.
   const navigateTo = (target: FileItem) => withCollaboraExitSave(() => onNavigate(target));
 
   useEffect(() => {
@@ -249,10 +245,7 @@ export function ViewerModal({
     );
   };
 
-  // Title + action-buttons row for every viewer type except Collabora, which gets its
-  // own floating buttons over Collabora's own toolbar instead (see collaboraLayout
-  // below) — Collabora already shows the filename and a full ribbon, a second title bar
-  // on top of it was pure duplication.
+  // Collabora shows its own title and ribbon, so it gets no header bar.
   const headerBar = (barClassName: string) => (
     <div
       className={`flex items-center justify-between text-white shrink-0 ${barClassName}`}
@@ -328,10 +321,6 @@ export function ViewerModal({
     </div>
   );
 
-  // Collabora gets its own layout: the title bar becomes the top strip of a single panel
-  // inset exactly 16px from every edge of the backdrop (~98% of the screen either way),
-  // instead of a full-width header pushing a separately-inset content box down from below
-  // it. Prev/next float directly on the backdrop so they don't cost the panel any width.
   const collaboraLayout = !isMinimized && isCollabora;
 
   return (
@@ -345,15 +334,9 @@ export function ViewerModal({
     >
       {collaboraLayout ? (
         <>
-          {/* No prev/next here (unlike every other viewer type) — Collabora is a full
-              editing session, not a quick flip-through preview; switching files should
-              be a deliberate close-and-reopen, not an arrow key away mid-edit. inset-0
-              (not inset-4) — Collabora gets the entire viewport, no margin. */}
+          {/* No prev/next: switching files mid-edit should be deliberate. */}
           <div className="absolute inset-0 flex flex-col overflow-hidden bg-bg-main">
-            {/* No header bar at all now — Collabora's own ribbon (with its native close
-                button, closebutton=1, wired to onNativeClose above) is the only chrome.
-                Just a floating "Open in new tab" pill in the corner, since that's the one
-                thing Collabora itself has no equivalent for. */}
+            {/* Collabora's ribbon is the only chrome; just an "Open in new tab" button. */}
             <div className="relative flex-1 min-h-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {renderContent()}
               <button

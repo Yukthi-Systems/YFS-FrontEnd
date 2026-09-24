@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { getDefaultStore } from "jotai";
 import {
   openSsoPopupAndAuthenticate,
@@ -7,6 +24,7 @@ import {
   fetchSession,
   refreshSession,
   HttpError,
+  readEnv,
 } from "@yfs/service";
 import type { AuthPayload, BackendUserInfo, SsoProfile } from "@yfs/service";
 import {
@@ -21,25 +39,17 @@ import {
 } from "../atoms/auth";
 import { showToast } from "../atoms/toast";
 
-// Session singleton: SSO/token-refresh orchestration. Reactive state lives in
-// atoms/auth.ts (persisted to localStorage); components read it via hooks/useAuth.ts
-// and it's booted once by components/AuthBridge.tsx.
+// Session singleton: SSO and token refresh. State lives in atoms/auth.ts; booted by AuthBridge.
 
 const store = getDefaultStore();
 
-// Set once per browser session the first time auto-SSO is kicked off. It survives a
-// full-page redirect (blocked-popup fallback) so that a login that keeps failing —
-// bad API URL, CORS, expired SSO session — drops the user on the login screen instead
-// of retriggering the popup/redirect forever. Cleared only on a successful sign-in or
-// an explicit logout (NOT in clearSession, which also runs on every failed attempt).
-// Tab-scoped (sessionStorage) on purpose — unrelated to the persisted session itself.
+// Stops a failing auto-SSO from looping across redirects; cleared on successful sign-in or explicit logout.
 export const AUTO_SSO_ATTEMPTED_KEY = "yfs_sso_auto_attempted";
 
 const clearAutoSsoAttempt = () => {
   try {
     sessionStorage.removeItem(AUTO_SSO_ATTEMPTED_KEY);
   } catch {
-    /* ignore */
   }
 };
 
@@ -70,12 +80,11 @@ const buildUser = (info: BackendUserInfo, profile: SsoProfile | undefined, prev:
   };
 };
 
-export const ssoUrl = import.meta.env.VITE_SSO_URL || "https://sso.your-domain.tld";
+export const ssoUrl = readEnv("VITE_SSO_URL");
 
 const persistPayload = (payload: AuthPayload, profile?: SsoProfile) => {
   const nextUser = buildUser(payload.user_info, profile ?? payload.sso_profile, store.get(userAtom));
   const nextRefresh = payload.refresh_token ?? store.get(refreshTokenAtom);
-  // /auth/refresh may omit X-Session-Expiry — keep the last known expiry then.
   const expiresAt = payload.expires_in ? Date.now() + payload.expires_in * 1000 : store.get(sessionExpiresAtAtom);
 
   store.set(tokenAtom, payload.access_token);
@@ -83,8 +92,6 @@ const persistPayload = (payload: AuthPayload, profile?: SsoProfile) => {
   store.set(userIdAtom, payload.user_info.user_id);
   store.set(userAtom, nextUser);
   store.set(sessionExpiresAtAtom, expiresAt);
-  // Signed in — a future auto-SSO attempt (e.g. after the session later expires) is
-  // allowed again.
   clearAutoSsoAttempt();
   scheduleProactiveRefresh();
 };
@@ -102,14 +109,10 @@ const clearSession = () => {
   try {
     localStorage.removeItem("yfs_fs_cache");
   } catch {
-    /* ignore */
   }
 };
 
-// Proactive refresh, ahead of actual expiry, so a normal request almost never has to
-// eat the failed-request-then-retry round trip that withAuthRetry/withFreshToken fall
-// back to — that reactive path stays in place as the safety net for a missed/late
-// timer (tab asleep through the deadline, clock skew, etc).
+// Refresh ahead of expiry; withAuthRetry stays as the fallback.
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 const REFRESH_SKEW_MS = 60_000;
 
@@ -124,8 +127,7 @@ const scheduleProactiveRefresh = () => {
   }, delay);
 };
 
-// Single-flight: concurrent 401s (e.g. several list calls firing at once on boot)
-// must share ONE /auth/refresh, not each rotate the refresh token.
+// Single-flight: concurrent 401s share one refresh.
 let refreshInFlight: Promise<string | null> | null = null;
 
 export const refreshAccessToken = (): Promise<string | null> => {
@@ -158,12 +160,7 @@ export const refreshAccessToken = (): Promise<string | null> => {
   return run;
 };
 
-// Boot sequence, run once on app start by AuthBridge. A cached session (already
-// hydrated into the atoms from localStorage by the time this runs) renders
-// immediately and is just verified/refreshed here in the background — isAuthLoadingAtom
-// only gates rendering when there's nothing cached yet, so a refresh with an existing
-// session never shows a "restoring session" blocker or visibly re-runs SSO.
-// `signal.cancelled` lets the caller abandon a stale run (component unmounted).
+// Runs once on start. A cached session renders immediately and is verified in the background.
 export const bootAuth = async (signal: { cancelled: boolean }) => {
   const isLogoutParam = new URLSearchParams(window.location.search).get("logout") === "true";
   const cachedToken = store.get(tokenAtom);
@@ -171,22 +168,19 @@ export const bootAuth = async (signal: { cancelled: boolean }) => {
 
   if (!hasCachedSession) store.set(isAuthLoadingAtom, true);
 
-  // Silent login: ask the SSO service (hidden iframe) whether a session already
-  // exists and, if so, exchange its cookie for a YFS token — no popup.
+  // Silent login via the SSO iframe; no popup.
   const trySilentLogin = async () => {
     try {
       const { data } = await silentSsoAuthenticate(ssoUrl);
       if (!signal.cancelled) persistPayload(data, data.sso_profile);
     } catch {
-      // No live SSO session -> user simply isn't signed in yet.
       if (!signal.cancelled) clearSession();
     }
   };
 
   try {
     if (isReturningFromSsoRedirect()) {
-      // Came back from a full-page SSO redirect (popup was blocked) — the cookie
-      // is set now, so go straight to the backend exchange.
+      // Back from a full-page SSO redirect; the cookie is set.
       try {
         const { data } = await openSsoPopupAndAuthenticate(ssoUrl);
         if (!signal.cancelled) persistPayload(data, data.sso_profile);
@@ -198,7 +192,6 @@ export const bootAuth = async (signal: { cancelled: boolean }) => {
         }
       }
     } else if (hasCachedSession) {
-      // Validate the cached token in the background; refresh once on 401.
       try {
         const info = await fetchSession(cachedToken!);
         if (!signal.cancelled) persistPayload({ access_token: cachedToken!, user_info: info });
@@ -243,14 +236,12 @@ export const logout = async () => {
   store.set(isAuthLoadingAtom, true);
   const currentToken = store.get(tokenAtom);
   try {
-    // apiLogout tears down the YFS session (DELETE /auth/logout) and then the SSO
-    // session (ssoLogout from @rjyspl/phoenix-sso-react).
     await apiLogout(currentToken, ssoUrl);
   } catch (err) {
     console.error("Logout request failed:", err);
   } finally {
     clearSession();
-    clearAutoSsoAttempt(); // explicit logout re-enables auto-SSO for the next visit
+    clearAutoSsoAttempt();
     store.set(isAuthLoadingAtom, false);
 
     if (!window.location.pathname.includes("/logout")) {

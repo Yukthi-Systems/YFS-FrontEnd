@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { tokenAtom } from "../atoms/auth";
@@ -25,7 +42,7 @@ export const useFileInfo = (item: FileItem | null, enabled = true) => {
           file_name: item.name,
           file_info: item.resourceInfo ?? {},
           file_type: fileTypeGuess(item),
-          file_version: 1, // always valid once a file has a first version — see getFileBasicInfo
+          file_version: 1, // always exists once a file has been uploaded
           expected_file_size: item.size,
         })
       );

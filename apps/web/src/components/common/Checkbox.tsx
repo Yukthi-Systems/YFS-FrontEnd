@@ -1,11 +1,25 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { Check, Minus } from "lucide-react";
 
-// The app's only checkbox. The native control is kept (appearance-none) so keyboard,
-// focus and form semantics stay intact, with the tick drawn on top. The check colour
-// is bg-main so it inverts with the theme — the accent is dark in light mode and
-// light in dark mode, and a fixed white tick would wash out against the latter.
+// Native control (appearance-none) keeps keyboard and form semantics; the tick uses bg-main so it inverts with the theme.
 export function Checkbox({
   checked,
   onChange,

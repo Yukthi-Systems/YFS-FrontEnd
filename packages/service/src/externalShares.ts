@@ -1,20 +1,35 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { apiRequest } from "./apiClient";
 import { PAGE_SIZE } from "./types";
 import type { InternalSharePermissions, PageQuery } from "./types";
 
-// External (public-link) shares. Unlike internal shares, these can target a single
-// file OR a folder, and are reached without a YFS account via a public session.
-// Mirrors src/models/files_folders.rs and src/routes/shares.rs.
+// Public-link shares: target a file or folder, opened without an account.
 
 // One external share as returned by GET /share/external/list.
 export interface ExternalShare {
-  share_id: string; // caller-chosen, 3–36 chars, used in the /share/<id> URL
+  share_id: string; // 3–36 chars, used in /share/<id>
   created_by: string;
   share_file_target_id: string | null;
   share_folder_target_id: string | null;
   permission_set: InternalSharePermissions;
   share_info: Record<string, unknown>; // UI notes etc.
-  password_hash: string | null; // presence = password-protected (never the raw value)
+  password_hash: string | null; // presence means password-protected
   phones_for_otp: string[];
   emails_for_otp: string[];
   expires_at: string | null; // RFC3339
@@ -50,8 +65,7 @@ const pageParams = (page: Partial<PageQuery> = {}): string => {
   return `?limit=${limit}&offset=${offset}`;
 };
 
-// POST /share/external/create — 400 if the share id isn't 3–36 chars or neither
-// target is given.
+// POST /share/external/create — 400 unless the id is 3–36 chars and a target is given.
 export const createExternalShare = async (
   accessToken: string,
   input: CreateExternalShareInput

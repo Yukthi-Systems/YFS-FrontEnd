@@ -1,8 +1,21 @@
-// Split out from collaboraClient.ts on purpose: collaboraClient.ts pulls in axios
-// (fetchDiscovery), and CollaboraStandaloneView.tsx is imported eagerly by main.tsx
-// (it has to be — the route decision there is synchronous on window.location.pathname)
-// rather than lazily like CollaboraViewer.tsx is from ViewerModal. Importing
-// COLLABORA_BASE_URL from collaboraClient.ts there would drag axios into the main
-// bundle for every visitor, not just the ones who open a Collabora file. This constant
-// has no dependencies of its own, so it's safe for both eager and lazy call sites.
-export const COLLABORA_BASE_URL = "https://collabora.your-domain.tld";
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
+import { readEnv } from "@yfs/service";
+
+// Kept free of collaboraClient.ts so the eagerly loaded CollaboraStandaloneView doesn't pull axios into the main bundle.
+export const COLLABORA_BASE_URL = readEnv("VITE_COLLABORA_URL");

@@ -1,11 +1,27 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import type { FileItem } from "../types/file";
 import { isTextEditable } from "../utils/fileType";
 
 const MAX_CHARS = 50_000;
 const MAX_PDF_PAGES = 20;
 
-// Keyed by storageKey, which changes on every real content edit/version-restore — so this
-// cache invalidates itself for free, no manual bookkeeping needed.
+// storageKey changes with content, so the cache invalidates itself.
 const textCache = new Map<string, string>();
 
 const extractPlainText = async (blobUrl: string): Promise<string> => {
@@ -13,9 +29,6 @@ const extractPlainText = async (blobUrl: string): Promise<string> => {
   return res.text();
 };
 
-// xlsx is a large dependency — dynamically imported so it only loads into a bundle when a
-// spreadsheet is actually being searched, matching the lazy-loading already used for the
-// SpreadsheetViewer itself.
 const extractSpreadsheetText = async (blobUrl: string): Promise<string> => {
   const XLSX = await import("xlsx");
   const res = await fetch(blobUrl);
@@ -38,9 +51,7 @@ const extractDocxText = async (blobUrl: string): Promise<string> => {
   return result.value;
 };
 
-// pdf.js is heavy — dynamically imported here too. Configures its own worker rather than
-// relying on PdfViewer.tsx having done it already, since search can run before any PDF was
-// ever opened; setting it twice is harmless (same underlying pdfjs module either way).
+// Search can run before PdfViewer, so configure the worker here too.
 const extractPdfText = async (blobUrl: string): Promise<string> => {
   const { pdfjs } = await import("react-pdf");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -57,12 +68,7 @@ const extractPdfText = async (blobUrl: string): Promise<string> => {
   return parts.join("\n");
 };
 
-// Extracts plain, searchable text from a file's content, dispatching to whichever parser
-// this project already uses to preview that type (CodeEditor's fetch+text, SpreadsheetViewer's
-// SheetJS, DocViewer's mammoth, PdfViewer's pdf.js) rather than reimplementing extraction.
-// Returns "" for types with no text representation (image/audio/video/folder), items with no
-// real content (seeded demo files), and legacy .doc (mammoth can't parse the binary OLE
-// format — DocViewer.tsx has the same limitation).
+// Reuses each viewer's parser. Returns "" for media, folders, content-less items and legacy .doc.
 export const extractSearchableText = async (item: FileItem): Promise<string> => {
   if (item.isFolder || !item.blobUrl) return "";
 

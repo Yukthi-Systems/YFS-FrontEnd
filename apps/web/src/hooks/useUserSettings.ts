@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useAtom, useAtomValue } from "jotai";
 import {
   viewModeAtom,
@@ -12,9 +29,7 @@ import {
 
 export { AVATAR_COLORS } from "../atoms/userSettings";
 
-// View/sort/sidebar/profile preferences, server-backed via UserSettingsBridge
-// (mounted once in App.tsx), so they follow the user across devices. Values fall
-// back to defaults until the bridge finishes loading private_info/public_info.
+// Server-backed preferences (see UserSettingsBridge); defaults until loaded.
 export const useUserSettings = () => {
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
   const [gridSize, setGridSize] = useAtom(gridSizeAtom);
