@@ -1,12 +1,6 @@
-import { Search, LayoutGrid, LayoutList, List, Menu } from "lucide-react";
+import { Search, Menu } from "lucide-react";
 import type { GridSize, ViewMode } from "../../types/file";
-import { Dropdown } from "../common/Dropdown";
-
-const GRID_SIZE_OPTIONS: { value: GridSize; label: string }[] = [
-  { value: "small", label: "Small icons" },
-  { value: "medium", label: "Medium icons" },
-  { value: "large", label: "Large icons" },
-];
+import { ViewModeToggle } from "./ViewModeToggle";
 
 export function TopBar({
   searchQuery,
@@ -46,49 +40,12 @@ export function TopBar({
         />
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="flex items-center gap-1 bg-code-bg border border-border-main rounded-full p-0.5">
-          <button
-            onClick={() => onViewModeChange("list")}
-            aria-pressed={viewMode === "list"}
-            className={`w-8 h-8 flex items-center justify-center rounded-full text-text-main hover:text-text-heading cursor-pointer transition ${
-              viewMode === "list" ? "bg-bg-main text-accent! shadow-sm" : ""
-            }`}
-            title="List view"
-          >
-            <List className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => onViewModeChange("tiles")}
-            aria-pressed={viewMode === "tiles"}
-            className={`w-8 h-8 flex items-center justify-center rounded-full text-text-main hover:text-text-heading cursor-pointer transition ${
-              viewMode === "tiles" ? "bg-bg-main text-accent! shadow-sm" : ""
-            }`}
-            title="Tiles view"
-          >
-            <LayoutList className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => onViewModeChange("grid")}
-            aria-pressed={viewMode === "grid"}
-            className={`w-8 h-8 flex items-center justify-center rounded-full text-text-main hover:text-text-heading cursor-pointer transition ${
-              viewMode === "grid" ? "bg-bg-main text-accent! shadow-sm" : ""
-            }`}
-            title="Grid view"
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
-        </div>
-
-        {viewMode === "grid" && (
-          <Dropdown
-            value={gridSize}
-            options={GRID_SIZE_OPTIONS}
-            onChange={onGridSizeChange}
-            triggerClassName="px-3 h-9 bg-code-bg border border-border-main rounded-full text-xs font-medium text-text-main cursor-pointer hover:bg-border-main transition inline-flex items-center gap-1.5"
-          />
-        )}
-      </div>
+      <ViewModeToggle
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+        gridSize={gridSize}
+        onGridSizeChange={onGridSizeChange}
+      />
     </header>
   );
 }
