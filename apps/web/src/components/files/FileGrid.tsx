@@ -2,11 +2,31 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { FileItem, GridSize } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import { formatBytes, formatDate, getOwnerDisplay, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import type { UserInfo } from "../../atoms/auth";
+import { useAuth } from "../../hooks/useAuth";
 import { getItemIcon } from "./FileIcon";
 import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
+
+// Grid tiles drop the metadata line for the icon-only look, so size/date/owner live in the native tooltip.
+const hoverDetails = (item: FileItem, me: UserInfo | null) => {
+  const kind = item.isFolder ? "Folder" : item.extension ? `${item.extension.toUpperCase()} file` : "File";
+  const size = item.isFolder
+    ? item.size > 0
+      ? formatBytes(item.size)
+      : "Empty"
+    : isItemFailed(item)
+      ? "Failed to process"
+      : isItemProcessing(item)
+        ? "Processing…"
+        : formatBytes(item.size);
+  const owner = getOwnerDisplay(item, me).label;
+  return [item.name, `${kind} · ${size}`, `Modified ${formatDate(item.modifiedAt)}`, owner && `Owner: ${owner}`]
+    .filter(Boolean)
+    .join("\n");
+};
 
 // Windows Explorer-style icon size presets for grid view — column count, icon size
 // and text scale all move together per size. No card border/shadow by default (see
@@ -94,6 +114,7 @@ export function FileGrid({
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
+  const { user } = useAuth();
   const config = GRID_SIZE_CONFIG[gridSize];
 
   const renderCard = (item: FileItem) => {
@@ -115,7 +136,8 @@ export function FileGrid({
           setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
           onItemContextMenu(item, e);
         }}
-        className={`group relative hover:z-20 rounded-lg ${config.padding} cursor-pointer flex flex-col items-center gap-1.5 transition-colors duration-150 ${
+        title={hoverDetails(item, user)}
+        className={`group relative rounded-lg ${config.padding} cursor-pointer flex flex-col items-center gap-1.5 transition-colors duration-150 ${
           isSel ? "bg-accent-bg/70!" : isChecked ? "bg-accent-bg/70!" : "hover:bg-code-bg"
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
@@ -178,28 +200,6 @@ export function FileGrid({
           {item.name}
         </span>
 
-        {/* Explorer-style hover details — grid tiles drop the metadata line for the
-            icon-only look, so this is the only place size/date/owner show. */}
-        <div className="hidden group-hover:flex absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 w-52 flex-col gap-1 bg-bg-main border border-border-main rounded-lg shadow-lg p-2.5 text-[11px] text-left pointer-events-none">
-          <span className="font-semibold text-text-heading break-words">{item.name}</span>
-          <span className="text-text-main">
-            {item.isFolder ? "Folder" : item.extension ? `${item.extension.toUpperCase()} file` : "File"}
-          </span>
-          <span className="text-text-main">
-            {item.isFolder
-              ? item.size > 0
-                ? formatBytes(item.size)
-                : "Empty"
-              : isItemFailed(item)
-                ? "Failed to process"
-                : isItemProcessing(item)
-                  ? "Processing…"
-                  : formatBytes(item.size)}
-          </span>
-          <span className="text-text-main">Modified {formatDate(item.modifiedAt)}</span>
-          {item.owner?.name && <span className="text-text-main">Owner: {item.owner.name}</span>}
-          {item.createdBy && <span className="text-text-main">Created by: {item.createdBy}</span>}
-        </div>
       </div>
     );
   };
