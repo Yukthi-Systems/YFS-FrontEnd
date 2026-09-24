@@ -1,14 +1,15 @@
 name: Docker Build and Deploy
 
+# Push-only: this runs on a self-hosted runner with registry and SSH secrets, so it must never run for pull requests.
 on:
   push:
     branches:
       - "main"
     tags:
       - "*"
-  pull_request:
-    branches:
-      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -44,32 +45,33 @@ jobs:
             rjyspl/yfs-ui:latest
             rjyspl/yfs-ui:${{ steps.tag.outputs.TAG }}
 
-  deploy:
-    needs: build
-    runs-on: Het-8v-16G
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  # Deploy disabled for now.
+  # deploy:
+  #   needs: build
+  #   runs-on: Het-8v-16G
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
 
-      - name: Configure SSH
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #     - name: Configure SSH
+  #       uses: webfactory/ssh-agent@v0.5.3
+  #       with:
+  #         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Deploy to Server
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          # Copy the docker-compose.yaml file to the server (Replace with existing file)
-          # TODO: Uncomment the below line for production deployment based on the tag on push
-          # scp -o StrictHostKeyChecking=no docker-compose.yaml root@$SERVER_IP:/srv/yfs-ui/docker-compose.yaml
+  #     - name: Deploy to Server
+  #       env:
+  #         SERVER_IP: ${{ secrets.SERVER_IP }}
+  #         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  #         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  #       run: |
+  #         # Copy the docker-compose.yaml file to the server (Replace with existing file)
+  #         # TODO: Uncomment the below line for production deployment based on the tag on push
+  #         # scp -o StrictHostKeyChecking=no docker-compose.yaml root@$SERVER_IP:/srv/yfs-ui/docker-compose.yaml
 
-          # Connect and restart the service
-          ssh -o StrictHostKeyChecking=no root@$SERVER_IP << 'EOF'
-            cd /srv/yfs-ui
-            docker compose pull
-            docker compose up -d
-            docker ps
-          EOF
+  #         # Connect and restart the service
+  #         ssh -o StrictHostKeyChecking=no root@$SERVER_IP << 'EOF'
+  #           cd /srv/yfs-ui
+  #           docker compose pull
+  #           docker compose up -d
+  #           docker ps
+  #         EOF

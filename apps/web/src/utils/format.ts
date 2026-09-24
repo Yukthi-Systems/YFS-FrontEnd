@@ -1,11 +1,24 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import type { UserInfo } from "../atoms/auth";
 import type { FileItem } from "../types/file";
 
-// A file's size comes back 0/unset until the Storage API's server-side callback
-// confirms the upload to YFS-Main-API — that's "processing". If it's been stuck
-// that way since longer than this ago, the callback almost certainly never landed
-// (a dropped connection, a crashed worker, ...), so it's treated as failed instead
-// of showing "Processing" forever.
+// Size stays 0 until the Storage API's callback lands; past this, treat it as failed.
 const PROCESSING_TIMEOUT_SECONDS = 65536;
 
 type ProcessingCheckItem = { isFolder?: boolean; size?: number | null; createdAt?: string };
@@ -53,8 +66,7 @@ export const formatBytes = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-// Like formatBytes but renders a real "0 B" instead of "-" (used for storage totals
-// where zero is a meaningful value, not "no file").
+// Like formatBytes, but shows "0 B" instead of "-".
 export const formatSize = (bytes: number): string => {
   if (!bytes || bytes < 0) return "0 B";
   const k = 1024;
@@ -63,9 +75,7 @@ export const formatSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-// YFS-Main-API returns quota_allocated / quota_utilized in GB (from the SSO file
-// service). This is the single source of truth for the storage widget — the client
-// never sums file sizes itself (it only ever holds a partial view of the tree).
+// Quota values from the API are in GB.
 export const GB = 1024 * 1024 * 1024;
 
 export interface StorageQuota {

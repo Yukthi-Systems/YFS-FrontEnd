@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useFileSystem } from "./hooks/useFileSystem";
@@ -89,8 +106,7 @@ function App() {
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
 
-  // View preferences are server-backed (private_info) via UserSettingsBridge, so
-  // they follow the user across devices; they fall back to defaults until loaded.
+  // Server-backed view preferences (see UserSettingsBridge).
   const {
     viewMode,
     gridSize,
@@ -103,7 +119,6 @@ function App() {
     setSortOrder,
     setSidebarCollapsed,
   } = useUserSettings();
-  // Type filtering was driven from the sidebar's "File Type" menu, which has been removed.
   const typeFilter = "all";
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
   const [viewerItem, setViewerItem] = useState<FileItem | null>(null);
@@ -117,7 +132,6 @@ function App() {
   const menus = useContextMenuState();
   const nav = useFileNavigation();
 
-  // In a "Shared with me" folder, adding items needs the share's can_create.
   const currentFolderPerms = getSharedPermissions(nav.currentFolderId);
   const canCreateHere = !currentFolderPerms || currentFolderPerms.can_create;
   const search = useFileSearch({
@@ -128,15 +142,7 @@ function App() {
     trashFolderId,
   });
 
-    // A page load that starts deep inside a folder path (a refresh, or a bookmarked
-  // URL — see useFileNavigation/utils/appRoute) only has the leaf folder id; `files`
-  // doesn't yet contain its ancestors. That's merely cosmetic for a "drive" path
-  // (breadcrumb names fill in once loaded), but for a "shared with me" path it's
-  // load-bearing: fetchFolderPage's shared-context detection walks parentId links
-  // already in `files` to route the request through the share endpoint, so the
-  // ancestor chain has to be loaded in order, root-first, before the leaf. While
-  // that's in flight `restoringSharedRoute` tells the effect below to hold off on
-  // loading the leaf itself.
+    // A deep link into a shared folder must load its ancestors root-first so requests route through the share endpoint.
   const [restoringSharedRoute, setRestoringSharedRoute] = useState(
     () => nav.activeSidebarTab === "shared" && nav.currentPath.length > 0
   );
@@ -152,8 +158,6 @@ function App() {
         setRestoringSharedRoute(false);
       })();
     } else if (ancestorIds.length > 0) {
-      // Best-effort breadcrumb hydration for a deep-linked drive/trash/etc path —
-      // the leaf's own content loads via the effect below regardless.
       (async () => {
         for (const id of ancestorIds) await loadFolder(id);
       })();
@@ -161,31 +165,23 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  // A folder created a moment ago swaps its temp id for the server's UUID when the
-  // listing lands; if we're standing inside it, follow that swap.
+  // Follow a just-created folder's temp id → server id swap.
   useEffect(() => {
     nav.replacePathIds(idRemap);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idRemap]);
 
-  // Pull the current folder's children from YFS-Main-API whenever navigation changes.
   useEffect(() => {
     if (!isAuthenticated) return;
     const tab = nav.activeSidebarTab;
-    // "Shared with me" root lists the shared folders; opening one lists its children
-    // through the share endpoint (handled inside loadFolder).
     if (tab === "shared" && !nav.currentFolderId) loadSharedFolders();
     else if (tab === "shared-out") loadSharedOut({ force: true });
     else if (tab === "shared-links") loadSharedLinks({ force: true });
     else if (tab === "trash") {
-      // Trash root lists the Trash folder's children; opening a trashed folder browses
-      // it like any other folder.
       const target = nav.currentFolderId ?? trashFolderId;
       if (target) loadFolder(target, { force: true });
     } else if (restoringSharedRoute) {
-      // The hydration effect above owns loading this chain in order; it flips
-      // restoringSharedRoute to false once the ancestors are in, which re-runs this
-      // effect and falls through to the branch below for the leaf.
+      // The hydration effect loads this chain, then re-runs this effect for the leaf.
     } else loadFolder(nav.currentFolderId);
   }, [
     isAuthenticated,
@@ -199,8 +195,6 @@ function App() {
     loadSharedLinks,
   ]);
 
-  // Re-fetch whatever's currently showing, bypassing cache — mirrors the load
-  // effect above's per-tab branching.
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -217,8 +211,7 @@ function App() {
     }
   };
 
-  // Infinite scroll — only the server-backed listings ("drive" folders, the
-  // "shared with me" bucket, and trash) page; the other tabs are client-side filters.
+  // Only server-backed listings (drive, shared, trash) paginate.
   const isSharedTab = nav.activeSidebarTab === "shared";
   const isSharedRoot = isSharedTab && !nav.currentFolderId;
   const isTrashTab = nav.activeSidebarTab === "trash";
@@ -258,15 +251,12 @@ function App() {
     nav.currentFolderId,
   ]);
 
-  // Surface a one-time notice if the file service can't be reached.
   useEffect(() => {
     if (remoteError) showToast(`File service unavailable — showing cached data. (${remoteError})`, "error");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteError]);
 
-  // Normal folder browsing only — while a search is active, SearchResultsList renders
-  // instead (it owns its own combined name+content match list), so search.searchQuery is
-  // deliberately not threaded in here.
+  // Search results render separately (SearchResultsList).
   const listItems =
     nav.activeSidebarTab === "shared-out"
       ? [...sharedOut].sort((a, b) => a.name.localeCompare(b.name))
@@ -288,8 +278,6 @@ function App() {
   const viewSkeleton =
     viewMode === "list" ? <ListSkeleton /> : viewMode === "tiles" ? <TilesSkeleton /> : <GridSkeleton />;
 
-  // Prev/next in the full-screen viewer should step through whatever the user was actually
-  // looking at — search results if a search is active, the current folder listing otherwise.
   const viewerSiblings = search.isSearching ? search.results.map((r) => r.item) : listItems;
 
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
@@ -337,19 +325,13 @@ function App() {
     onDropFiles: fileActions.handleUploadFiles,
   });
 
-  // Folder navigation and breadcrumb navigation both clear the current selection and any
-  // in-progress search, since neither carries over to a different listing.
   function openFolder(folderId: string) {
     nav.navigateToFolder(folderId);
     selection.clearSelection();
     search.setSearchQuery("");
   }
 
-  // Opening a folder from "Shared by you" jumps straight to My Drive regardless of
-  // whatever tab/path was active — it's one of my own folders, just reached via a
-  // share rather than by browsing there. The breadcrumb only gets the target itself,
-  // not its ancestors: resolving those needs a get-folder-by-id (or ancestor-path)
-  // endpoint the API doesn't have yet.
+  // Ancestors aren't resolvable yet (no folder-by-id endpoint), so the breadcrumb shows only the target.
   function openSharedLinkFolder(folderId: string) {
     nav.openPath("drive", [folderId]);
     selection.clearSelection();
@@ -362,8 +344,7 @@ function App() {
     search.setSearchQuery("");
   }
 
-  // A link to the item as the *recipient* sees it — it lands in their "Shared with you"
-  // tab. Grants no access on its own: whoever opens it still needs an existing share.
+  // Recipient-facing link; grants no access by itself.
   async function handleCopyShareLink(item: FileItem) {
     const url = `${window.location.origin}${buildAppRoute("shared", [item.id])}`;
     try {
@@ -375,8 +356,6 @@ function App() {
   }
 
   function handleItemDoubleClick(item: FileItem) {
-    // In "Shared by you", double-clicking navigates into the folder (in My Drive) or previews the file,
-    // matching standard file manager behavior. Sharing remains accessible via context menu and details drawer.
     if (nav.activeSidebarTab === "shared-out") {
       if (item.isFolder) {
         openSharedLinkFolder(item.id);
@@ -392,7 +371,6 @@ function App() {
     }
   }
 
-  // --- Keyboard shortcuts ---
   useKeyboardShortcuts({
     enabled:
       isAuthenticated &&
@@ -422,9 +400,7 @@ function App() {
     },
   });
 
-  // --- Storage --- (from the API's account quota, not a client-side file tally)
-  // GET /user/quota on load gives the real used-bytes; falls back to the SSO
-  // login snapshot until that request lands, and again if it fails.
+  // Falls back to the SSO login snapshot until GET /user/quota lands.
   const { quota, refetchQuota, refetching: refetchingQuota } = useMyQuota();
   const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
   const handleRefetchQuota = () => {
@@ -729,8 +705,7 @@ function App() {
         style={{ display: "none" }}
         multiple
       />
-      {/* webkitdirectory is non-standard and not part of React's typed input props, so it's
-          set imperatively via the ref callback rather than as a JSX attribute. */}
+      {/* webkitdirectory isn't in React's input types, so it's set via the ref. */}
       <input
         type="file"
         ref={(el) => {

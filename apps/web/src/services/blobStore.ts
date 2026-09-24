@@ -1,6 +1,21 @@
-// Thin promise wrapper over IndexedDB for persisting real file bytes across page
-// reloads (blob: URLs alone don't survive navigation). Swappable seam: a future real
-// backend replaces "write here" with "upload to the server" without touching callers.
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
+// IndexedDB store for file bytes, since blob: URLs don't survive a reload.
 const DB_NAME = "yfs-blobs";
 const STORE_NAME = "blobs";
 const DB_VERSION = 1;

@@ -2,6 +2,7 @@
   "name": "@yfs/mobile",
   "private": true,
   "version": "0.0.0",
+  "license": "GPL-3.0-only",
   "scripts": {
     "dev": "echo \"mobile app not scaffolded yet, see README.md\" && exit 1"
   }

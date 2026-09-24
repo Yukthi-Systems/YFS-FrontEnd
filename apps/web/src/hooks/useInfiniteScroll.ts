@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef } from "react";
 
 interface InfiniteScrollOptions {
@@ -11,9 +28,7 @@ interface InfiniteScrollOptions {
   rootMargin?: string;
 }
 
-// Returns a ref to attach to a sentinel element rendered at the end of a list.
-// When that sentinel scrolls into view (and there's more to load), `onLoadMore`
-// fires. The latest `onLoadMore` is always used, so callers needn't memoise it.
+// Ref for a sentinel at the end of a list; calls the latest `onLoadMore` when it scrolls into view.
 export function useInfiniteScroll(
   onLoadMore: () => void,
   { hasMore, loading, root, rootMargin = "300px" }: InfiniteScrollOptions

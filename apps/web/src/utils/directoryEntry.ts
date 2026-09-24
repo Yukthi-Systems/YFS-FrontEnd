@@ -1,8 +1,23 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import type { FileWithRelativePath } from "../atoms/uploadQueue";
 
-// Minimal shape of the non-standard FileSystemEntry API exposed by
-// DataTransferItem.webkitGetAsEntry() — used to walk a dropped folder recursively and
-// preserve its structure (plain `dataTransfer.files` flattens/loses nested folders).
+// Subset of the non-standard FileSystemEntry API used to walk dropped folders.
 interface EntryLike {
   isFile: boolean;
   isDirectory: boolean;
@@ -23,7 +38,7 @@ const readAllEntries = (reader: ReturnType<EntryLike["createReader"]>): Promise<
           return;
         }
         all.push(...batch);
-        readBatch(); // readEntries may not return everything in one call — keep going.
+        readBatch(); // readEntries returns results in batches.
       }, reject);
     };
     readBatch();
@@ -43,9 +58,7 @@ const walkEntry = async (entry: EntryLike, pathPrefix: string): Promise<FileWith
   return [];
 };
 
-// Resolves a drop's DataTransfer into a flat list of files with folder-preserving relative
-// paths. Falls back to the flat file list (no nested structure) if the browser doesn't
-// support webkitGetAsEntry.
+// Flattens a drop into files with relative paths; no nesting without webkitGetAsEntry.
 export const resolveDroppedItems = async (dataTransfer: DataTransfer): Promise<FileWithRelativePath[]> => {
   const items = Array.from(dataTransfer.items);
   const entries = items

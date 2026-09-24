@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { UploadCloud } from "lucide-react";
@@ -45,9 +62,7 @@ export function UploadDropzone({
         e.preventDefault();
         setIsDraggingFiles(false);
         setDragDepth(0);
-        // Capture dataTransfer before the walk resolves — it's a recursive async walk
-        // (webkitGetAsEntry -> readEntries) for folder drops, preserving structure that
-        // the plain e.dataTransfer.files list alone would flatten or drop.
+        // Capture before the async folder walk, which preserves structure the plain file list loses.
         const dataTransfer = e.dataTransfer;
         resolveDroppedItems(dataTransfer).then((items) => {
           if (items.length > 0) onDropFiles(items);

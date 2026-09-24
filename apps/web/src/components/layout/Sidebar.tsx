@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import {
   Folder,
@@ -102,8 +119,7 @@ export function Sidebar({
   storageTotalLabel: string;
   // From GET /user/quota — undefined until that request resolves.
   storageFileCount?: number;
-  // Forces a live recalculation server-side — slow and not meant to be spammed,
-  // so this is gated behind an explicit confirm popover below.
+  // Expensive server-side recalculation, so it's behind a confirm.
   onRefreshQuota?: () => void;
   refreshingQuota?: boolean;
   user: UserInfo | null;
@@ -243,9 +259,7 @@ export function Sidebar({
             </div>
           )}
         </div>
-        {/* Kept mounted regardless of menu open state — closing the menu right after
-            triggering the picker would otherwise unmount this input before the browser's
-            file-selection change event can reach it, silently dropping the upload. */}
+        {/* Stays mounted so closing the menu doesn't drop the file-picker change event. */}
         <input
           type="file"
           ref={fileInputRef}
@@ -256,8 +270,7 @@ export function Sidebar({
           style={{ display: "none" }}
           multiple
         />
-        {/* webkitdirectory is non-standard and not part of React's typed input props, so it's
-            set imperatively via the ref callback rather than as a JSX attribute. */}
+        {/* webkitdirectory isn't in React's input types, so it's set via the ref. */}
         <input
           type="file"
           ref={(el) => {
@@ -275,8 +288,6 @@ export function Sidebar({
         <nav aria-label="Sidebar">
           <ul className="flex flex-col gap-1 p-0 m-0 list-none">
             {collapsed ? (
-              // Collapsed rail: same three groups as the expanded view, kept visually
-              // separate (a divider between groups) instead of one flat icon soup.
               [NAV_ITEMS_TOP, SHARE_ITEMS, NAV_ITEMS_BOTTOM].map((group, groupIndex) => (
                 <li key={groupIndex} className={groupIndex > 0 ? "mt-2 pt-2 border-t border-border-main" : undefined}>
                   <ul className="flex flex-col items-center gap-1 p-0 m-0 list-none">

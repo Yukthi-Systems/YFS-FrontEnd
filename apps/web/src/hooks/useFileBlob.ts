@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { useDownload } from "./useDownload";
 import type { FileItem } from "../types/file";
@@ -8,10 +25,7 @@ export interface FileBlobState {
   error: string | null;
 }
 
-// Loads a file's bytes for the client-side viewers (PDF, text/code, CSV, docx). Local
-// items resolve from their blob: URL; server-backed items (own or shared) go through
-// the download session, same as batch download. Re-runs when the file or its version
-// changes.
+// Bytes for the client-side viewers: blob: URL for local items, a download session for server items.
 export function useFileBlob(item: FileItem): FileBlobState {
   const { fetchBlob } = useDownload();
   // fetchBlob is recreated every render — read it through a ref so it isn't an effect dep.

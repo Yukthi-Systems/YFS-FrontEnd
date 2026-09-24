@@ -1,18 +1,22 @@
+# Copyright (C) 2026 Yukthi Systems Private Limited
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 3
+# as published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# version 3 along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+
 # Stage 1: Build the application
 FROM node:22-alpine AS builder
 
 WORKDIR /app
-
-# Vite inlines these at BUILD time. apps/web/.env is git-ignored, so a fresh clone /
-# CI build has no values unless they come in as build args. Defaults below keep a
-# plain `docker build .` producing a working image; override per environment with
-#   docker build --build-arg VITE_API_URL=https://api.example.com ...
-ARG VITE_API_URL=https://yfs-api.test.yukthi.net
-ARG VITE_SSO_URL=https://sso.test.yukthi.net
-ARG VITE_SSO_APP_ID=file
-ENV VITE_API_URL=$VITE_API_URL \
-    VITE_SSO_URL=$VITE_SSO_URL \
-    VITE_SSO_APP_ID=$VITE_SSO_APP_ID
 
 # Copy the whole workspace (npm workspaces needs every package.json to resolve)
 COPY . .
@@ -20,7 +24,7 @@ COPY . .
 # Install dependencies for all workspaces
 RUN npm install
 
-# Build only the web app. Env vars set above win over any copied-in apps/web/.env.
+# Build only the web app. URLs are injected at container start by env.sh, not baked in.
 RUN npm run build -w @yfs/web
 
 
@@ -36,7 +40,7 @@ RUN apk add --no-cache wget
 # Copy build output
 COPY --from=builder /app/apps/web/dist /app/dist
 
-# Copy env script
+# Writes dist/env-config.js from the container environment on start
 COPY env.sh /app/env.sh
 RUN chmod +x /app/env.sh
 

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 export type Theme = "light" | "dark" | "system";
 
 const prefersDark = () =>
@@ -6,10 +23,7 @@ const prefersDark = () =>
 export const resolveTheme = (t: Theme): "light" | "dark" =>
   t === "system" ? (prefersDark() ? "dark" : "light") : t;
 
-// Stamp the resolved theme onto <html> — `data-theme` drives the CSS variables and
-// Tailwind's `dark:` variant, `color-scheme` keeps native controls (scrollbars,
-// date pickers) in step. Persistence lives on the atom (atoms/theme.ts); this is
-// DOM application only, run from ThemeEffect whenever that atom changes.
+// `data-theme` drives the CSS variables; `color-scheme` keeps native controls in step.
 export const applyTheme = (t: Theme) => {
   const resolved = resolveTheme(t);
   const root = document.documentElement;
@@ -24,9 +38,7 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-// Overrides the light/dark theme's built-in --accent with a user-chosen color;
-// null restores the per-theme default defined in index.css. --accent-bg/-border are
-// derived from it (same alphas index.css uses) since nothing else computes those.
+// null restores the theme default; -bg/-border use the same alphas as index.css.
 export const applyAccentColor = (color: string | null) => {
   const root = document.documentElement.style;
   if (!color) {

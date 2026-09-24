@@ -1,10 +1,26 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { AlertCircle, FolderInput, FolderOpen, Info, Pencil, X, Loader2 } from "lucide-react";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing } from "../../utils/format";
 import { CompactPreview, InfoRow, KIND_LABEL } from "../files/DetailsDrawer";
 
-// DetailsDrawer's counterpart for the anonymous /share/<id> view, trimmed to what a
-// public visitor can do — there's no public endpoint to preview, download or delete.
+// DetailsDrawer for public share visitors; there's no public preview, download or delete.
 export function SharedDetailsPanel({
   item,
   canEdit,

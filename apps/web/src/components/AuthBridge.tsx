@@ -1,9 +1,24 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect } from "react";
 import { bootAuth } from "../services/authStore";
 
-// Runs the sign-in boot sequence (SSO cookie / cached-token validation) once on app
-// start. Mounted once, only for the authenticated tree — the shared-link view skips
-// it entirely (a link visitor isn't logged in).
+// Runs the sign-in boot once. Not mounted on the public share routes.
 export function AuthBridge() {
   useEffect(() => {
     const signal = { cancelled: false };

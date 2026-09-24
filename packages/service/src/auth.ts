@@ -1,9 +1,25 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { ssoLogout } from "@rjyspl/phoenix-sso-react";
 import { apiRequest } from "./apiClient";
 import type { AuthPayload, BackendUserInfo } from "./types";
 
-// POST /auth/login — exchanges the SSO-Session-ID cookie (already set by the SSO
-// service after the popup flow) for a YFS access token + refresh token.
+// POST /auth/login — exchanges the SSO cookie for access and refresh tokens.
 export const ssoLogin = async (): Promise<AuthPayload> => {
   const { data, headers } = await apiRequest<{ access_token: string; user_info: BackendUserInfo }>(
     "/auth/login",
@@ -18,16 +34,13 @@ export const ssoLogin = async (): Promise<AuthPayload> => {
   };
 };
 
-// GET /auth/session — validates the current access token and returns fresh user info.
-// Throws HttpError(401) when the session is no longer valid.
+// GET /auth/session — throws HttpError(401) when the session is invalid.
 export const fetchSession = async (accessToken: string): Promise<BackendUserInfo> => {
   const { data } = await apiRequest<BackendUserInfo>("/auth/session", { accessToken });
   return data;
 };
 
-// PATCH /auth/update-fcm-token — registers a push token for this session (body is a
-// bare JSON string). The web client has no push channel today, so this is only
-// called if a service worker later provides a token.
+// PATCH /auth/update-fcm-token — body is a bare JSON string.
 export const updateFcmToken = async (accessToken: string, fcmToken: string): Promise<void> => {
   await apiRequest("/auth/update-fcm-token", {
     accessToken,
@@ -37,8 +50,7 @@ export const updateFcmToken = async (accessToken: string, fcmToken: string): Pro
   });
 };
 
-// POST /auth/refresh — issues a new access token for an existing refresh token.
-// Needs the SSO-Session-ID cookie too (sent automatically via credentials: "include").
+// POST /auth/refresh — also needs the SSO cookie.
 export const refreshSession = async (params: {
   refreshToken: string;
   accessToken: string;

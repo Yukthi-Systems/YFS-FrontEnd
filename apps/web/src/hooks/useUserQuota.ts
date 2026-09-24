@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMyQuota, refreshMyQuota } from "@yfs/service";
 import { useAuth } from "./useAuth";
@@ -6,11 +23,7 @@ import { useToast } from "../atoms/toast";
 
 const QUOTA_QUERY_KEY = ["myQuota"] as const;
 
-// GET /user/quota — the server's cached usage row. Fetched once per session (on
-// load / page reload) so the storage bar reflects real usage instead of only the
-// stale quota_utilized snapshot the SSO handed back at login. `refetchQuota` just
-// re-reads that cached row: cheap, so it can be wired straight to a button with no
-// confirmation, unlike the recalculation below.
+// GET /user/quota — cheap cached read, safe to refetch on demand.
 export function useMyQuota() {
   const { token, refreshAccessToken, isAuthenticated } = useAuth();
 
@@ -18,7 +31,7 @@ export function useMyQuota() {
     queryKey: QUOTA_QUERY_KEY,
     queryFn: () => withAuthRetry(token, refreshAccessToken, (tk) => getMyQuota(tk)),
     enabled: isAuthenticated,
-    staleTime: Infinity, // never refetched on its own — only by refetchQuota or the recalculation
+    staleTime: Infinity,
   });
 
   return {
@@ -29,11 +42,7 @@ export function useMyQuota() {
   };
 }
 
-// PATCH /user/quota/refresh recalculates usage by scanning every file the user
-// owns — a real DB aggregate with no server-side lock or rate limit, so this must
-// only ever fire from an explicit, user-confirmed click, never automatically. It
-// lives in the profile modal for that reason; the sidebar's button is the plain
-// GET refetch above.
+// PATCH /user/quota/refresh scans every file the user owns, so only fire it on a confirmed click.
 export function useRefreshUserQuota() {
   const { token, refreshAccessToken } = useAuth();
   const { showToast } = useToast();

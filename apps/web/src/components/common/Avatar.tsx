@@ -1,4 +1,21 @@
-// "Rupraj Singh" -> "R", falling back to the email if no name.
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
+// "Jane Doe" -> "J", falling back to the email if no name.
 const initialsOf = (name?: string | null, email?: string | null): string => {
   const trimmedName = (name || "").trim();
   if (trimmedName) return trimmedName[0].toUpperCase();
@@ -13,9 +30,7 @@ export function Avatar({
 }: {
   name?: string | null;
   email?: string | null;
-  // Explicit override (e.g. the user's own chosen avatar_color). Without one, the
-  // avatar uses a low-opacity tint of the theme accent color instead of white text
-  // on a solid fill, so it always matches the current theme.
+  // Without an override, uses a tint of the theme accent.
   color?: string;
   // Caller controls size/shape/text-size via utility classes (e.g. "w-8 h-8 text-[11px]").
   className?: string;

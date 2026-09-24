@@ -1,17 +1,27 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { FileWarning } from "lucide-react";
 import { consumeCollaboraHandoff, type CollaboraHandoff } from "../../services/collaboraHandoff";
 import { COLLABORA_BASE_URL } from "../../services/collaboraConstants";
 
-// If Collabora hasn't said anything (via its postMessage API) this long after the frame
-// was submitted, assume the browser blocked the embed or it never loaded. Mirrors
-// CollaboraViewer's own timeout.
 const FRAME_READY_TIMEOUT_MS = 12000;
 const FRAME_NAME = "collabora-standalone-frame";
-// Grace period between asking Collabora to save-and-close (Close_Session, triggered by
-// its own native close button here) and actually closing this tab — mirrors
-// ViewerModal's COLLABORA_EXIT_SAVE_GRACE_MS. No confirmation comes back to wait on, so
-// this is a fixed delay, not a real handshake.
 const EXIT_SAVE_GRACE_MS = 500;
 
 type Handoff = CollaboraHandoff | "expired" | null; // null = still checking
@@ -22,13 +32,7 @@ const CenteredMessage = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
-// The page "Open in new tab" (CollaboraViewer's openInNewTab) opens: /collabora?h=<id>.
-// Shows the app's own origin in the address bar with Collabora embedded in an iframe,
-// instead of navigating straight to Collabora's domain — the session (actionUrl +
-// access_token) rides over from the tab that minted it via localStorage
-// (collaboraHandoff.ts), read once and discarded, never appearing in this URL. No
-// AuthBridge/FileSystemBridge here (see main.tsx) — the WOPI access_token IS the
-// authorization for this page, same as the raw-Collabora-domain tab this replaced.
+// /collabora?h=<id> page: the session arrives via collaboraHandoff.ts and the WOPI token is its only auth.
 export function CollaboraStandaloneView() {
   const [handoff, setHandoff] = useState<Handoff>(null);
   const [frameReady, setFrameReady] = useState(false);
@@ -41,9 +45,7 @@ export function CollaboraStandaloneView() {
     const id = new URLSearchParams(window.location.search).get("h");
     const data = id ? consumeCollaboraHandoff(id) : null;
     setHandoff(data ?? "expired");
-    // Drop ?h=<id> from the visible URL/history once consumed — refreshing after this
-    // finds nothing left in localStorage anyway (single-use), so the bare URL is what
-    // should be left behind, not a now-dead link.
+    // The handoff is single-use, so drop ?h= from the URL.
     if (data) window.history.replaceState(null, "", "/collabora");
   }, []);
 
@@ -53,12 +55,7 @@ export function CollaboraStandaloneView() {
     frameReadyRef.current = false;
     setFrameStalled(false);
 
-    // Collabora's own native close button (buildCollaboraActionUrl's closebutton=1,
-    // which the handed-off actionUrl already carries — see collaboraClient.ts) fires a
-    // UI_Close postMessage when clicked. Its default reaction is to self-destroy its
-    // document immediately, unsaved — disabled below as soon as the frame is ready, so
-    // clicking it instead asks Collabora to save (Close_Session) and only then closes
-    // this tab, same flow as the modal's own close button.
+    // Collabora's close button asks it to save (Close_Session) before this tab closes.
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== COLLABORA_BASE_URL) return;
       if (!frameReadyRef.current) {
@@ -105,8 +102,7 @@ export function CollaboraStandaloneView() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg-main">
-      {/* Same hidden-form POST pattern as CollaboraViewer — the access_token belongs in
-          a POST body per Collabora's own WOPI iframe guidance, not a query string. */}
+      {/* POSTed so the access_token stays out of the URL. */}
       <form ref={formRef} action={handoff.actionUrl} target={FRAME_NAME} method="POST" className="hidden">
         <input type="hidden" name="access_token" value={handoff.accessToken} />
         <input type="hidden" name="access_token_ttl" value={String(handoff.accessTokenTtl)} />

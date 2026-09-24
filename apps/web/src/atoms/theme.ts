@@ -1,10 +1,25 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import type { Theme } from "../utils/theme";
 
-// Raw strings in localStorage, not JSON-encoded — index.html's pre-paint script reads
-// "yfs_theme" directly (before React/jotai exist) to set data-theme ahead of first
-// paint, so this can't switch to atomWithStorage's default JSON serialization.
+// Raw strings, not JSON: index.html's pre-paint script reads "yfs_theme" directly.
 const rawStringStorage = <T extends string>(isValid: (v: string) => v is T) => ({
   getItem: (key: string, initialValue: T): T => {
     try {
@@ -33,9 +48,7 @@ const rawStringStorage = <T extends string>(isValid: (v: string) => v is T) => (
 
 const isTheme = (v: string): v is Theme => v === "light" || v === "dark" || v === "system";
 
-// getOnInit: true matters here — atomWithStorage otherwise defaults to the initial
-// value on first read and only hydrates from storage after mount (same gotcha as
-// atoms/auth.ts's tokenAtom), which would flash the wrong theme/accent on load.
+// getOnInit avoids a wrong-theme flash on load.
 export const themeAtom = atomWithStorage<Theme>("yfs_theme", "system", rawStringStorage(isTheme), { getOnInit: true });
 
 export const useTheme = () => {

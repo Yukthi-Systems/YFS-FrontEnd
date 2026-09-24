@@ -1,14 +1,26 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useState } from "react";
 import type { FileItem, SidebarTab } from "../types/file";
 import type { BreadcrumbSegment } from "../components/layout/Breadcrumbs";
 import { buildAppRoute, parseAppRoute } from "../utils/appRoute";
 
-// Owns the current folder path and active sidebar tab (browsing state only — resetting
-// selection/search on navigation is the caller's responsibility, since this hook doesn't
-// know about either). Synced to the URL (see utils/appRoute) so a refresh — or the
-// browser back/forward buttons — lands back on the same tab/folder instead of resetting
-// to My Drive; restoring a deep folder path's *data* (loading ancestors so breadcrumbs
-// and shared-folder detection work) is the caller's job, since that needs useFileSystem.
+// Current tab and folder path, synced to the URL so refresh and back/forward work.
 export function useFileNavigation() {
   const [initialRoute] = useState(() => parseAppRoute(window.location.pathname));
   const [currentPath, setCurrentPath] = useState<string[]>(initialRoute.path);
@@ -33,10 +45,7 @@ export function useFileNavigation() {
     setCurrentPath(next);
   };
 
-  // Jump straight to a tab + path in one go — e.g. opening a folder from "Shared by
-  // link" lands it in My Drive regardless of whatever tab/path was active before.
-  // Setting both pieces of state together (rather than switchTab + navigateToFolder)
-  // avoids computing the new path off a stale `currentPath` closure.
+  // Sets tab and path together to avoid a stale `currentPath` closure.
   const openPath = (tab: SidebarTab, path: string[]) => {
     pushRoute(tab, path);
     setActiveSidebarTab(tab);
@@ -45,11 +54,7 @@ export function useFileNavigation() {
 
   const switchTab = (tab: SidebarTab) => openPath(tab, []);
 
-  // An optimistic folder's temp id becomes the server's UUID once the create lands.
-  // Anything already sitting on that id (having opened the folder straight after
-  // creating it) has to follow, or it's browsing an id that no longer exists — which
-  // is what produced "UUID parsing failed" on the listing call. Replaces the history
-  // entry rather than pushing: it's the same folder, just correctly identified.
+  // Follow a temp id → server id swap; replaces the history entry since it's the same folder.
   const replacePathIds = (remap: Record<string, string>) => {
     setCurrentPath((prev) => {
       if (!prev.some((id) => remap[id])) return prev;
@@ -60,8 +65,7 @@ export function useFileNavigation() {
     });
   };
 
-  // Browser back/forward: re-derive state from the URL rather than going through
-  // pushRoute above, which would push a fresh history entry over the one just popped.
+  // Back/forward: read state from the URL without pushing a new entry.
   useEffect(() => {
     const onPopState = () => {
       const route = parseAppRoute(window.location.pathname);

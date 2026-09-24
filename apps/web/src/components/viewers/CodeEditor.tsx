@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { loadLanguage } from "@uiw/codemirror-extensions-langs";
@@ -6,8 +23,7 @@ import type { FileItem } from "../../types/file";
 import { useFileBlob } from "../../hooks/useFileBlob";
 import { isItemLocked } from "../../utils/format";
 
-// CodeMirror renders the whole document; past this it stalls the tab, so bigger files
-// are download-only.
+// Larger files stall CodeMirror, so they're download-only.
 const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 
 // Extensions whose grammar lives under a different key in the language pack.
@@ -64,8 +80,7 @@ export function CodeEditor({
   const [dirty, setDirty] = useState(false);
   const [decodeFailed, setDecodeFailed] = useState(false);
 
-  // There is no write-back path to the server for text edits, so saving is only offered
-  // for local items; server/shared files open read-only rather than pretending to save.
+  // No write-back path for server files, so only local items are editable.
   const readOnly = item.origin === "server" || item.origin === "shared" || isItemLocked(item);
   const tooLarge = !!blob && blob.size > MAX_PREVIEW_BYTES;
   const ext = (item.extension || "").toLowerCase();

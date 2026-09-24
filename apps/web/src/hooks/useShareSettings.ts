@@ -1,8 +1,23 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import type { FileItem } from "../types/file";
 
-// Just open/close state for the ShareModal now — the modal talks to
-// YFS-Main-API's /share/internal/* endpoints itself.
 export function useShareSettings({ closeContextMenu }: { closeContextMenu: () => void }) {
   const [shareItemId, setShareItemId] = useState<string | null>(null);
 

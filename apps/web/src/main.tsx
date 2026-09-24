@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
@@ -11,17 +28,13 @@ import { SharedFileView } from './components/share/SharedFileView.tsx'
 import { ShareEndedView } from './components/share/ShareEndedView.tsx'
 import { CollaboraStandaloneView } from './components/viewers/CollaboraStandaloneView.tsx'
 
-// Shared-link view is a separate, unauthenticated tree — it deliberately skips
-// AuthBridge/FileSystemBridge since a link visitor isn't logged in.
+// Share and Collabora routes are unauthenticated, so they skip AuthBridge/FileSystemBridge.
 const path = window.location.pathname
 const isSharedRoute = path.startsWith('/share/')
 const isShareEnded = path === '/share-ended'
-// Also unauthenticated — see CollaboraStandaloneView, the WOPI access_token handed off
-// from the opening tab is this page's whole authorization.
 const isCollaboraStandalone = path === '/collabora'
 
 createRoot(document.getElementById('root')!).render(
-  // <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeEffect />
@@ -40,6 +53,4 @@ createRoot(document.getElementById('root')!).render(
         )}
       </QueryClientProvider>
     </ErrorBoundary>
-  // </StrictMode>
-  ,
 )

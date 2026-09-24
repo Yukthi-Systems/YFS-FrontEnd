@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { FileWarning } from "lucide-react";
 import type { FileItem } from "../../types/file";
@@ -5,28 +22,14 @@ import { useCollabora, type CollaboraEditorSession } from "../../hooks/useCollab
 import { COLLABORA_BASE_URL } from "../../services/collaboraClient";
 import { storeCollaboraHandoff } from "../../services/collaboraHandoff";
 
-// Exposed to ViewerModal so its header toolbar (next to Download) can trigger the
-// same "open in a new tab" POST this component used to render its own button for —
-// the button moved up into the shared header, this is what it now calls. Also lets
-// ViewerModal ask Collabora to flush a save before it tears the iframe down on close.
 export interface CollaboraViewerHandle {
-  // Opens /collabora?h=<handoff id> in a new tab — our own origin, Collabora loaded in
-  // an iframe on that page, not a direct top-level navigation to Collabora's own
-  // domain. See services/collaboraHandoff.ts for how the session crosses tabs without
-  // the access_token ever appearing in a URL.
+  // Opens /collabora?h=<handoff id> in a new tab; see collaboraHandoff.ts.
   openInNewTab: () => void;
-  // Posts WOPI's documented "Close_Session" message into the iframe, which tells
-  // Collabora's own server component (coolwsd) to save (if there are unsaved edits)
-  // and end the session cleanly — it is *Collabora* that then PUTs the file to the
-  // WOPI host with `X-COOL-WOPI-IsExitSave: true` on that request, not something we
-  // can set as a header ourselves; this message is what triggers it. Without this,
-  // just unmounting the iframe on close abandons any edit made since Collabora's last
-  // periodic autosave. No-op if the frame never actually loaded (nothing listening).
+  // Posts WOPI Close_Session so Collabora saves unsaved edits before the iframe goes away.
   requestExitSave: () => void;
 }
 
-// If Collabora hasn't said anything (via its postMessage API) this long after the frame
-// was submitted, assume the browser blocked the embed (frame-ancestors) or it never loaded.
+// No postMessage from Collabora by then means the embed was blocked or never loaded.
 const FRAME_READY_TIMEOUT_MS = 12000;
 
 const ErrorState = ({ message }: { message: string }) => (
@@ -36,29 +39,16 @@ const ErrorState = ({ message }: { message: string }) => (
   </div>
 );
 
-// Embeds a Collabora Online editor/viewer for a server-backed file. Per Collabora's
-// own WOPI iframe integration guidance, the access_token travels in a POSTed form
-// (not a query string) so it never lands in browser history or a referrer header —
-// the hidden form below auto-submits into the named iframe as soon as the session
-// resolves.
+// The access_token is POSTed via a hidden form (not a query string) so it stays out of history and referrers.
 export const CollaboraViewer = forwardRef<
   CollaboraViewerHandle,
   {
     item: FileItem;
     canEdit: boolean;
     onReadyChange?: (ready: boolean) => void;
-    // Fires once Collabora's own UI has actually rendered inside the iframe (its
-    // postMessage proves it, same signal frameStalled's warning banner watches) — later
-    // than onReadyChange, which only means a session exists. ViewerModal uses this to
-    // hold off colouring the toolbar strip until Collabora's ribbon is behind it, so the
-    // colour doesn't show against a bare "Opening in Collabora…" loading screen.
+    // Fires once Collabora's UI has rendered, later than onReadyChange.
     onFrameReadyChange?: (ready: boolean) => void;
-    // Fires when Collabora's own native close button (buildCollaboraActionUrl's
-    // closebutton=1) is clicked — its UI_Close postMessage. The caller should treat this
-    // exactly like its own close button, not just unmount: Collabora's default reaction
-    // to a click (self-destroying its document, unsaved) is disabled as soon as the
-    // frame is ready specifically so this callback — not Collabora — decides how the
-    // close actually happens.
+    // Collabora's own close button; callers should treat it like their close button.
     onNativeClose?: () => void;
   }
 >(function CollaboraViewer({ item, canEdit, onReadyChange, onFrameReadyChange, onNativeClose }, ref) {
@@ -70,24 +60,14 @@ export const CollaboraViewer = forwardRef<
   const formRef = useRef<HTMLFormElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const frameName = `collabora-frame-${item.id}`;
-  // Mirrors `frameReady` for code that needs the latest value inside a closure captured
-  // once (effect cleanups, the beforeunload listener) rather than one pinned to whatever
-  // render created it.
+  // Latest value for closures captured once (cleanups, beforeunload).
   const frameReadyRef = useRef(false);
-  // Same idea for onNativeClose — read inside the [session] effect's onMessage handler,
-  // which must NOT re-run (and re-submit the form) just because the parent re-rendered
-  // and handed down a new function identity.
+  // Kept in a ref so a new function identity doesn't re-submit the form.
   const onNativeCloseRef = useRef(onNativeClose);
   useEffect(() => {
     onNativeCloseRef.current = onNativeClose;
   }, [onNativeClose]);
 
-  // Posts WOPI's "Close_Session" message into the iframe — see CollaboraViewerHandle's
-  // requestExitSave doc for what this actually triggers on Collabora's side. Shared by
-  // every path that can end this session: the explicit ref method ViewerModal calls
-  // before its own deliberate close/navigate, the item-changing effect's cleanup
-  // (catches sibling navigation or any other prop change we didn't explicitly wire),
-  // this component unmounting outright, and the tab itself closing/refreshing.
   const sendCloseSession = () => {
     if (!frameReadyRef.current) return;
     iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ MessageId: "Close_Session" }), COLLABORA_BASE_URL);
@@ -102,8 +82,6 @@ export const CollaboraViewer = forwardRef<
         accessTokenTtl: session.accessTokenTtl,
         fileName: item.name,
       });
-      // "noopener" — the new tab gets no window.opener back to us, same isolation a
-      // target="_blank" form submit already had.
       window.open(`/collabora?h=${id}`, "_blank", "noopener");
     },
     requestExitSave: sendCloseSession,
@@ -130,10 +108,7 @@ export const CollaboraViewer = forwardRef<
       });
     return () => {
       active = false;
-      // Catch-all for `item` changing (or this component unmounting) via any path other
-      // than ViewerModal's own requestExitSave()-then-delay — e.g. a sibling switch that
-      // bypassed it. No grace period possible here: by the time this runs, the new
-      // session fetch (or the unmount) is already underway.
+      // Covers item changes and unmounts that didn't go through requestExitSave.
       sendCloseSession();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,16 +120,13 @@ export const CollaboraViewer = forwardRef<
     setFrameStalled(false);
     if (!session) return;
 
-    // Collabora's embedded page posts JSON messages (App_LoadingStatus, …) to its parent
-    // once it starts. Any message from its origin proves the embed isn't blocked.
+    // Any message from Collabora's origin proves the embed isn't blocked.
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== COLLABORA_BASE_URL) return;
       if (!frameReadyRef.current) {
         setFrameReady(true);
         frameReadyRef.current = true;
-        // Stop Collabora from self-destructing its own document (unsaved) the instant
-        // its native close button is clicked — see buildCollaboraActionUrl's
-        // closebutton=1 and the UI_Close handling below.
+        // Stop Collabora discarding the document when its own close button is clicked.
         iframeRef.current?.contentWindow?.postMessage(
           JSON.stringify({ MessageId: "Disable_Default_UIAction", Values: { action: "UI_Close", disable: true } }),
           COLLABORA_BASE_URL
@@ -164,7 +136,7 @@ export const CollaboraViewer = forwardRef<
       try {
         payload = JSON.parse(e.data);
       } catch {
-        return; // Not every message from Collabora's origin is JSON we need to act on.
+        return;
       }
       if (payload.MessageId === "UI_Close") onNativeCloseRef.current?.();
     };
@@ -177,10 +149,7 @@ export const CollaboraViewer = forwardRef<
     };
   }, [session]);
 
-  // The tab closing or refreshing mid-edit never unmounts this component — React gets no
-  // chance to run the cleanup above, so it needs its own listener. Best-effort only: the
-  // postMessage dispatch itself is synchronous, but whether Collabora's resulting save PUT
-  // actually lands before the browser tears the page down is up to the browser, not us.
+  // Tab close/refresh never unmounts the component; best-effort save.
   useEffect(() => {
     window.addEventListener("beforeunload", sendCloseSession);
     window.addEventListener("pagehide", sendCloseSession);
@@ -217,11 +186,6 @@ export const CollaboraViewer = forwardRef<
           </span>
         </div>
       )}
-      {/* No rounding here — ViewerModal's panel around this whole component already clips
-          to rounded-2xl via overflow-hidden. Rounding the iframe's own corners too used to
-          match (it sat flush at the panel's top edge), but now the coloured toolbar strip
-          sits above it, so the iframe's top corners land mid-panel and poke the panel's
-          background colour through in a notch right where the strip meets it. */}
       <iframe
         ref={iframeRef}
         name={frameName}

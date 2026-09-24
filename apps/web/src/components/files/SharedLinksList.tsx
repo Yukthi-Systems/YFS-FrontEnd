@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import { Check, Clock, Copy, FileText, Folder, KeyRound, Link2, Mail, Pencil, Share2, Trash2 } from "lucide-react";
 import type { ExternalShare } from "@yfs/service";
@@ -6,7 +23,6 @@ import { PERMISSION_FIELDS } from "../common/PermissionPicker";
 
 const shareUrl = (shareId: string) => `${window.location.origin}/share/${shareId}`;
 const isExpired = (iso: string | null) => !!iso && new Date(iso).getTime() < Date.now();
-
 
 // "Shared by link" view — every external link I've created.
 export function SharedLinksList({
@@ -31,9 +47,7 @@ export function SharedLinksList({
     }
   };
 
-  // The OS/browser-native share sheet (same one Windows/Android/mobile Safari show
-  // for any app's "Share" button) — not every browser supports it (mainly desktop
-  // Chrome/Firefox on non-Windows don't), so fall back to the clipboard copy above.
+  // Native share sheet where supported, else clipboard.
   const nativeShare = async (shareId: string) => {
     const url = shareUrl(shareId);
     if (navigator.share) {

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useState } from "react";
 import mammoth from "mammoth";
 import { FileText } from "lucide-react";
@@ -21,8 +38,7 @@ export function DocViewer({ item }: { item: FileItem }) {
     setError(null);
     if (!blob) return;
 
-    // mammoth only understands the modern .docx (OOXML zip) format — legacy .doc is a
-    // binary OLE format it can't parse, so surface that distinctly instead of a generic failure.
+    // mammoth only reads .docx, not legacy binary .doc.
     if (item.extension === "doc") {
       setError("Legacy .doc files can't be previewed in the browser — download to view.");
       return;

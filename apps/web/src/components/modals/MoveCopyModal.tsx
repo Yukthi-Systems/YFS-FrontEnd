@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Folder, HardDrive } from "lucide-react";
 import type { FileItem } from "../../types/file";
@@ -99,10 +116,7 @@ export function MoveCopyModal({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(currentParentId);
 
-  // Items inside a "Shared with you" folder can only be moved around within that same
-  // share — never out into our own Drive, which isn't ours to move them to. Walking up
-  // to SHARED_ROOT_ID finds the share root; null means these are our own items, rooted
-  // at My Drive as usual.
+  // Shared items can only move within their own share; null means own items.
   const shareRootId = useMemo(() => {
     let current = files.find((f) => f.id === sourceIds[0]);
     while (current && current.parentId && current.parentId !== SHARED_ROOT_ID) {

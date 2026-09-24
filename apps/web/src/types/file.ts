@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import type { InternalSharePermissions } from "@yfs/service";
 
 export type { InternalSharePermissions };
@@ -15,9 +32,9 @@ export interface SharedInInfo {
 export interface FileVersion {
   id: string;
   storageKey: string;
-  blobUrl?: string; // regenerated from storageKey on load, like FileItem.blobUrl
+  blobUrl?: string;
   size: number;
-  savedAt: string; // ISO String — when this version stopped being current
+  savedAt: string; // when this version stopped being current
 }
 
 export interface ShareCollaborator {
@@ -25,9 +42,6 @@ export interface ShareCollaborator {
   permission: "view" | "edit";
 }
 
-// Demo-only link protection: there is no backend here to verify a password or OTP
-// server-side, so this only gates the client-side SharedFileView UI. Never treat this as
-// real access control for anything sensitive.
 export interface ShareSettings {
   token: string;
   visibility: "restricted" | "anyone";
@@ -53,20 +67,19 @@ export interface FileItem {
   isDeleted: boolean; // true = sitting in the Trash folder
   type: "folder" | "audio" | "video" | "image" | "pdf" | "spreadsheet" | "document" | "code" | "other";
   extension?: string;
-  blobUrl?: string; // Local Object URL for active previews (regenerated from storageKey on load)
-  storageKey?: string; // IndexedDB key for the persisted bytes; absent for seeded demo items
-  fileId?: string; // logical files.file_id from the upload backend (stable across versions)
-  version?: number; // current file_versions.file_version; defaults to 1 when unknown
-  resourceInfo?: Record<string, unknown>; // folders.folder_info / files.file_info (creation_info, trash_info, ui, …)
+  blobUrl?: string;
+  storageKey?: string; // IndexedDB key for cached bytes
+  fileId?: string; // stable across versions
+  version?: number; // defaults to 1 when unknown
+  resourceInfo?: Record<string, unknown>; // folder_info / file_info
   color?: string; // folder colour (from resource_info.ui.color)
   icon?: string; // folder icon key (from resource_info.ui.icon)
   createdByEmail?: string;
-  createdBy?: string; // resolved live from resource_info.creation_info.user_id (see resolveCreatedByNames in fileSystemStore.ts)
-  versions?: FileVersion[]; // past content, newest first; does not include the current version
-  share?: ShareSettings; // legacy client-only external link (SharedFileView demo route)
+  createdBy?: string;
+  versions?: FileVersion[]; // newest first, excludes the current version
+  share?: ShareSettings;
   sharedIn?: SharedInInfo; // set on folders in the "Shared with me" tab
-  // "server" = came from YFS-Main-API (/folders/*), "local" = created client-side only
-  // (uploaded files, offline-created folders). Absent on seeded/legacy items.
+  // "server" from YFS-Main-API, "local" client-only, "shared" from a share.
   origin?: "server" | "local" | "shared";
   isLocked?: boolean;
 }
