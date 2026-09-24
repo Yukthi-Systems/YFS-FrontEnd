@@ -1,10 +1,25 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { apiRequest } from "./apiClient";
 import { HttpError } from "./http";
 import type { BasicUserInfo, UserQuota } from "./types";
 
-// GET /user/search/user-by-email/{email} — up to 10 same-organization users whose
-// email contains the query. Used to pick a share recipient. Only returns users who
-// have signed in to YFS before.
+// GET /user/search/user-by-email/{email} — up to 10 org users who have signed in before.
 export const searchUsersByEmail = async (accessToken: string, email: string): Promise<BasicUserInfo[]> => {
   const query = email.trim();
   if (!query) return [];
@@ -15,9 +30,7 @@ export const searchUsersByEmail = async (accessToken: string, email: string): Pr
   return data ?? [];
 };
 
-// GET /user/user-by-id/{user_id} — resolve a single user (e.g. a share's owner/recipient).
-// `private_info` comes back only when the id is the caller's own; it's null otherwise.
-// 404 (no such user in this org, or never signed in) resolves to null.
+// GET /user/user-by-id/{id} — `private_info` only for the caller; 404 resolves to null.
 export const getUserById = async (accessToken: string, userId: string): Promise<BasicUserInfo | null> => {
   try {
     const { data } = await apiRequest<BasicUserInfo | null>(`/user/user-by-id/${userId}`, { accessToken });
@@ -28,9 +41,7 @@ export const getUserById = async (accessToken: string, userId: string): Promise<
   }
 };
 
-// PATCH /user/update-user-info/{isPublic} — replace this user's public_info (visible
-// to the org) or private_info (visible only to them) blob wholesale. The body is the
-// full JSON object; merge client-side before calling if you're only changing a key.
+// PATCH /user/update-user-info/{isPublic} — replaces the blob wholesale; merge before calling.
 export const updateUserInfo = async (
   accessToken: string,
   scope: "public" | "private",

@@ -1,13 +1,26 @@
-// Determine base URL dynamically depending on where it's running:
-// 1. Vite (Web): import.meta.env.VITE_API_URL
-// 2. React Native / Expo: process.env.EXPO_PUBLIC_API_URL
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
+import { readEnv } from "./env";
+
+// VITE_API_URL on web (runtime or build time), EXPO_PUBLIC_API_URL on Expo.
 const getBaseUrl = (): string => {
-  try {
-    const url = import.meta.env.VITE_API_URL;
-    if (url) {
-      return url;
-    }
-  } catch {}
+  const url = readEnv("VITE_API_URL");
+  if (url) return url;
 
   try {
     const globalProcess = (globalThis as any).process;
@@ -21,13 +34,11 @@ const getBaseUrl = (): string => {
 
 export const API_BASE_URL = getBaseUrl();
 
-// A missing API base URL is the classic broken-deploy cause: every /auth/* call then
-// hits the static host that serves the SPA, returns index.html, and the auth flow
-// retries forever. Fail loudly instead of silently making same-origin requests.
+// Without a base URL every call would hit the SPA host and get index.html; fail loudly.
 if (!API_BASE_URL) {
   const msg =
     "VITE_API_URL is not set — API calls will hit the app's own origin and fail. " +
-    "Set it at build time (apps/web/.env or a Docker build arg).";
+    "Set it in apps/web/.env for dev, or as a container environment variable.";
   try {
     if (typeof window !== "undefined") console.error(`[yfs] ${msg}`);
   } catch {}

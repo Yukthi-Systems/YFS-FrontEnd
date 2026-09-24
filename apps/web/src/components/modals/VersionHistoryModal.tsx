@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { Download, History, Loader2, Trash2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { formatBytes, formatDate } from "../../utils/format";
@@ -20,18 +37,10 @@ export function VersionHistoryModal({
   onClose: () => void;
   onDownloadVersion: (version: number) => void;
   onDeleteVersion: (version: number) => void;
-  // Same convention as ItemContextMenu/ViewerModal — null for the user's own items
-  // (full control), the caller's grant when `item` lives in a "Shared with me" subtree.
   permissions?: InternalSharePermissions | null;
 }) {
   const canDelete = !permissions || permissions.can_delete;
-  // Once loaded, no older versions means the current one is the file's only version —
-  // there's nothing left to "version-delete" it down to, so deleting it means deleting
-  // the file itself (the caller routes this to DELETE /files/delete/file instead of
-  // /delete/version). When older versions DO exist, deleting the current/latest one is
-  // just an ordinary version delete — the server has no "can't delete the latest" rule
-  // (only file_version <= 1 is rejected), it just becomes the next-highest remaining
-  // version once this one's gone.
+  // With no older versions, deleting the current one deletes the file.
   const isOnlyVersion = !loading && olderVersions.length === 0;
   return (
     <ModalShell onClose={onClose}>
@@ -67,11 +76,7 @@ export function VersionHistoryModal({
           <div className="text-xs text-text-main text-center py-6">No earlier versions yet — replacing this file creates one.</div>
         ) : (
           olderVersions.map((v) => {
-            // The server hard-rejects DELETE /files/delete/version for file_version <= 1
-            // (routes/files.rs delete_any_file_version) — version 1 can never be removed
-            // on its own, only ever as part of deleting the whole file (which would take
-            // every other version with it, not what a single "delete this version" click
-            // should do). Disable rather than let it round-trip to a 400.
+            // The server never allows deleting version 1 on its own.
             const isFirstVersion = v === 1;
             return (
               <div key={v} className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-border-main">

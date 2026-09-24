@@ -1,10 +1,23 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import type { SidebarTab } from "../types/file";
 
-// The authenticated app's URL shape: /<tab>/<folderId1>/<folderId2>/... . Keeps
-// useFileNavigation's browsing state (sidebar tab + folder path) in sync with the
-// address bar so a refresh (or a shared link to a specific folder) lands back where
-// the user was instead of resetting to My Drive. Distinct from the public
-// /share/<id> and /share-ended routes handled directly in main.tsx.
+// App URLs are /<tab>/<folderId>/..., so refresh and deep links land in the same place.
 const VALID_TABS: SidebarTab[] = [
   "drive",
   "projects",
@@ -24,8 +37,6 @@ export const parseAppRoute = (pathname: string): AppRoute => {
   const segments = pathname.split("/").filter(Boolean);
   const [tabSegment, ...rest] = segments;
   const tab = (VALID_TABS as string[]).includes(tabSegment ?? "") ? (tabSegment as SidebarTab) : "drive";
-  // Only trust the trailing segments as a folder path when the tab itself was
-  // recognized — an unknown first segment falls back to the drive root entirely.
   return { tab, path: tabSegment === tab ? rest : [] };
 };
 

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAtom, useSetAtom } from "jotai";
@@ -18,14 +35,7 @@ import {
 import type { GridSize, SortField, SortOrder, ViewMode } from "../types/file";
 import type { Theme } from "../utils/theme";
 
-// Server-backed per-user settings, split across the two `users` blobs YFS-Main-API
-// exposes on GET /user/user-by-id/{self}:
-//   - private_info: UI preferences, visible only to the user (theme, view mode, …)
-//   - public_info:  profile fields the whole org can see (display name, avatar colour)
-// Both are written back wholesale via PATCH /user/update-user-info/{isPublic}, so we
-// keep the full blob in a ref and merge the current atom values into it before saving
-// (debounced). Render once, alongside AuthBridge — the atoms it seeds/persists are read
-// and written by useUserSettings() anywhere else in the tree.
+// Syncs private_info (UI prefs) and public_info (profile) with the server. Both are written wholesale, so values are merged before a debounced save.
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -48,7 +58,6 @@ interface PrivateBlob {
   sidebarCollapsed?: boolean;
   [k: string]: unknown; // preserve keys we don't model
 }
-
 
 export function UserSettingsBridge() {
   const { token, userId, refreshAccessToken } = useAuth();

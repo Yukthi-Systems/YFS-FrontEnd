@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { AudioLines, Code2, File, FileText, Image, LayoutGrid, Sheet, Video } from "lucide-react";
 import type { FileItem } from "../types/file";
 
@@ -14,18 +31,11 @@ export const TYPE_FILTERS: { value: string; label: string; icon: typeof File }[]
 ];
 
 export const sanitizeName = (name: string): string => {
-  // TODO(security): Prevent directory traversal in folder/file names
+  // Strip path separators and ".." so names can't traverse directories.
   return name.replace(/[\/\\]/g, "").replace(/\.\.+/g, "").trim();
 };
 
-// Every format Collabora's own live discovery.xml lists (2026-09-22 dump), EXCEPT the
-// raster/vector image formats it also technically opens (bmp, gif, jpg/jpeg, png, svg,
-// tiff, wmf, emf) — those go through its Draw app, which is a strange way to view a
-// photo compared to the purpose-built ImageLightbox below, so they're deliberately kept
-// out. Everything else Collabora supports opens in Collabora — nothing here gets a
-// client-side parser instead. (pdf/txt/md/csv/tsv used to be excluded in favour of
-// react-pdf/CodeEditor/SheetJS; per 2026-09-23 request, all of them now go to Collabora
-// too, same as everything else on this list.)
+// Everything Collabora opens, except images (ImageLightbox handles those better).
 export const COLLABORA_EXTENSIONS = new Set([
   // text documents
   "doc", "docx", "docm", "dot", "dotx", "dotm", "odt", "ott", "odm", "fodt", "rtf",
@@ -54,32 +64,19 @@ const DRAWING_EXTENSIONS = new Set([
   "odg", "otg", "fodg", "sxm", "odf", "oth", "otm", "wpg", "cdr", "cgm", "fh", "pub", "vsd", "vsdx", "vss", "p65", "dxf",
 ]);
 
-// Collabora sets a `--doc-type: r,g,b` CSS variable on <html data-doctype="..."> that
-// drives its own cursor/selection/annotation accents per document type — pulled
-// straight from its compiled bundle.css (`[data-doctype='spreadsheet']{--doc-type:16,
-// 104,2}` etc., 2026-09-22), not a generic Office-brand guess. There's no way to read
-// this back live (the ribbon renders inside a cross-origin iframe, and it's set by
-// Collabora's own JS at runtime, not exposed statically anywhere else), so if this
-// Collabora build is ever upgraded these may need re-extracting the same way — open
-// browser/<build-id>/bundle.css directly and grep for `--doc-type`.
+// Collabora's per-doc-type accent (`--doc-type` in its bundle.css); re-extract after a Collabora upgrade.
 export const getCollaboraAccentColor = (extension: string | undefined): string => {
   const ext = (extension ?? "").toLowerCase();
   if (SPREADSHEET_EXTENSIONS.has(ext)) return "#106802"; // spreadsheet (Calc)
   if (PRESENTATION_EXTENSIONS.has(ext)) return "#A33E03"; // presentation (Impress)
   if (DRAWING_EXTENSIONS.has(ext)) return "#876900"; // drawing (Draw)
-  return "#0369A3"; // text (Writer) — word-processing and everything else
+  return "#0369A3";
 };
 
-// Plain-text formats previewed in the CodeMirror viewer without a language grammar.
-// txt/md are also in COLLABORA_EXTENSIONS now — isCollaboraSupported (checked before
-// isTextEditable in ViewerModal's renderContent) wins for server/shared items with a
-// real WOPI file behind them; CodeEditor only still handles them for local-only items
-// (nothing for Collabora to point at) and the rest of this set, which Collabora doesn't
-// support at all.
+// Plain text shown in CodeMirror without a grammar. Server files in COLLABORA_EXTENSIONS go to Collabora instead.
 const PLAIN_TEXT_EXTENSIONS = new Set(["txt", "text", "log", "md", "markdown", "rst", "ini", "conf", "env", "gitignore"]);
 
-// Source/config/data formats previewed in CodeMirror with syntax highlighting
-// (@uiw/codemirror-extensions-langs resolves the grammar from the extension).
+// Highlighted in CodeMirror; the grammar is resolved from the extension.
 const CODE_EXTENSIONS = new Set([
   "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "json", "jsonc", "json5", "jsonl", "ndjson", "geojson",
   "html", "htm", "xhtml", "css", "scss", "sass", "less", "styl", "vue", "svelte", "xml", "xsl", "xslt",
@@ -126,19 +123,15 @@ export const categorizeFile = (file: File): { type: FileItem["type"]; extension:
   return { type: category, extension: ext };
 };
 
-// Same categorization as categorizeFile, but from a bare filename (used for file
-// listings that come back from the API without a File/blob attached).
 export const categorizeByName = (name: string): { type: FileItem["type"]; extension: string } =>
   categorizeFile({ name, type: "" } as File);
 
-// Anything CodeMirror can show: source/config/data files plus plain-text documents.
 export const isTextEditable = (item: Pick<FileItem, "type" | "extension">): boolean => {
   if (item.type === "code") return true;
   return !!item.extension && (CODE_EXTENSIONS.has(item.extension) || PLAIN_TEXT_EXTENSIONS.has(item.extension));
 };
 
-// Office-suite files on the server go through Collabora. Local-only/seeded items have no
-// server file for WOPI to point at, so they keep using the client-side viewers instead.
+// Local-only items have no server file for WOPI, so they use the client-side viewers.
 export const isCollaboraSupported = (item: Pick<FileItem, "extension" | "fileId" | "origin">): boolean =>
   !!item.extension &&
   COLLABORA_EXTENSIONS.has(item.extension) &&

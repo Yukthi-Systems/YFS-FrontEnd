@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { atom } from "jotai";
 import type { GridSize, SortField, SortOrder, ViewMode } from "../types/file";
 
@@ -18,8 +35,7 @@ export const AVATAR_COLORS = [
   "#64748b",
 ] as const;
 
-// View preferences — seeded from private_info by UserSettingsBridge once loaded,
-// written through on change (also by UserSettingsBridge, debounced).
+// Seeded from and saved to private_info by UserSettingsBridge.
 export const viewModeAtom = atom<ViewMode>("list");
 // Icon size for the "grid" view mode only — Windows-style small/medium/large icons.
 export const gridSizeAtom = atom<GridSize>("medium");

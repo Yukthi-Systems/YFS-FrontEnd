@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createPublicFolder,
@@ -13,8 +30,7 @@ import {
 
 const folderKey = (token: string, folderId: string | null) => ["publicFolder", token, folderId] as const;
 
-// Mints a new anonymous session server-side (not idempotent), so it's a mutation the
-// caller fires once — a query could re-fire on focus and mint duplicate sessions.
+// A mutation, not a query: each call mints a new session.
 export const useCreatePublicSession = () => useMutation({ mutationFn: (shareId: string) => createPublicSession(shareId) });
 
 export const useValidatePublicPassword = () =>

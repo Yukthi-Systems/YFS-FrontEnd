@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -90,7 +107,6 @@ export function MediaPlayer({
     );
   }
 
-  // Audio player
   return (
     <AudioPlayer
       streamUrl={streamUrl}
@@ -102,7 +118,7 @@ export function MediaPlayer({
   );
 }
 
-// Full custom streaming video player with buffer progress, speed control, PiP, and keyboard shortcuts
+// Video player with buffering, speed, PiP and keyboard shortcuts.
 function FullVideoPlayer({
   streamUrl,
   item,
@@ -140,7 +156,6 @@ function FullVideoPlayer({
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const flashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync Picture-in-Picture events from native browser
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -253,10 +268,8 @@ function FullVideoPlayer({
     }
   };
 
-  // Keyboard navigation & accessibility
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
       if (["input", "textarea", "select"].includes((e.target as HTMLElement)?.tagName?.toLowerCase())) return;
 
       if (e.key === " " || e.key === "k") {
@@ -305,14 +318,12 @@ function FullVideoPlayer({
     };
   }, [volume, isPlaying]);
 
-  // Fullscreen change listener
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
-  // Update buffer percentage as browser streams chunks
   const updateProgress = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -363,7 +374,6 @@ function FullVideoPlayer({
       className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl overflow-hidden select-none outline-none group"
       aria-label={`Video player for ${item.name}`}
     >
-      {/* Native Video element */}
       <video
         ref={videoRef}
         src={streamUrl}
@@ -382,7 +392,6 @@ function FullVideoPlayer({
         className="w-full h-full max-h-[75vh] object-contain cursor-pointer"
       />
 
-      {/* Playback Error Overlay */}
       {playbackError && (
         <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-3 p-6 text-center text-white z-30">
           <AlertCircle className="w-12 h-12 text-rose-500 animate-bounce" />
@@ -400,7 +409,6 @@ function FullVideoPlayer({
         </div>
       )}
 
-      {/* Buffering Spinner */}
       {isBuffering && !playbackError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
           <div className="p-4 bg-black/60 backdrop-blur-md rounded-full shadow-2xl">
@@ -409,14 +417,12 @@ function FullVideoPlayer({
         </div>
       )}
 
-      {/* HUD Quick Flash Feedback */}
       {flashFeedback && (
         <div className="absolute top-8 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-black/70 backdrop-blur-md text-white font-semibold text-xs rounded-full pointer-events-none shadow-lg z-20 animate-fade-in">
           {flashFeedback}
         </div>
       )}
 
-      {/* Picture-in-Picture Dock Overlay */}
       {isMinimized && isPiP && (
         <div
           onClick={() => {
@@ -436,7 +442,6 @@ function FullVideoPlayer({
         </div>
       )}
 
-      {/* Docked click-to-expand overlay when not in native PiP */}
       {isMinimized && !isPiP && (
         <div
           onClick={() => onRestoreModal?.()}
@@ -449,7 +454,6 @@ function FullVideoPlayer({
         </div>
       )}
 
-      {/* Center Big Play Button when paused */}
       {!isMinimized && !isPlaying && !isBuffering && !playbackError && (
         <button
           onClick={togglePlay}
@@ -460,7 +464,6 @@ function FullVideoPlayer({
         </button>
       )}
 
-      {/* Floating Glassmorphic Controls Bar */}
       {!isMinimized && (
         <div
           className={`absolute bottom-3 left-3 right-3 bg-neutral-950/80 backdrop-blur-md border border-white/10 rounded-xl p-3 flex flex-col gap-2 text-white shadow-2xl transition-all duration-300 z-20 ${
@@ -468,7 +471,6 @@ function FullVideoPlayer({
           }`}
           onClick={(e) => e.stopPropagation()}
         >
-        {/* Scrubber Progress Bar */}
         <div
           ref={progressRef}
           onClick={handleScrubberClick}
@@ -481,22 +483,18 @@ function FullVideoPlayer({
           aria-valuemax={duration || 100}
           aria-valuenow={currentTime}
         >
-          {/* Buffered track */}
           <div
             className="absolute left-0 top-0 bottom-0 bg-white/35 rounded-full transition-all duration-150"
             style={{ width: `${bufferedPct}%` }}
           />
-          {/* Played track */}
           <div
             className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-accent to-purple-500 rounded-full"
             style={{ width: `${playedPct}%` }}
           />
-          {/* Thumb */}
           <div
             className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md -translate-x-1/2 scale-0 group-hover/scrubber:scale-100 transition-transform"
             style={{ left: `${playedPct}%` }}
           />
-          {/* Hover Time Tooltip */}
           {hoverTime !== null && (
             <div
               className="absolute -top-7 px-2 py-0.5 bg-black/90 text-[10px] font-mono rounded text-white shadow pointer-events-none -translate-x-1/2"
@@ -507,9 +505,7 @@ function FullVideoPlayer({
           )}
         </div>
 
-        {/* Buttons Row */}
         <div className="flex items-center justify-between gap-2 pt-1">
-          {/* Left Controls */}
           <div className="flex items-center gap-2">
             <button
               onClick={togglePlay}
@@ -538,7 +534,6 @@ function FullVideoPlayer({
               <RotateCw className="w-4 h-4" />
             </button>
 
-            {/* Volume control */}
             <div className="flex items-center gap-1.5 group/vol">
               <button
                 onClick={toggleMute}
@@ -566,15 +561,12 @@ function FullVideoPlayer({
               />
             </div>
 
-            {/* Time Display */}
             <span className="text-xs font-mono text-neutral-300 ml-1">
               {formatTime(currentTime)} <span className="text-neutral-500">/</span> {formatTime(duration)}
             </span>
           </div>
 
-          {/* Right Controls */}
           <div className="flex items-center gap-1.5 relative">
-            {/* Speed Selector */}
             <div className="relative">
               <button
                 onClick={() => setShowSpeedMenu(!showSpeedMenu)}
@@ -603,7 +595,6 @@ function FullVideoPlayer({
               )}
             </div>
 
-            {/* Picture in Picture */}
             {typeof document !== "undefined" && "pictureInPictureEnabled" in document && (
               <button
                 onClick={togglePiP}
@@ -615,7 +606,6 @@ function FullVideoPlayer({
               </button>
             )}
 
-            {/* Fullscreen */}
             <button
               onClick={toggleFullscreen}
               className="p-1.5 hover:bg-white/10 rounded-lg text-white transition border-none bg-transparent cursor-pointer"
@@ -632,7 +622,7 @@ function FullVideoPlayer({
   );
 }
 
-// Compact video player for the sidebar DetailsDrawer
+// Compact video player for DetailsDrawer.
 function CompactVideoPlayer({ streamUrl, item }: { streamUrl: string; item: FileItem }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -694,7 +684,7 @@ function CompactVideoPlayer({ streamUrl, item }: { streamUrl: string; item: File
   );
 }
 
-// Custom Audio Streaming Player with dynamic audio wave and controls
+// Audio player with a waveform animation.
 function AudioPlayer({
   streamUrl,
   isLoading,
@@ -822,7 +812,6 @@ function AudioPlayer({
         onPause={() => setIsPlaying(false)}
       />
 
-      {/* Animated Sound Wave visualizer */}
       <div className="flex items-center gap-1.5 h-12" aria-hidden="true">
         {[
           "animate-[audioWave_1.2s_ease-in-out_infinite_alternate]",
@@ -852,7 +841,6 @@ function AudioPlayer({
         </div>
       </div>
 
-      {/* Scrubber */}
       <div
         onClick={handleScrubberClick}
         className="relative w-full max-w-md h-2 bg-border-main rounded-full cursor-pointer overflow-hidden"
@@ -872,7 +860,6 @@ function AudioPlayer({
         />
       </div>
 
-      {/* Controls Row */}
       <div className="flex items-center justify-center gap-4 text-text-main">
         <button
           onClick={() => seek(-10)}

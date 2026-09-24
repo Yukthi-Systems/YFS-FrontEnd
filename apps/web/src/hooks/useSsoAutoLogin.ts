@@ -1,8 +1,24 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { AUTO_SSO_ATTEMPTED_KEY } from "../services/authStore";
 
-// Whether auto-SSO has already been kicked off in this browser session. Persisted so
-// the blocked-popup full-page redirect doesn't come back and immediately re-trigger.
+// Survives the blocked-popup redirect so it doesn't re-trigger.
 const autoSsoAlreadyAttempted = (): boolean => {
   try {
     return sessionStorage.getItem(AUTO_SSO_ATTEMPTED_KEY) === "1";
@@ -19,11 +35,7 @@ const markAutoSsoAttempted = (): void => {
   }
 };
 
-// Auto-triggers SSO login shortly after mount when nobody is already authenticated.
-// Runs AT MOST ONCE per browser session: if that attempt fails (bad API URL, CORS,
-// popup blocked and the redirect returns still-unauthenticated, ...) the user lands on
-// the login screen with a button instead of an endless popup/redirect loop. A
-// successful sign-in or an explicit logout re-arms it (see services/authStore.ts).
+// Auto-starts SSO at most once per browser session, so a failure shows the login screen instead of looping.
 export function useSsoAutoLogin({
   isAuthenticated,
   authLoading,

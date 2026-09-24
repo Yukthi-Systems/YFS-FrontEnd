@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import {
   AlertCircle,
@@ -24,9 +41,7 @@ import { useFileInfo } from "../../hooks/useFileInfo";
 const PLACEHOLDER_SVG =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='1'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><polyline points='21 15 16 10 5 21'/></svg>";
 
-// `openable`: whether clicking through to a full viewer is actually wired up for
-// this render — false in read-only contexts (e.g. the public share view) that have
-// no "Open" action, so the hint text isn't left promising one.
+// `openable` is false where there's no full viewer (e.g. public shares).
 export function CompactPreview({ item, openable = true }: { item: FileItem; openable?: boolean }) {
   const { data: imageUrl } = useStreamUrl(item.type === "image" ? item : null);
 
@@ -95,8 +110,7 @@ export const KIND_LABEL: Record<FileItem["type"], string> = {
   other: "File",
 };
 
-// Free-text note stored on the resource itself (resource_info.description), so it's
-// shared with everyone who can see the item rather than being personal.
+// Stored on the resource, so everyone with access sees it.
 function DescriptionSection({
   value,
   canEdit,
@@ -444,7 +458,6 @@ export function DetailsDrawer({
             </InfoRow>
           )}
 
-          {/* Permissions — only shown for shared items ("Shared with you") */}
           {(shared || item.origin === "shared" || effectivePermissions !== null) && (
             <InfoRow label="Permissions">
               <span title={getPermissionsTooltip(effectivePermissions)}>

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useRef } from "react";
 import { getFileBasicInfo, type FileWopiRequest } from "@yfs/service";
 import { useAuth } from "./useAuth";
@@ -6,20 +23,17 @@ import { collaboraClient, resolveCollaboraAction, buildCollaboraActionUrl } from
 import { withAuthRetry } from "../utils/authRetry";
 import type { FileItem } from "../types/file";
 
-// POST /files/wopi/session/create wants a folder_id; the user's root isn't a folder row here, so
-// send "" like the upload/download flows do.
+// The user's root isn't a folder row; the API takes "".
 const ROOT_FOLDER_ID = "";
 const DEFAULT_MIME = "application/octet-stream";
 
 export interface CollaboraEditorSession {
-  actionUrl: string; // Collabora loader URL (cool.html?WOPISrc=...) to POST access_token against
+  actionUrl: string; // loader URL the access_token is POSTed to
   accessToken: string;
-  accessTokenTtl: number; // epoch ms, per the WOPI iframe integration spec
+  accessTokenTtl: number; // epoch ms
 }
 
-// Opens a server-backed file in Collabora Online: resolves the right Collabora
-// action (edit/view) for its extension via discovery.xml, in parallel with minting
-// a WOPI session from YFS-Main-API, then builds what the iframe/form needs.
+// Resolves the Collabora action and mints a WOPI session in parallel.
 export function useCollabora() {
   const { token, refreshAccessToken } = useAuth();
   const { getSharedFolderId } = useFileSystem();
@@ -38,9 +52,7 @@ export function useCollabora() {
     expected_file_size: item.size,
   });
 
-  // item.version is only trustworthy if this tab last touched the file (Collabora saves
-  // create new versions server-side) — ask the server for the real latest version so the
-  // editor never opens stale content. Falls back to the local version if the lookup fails.
+  // Collabora saves create server-side versions, so fetch the latest before opening.
   const resolveLatestVersion = async (item: FileItem): Promise<number> => {
     const local = item.version ?? 1;
     try {

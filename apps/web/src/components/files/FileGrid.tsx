@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
@@ -28,10 +45,7 @@ const hoverDetails = (item: FileItem, me: UserInfo | null) => {
     .join("\n");
 };
 
-// Windows Explorer-style icon size presets for grid view — column count, icon size
-// and text scale all move together per size. No card border/shadow by default (see
-// renderCard below) — just a big icon, a name underneath, and a flat highlight on
-// hover/selection, the way Explorer's icon views look rather than a bordered card grid.
+// Explorer-style icon sizes: columns, icon and text scale together.
 const GRID_SIZE_CONFIG: Record<
   GridSize,
   { cols: string; gap: string; thumbHeight: string; iconSize: string; padding: string; nameSize: string }

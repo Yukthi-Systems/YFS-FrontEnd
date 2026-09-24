@@ -1,7 +1,23 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 @import "tailwindcss";
 
-/* Theme is selector-driven: JS resolves "system" and stamps data-theme="light|dark"
-   on <html>, so `dark:` utilities key off that attribute. */
+/* `dark:` keys off the data-theme attribute set by JS. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
@@ -64,8 +80,7 @@
   filter: invert(1) brightness(2);
 }
 
-/* Fallback before JS runs (no data-theme yet): honour the OS setting. The inline
-   script in index.html normally sets data-theme first, so this rarely applies. */
+/* Before JS sets data-theme, follow the OS setting. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --text: #9ca3af;

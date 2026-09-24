@@ -1,45 +1,43 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { apiRequest } from "./apiClient";
 import { PAGE_SIZE } from "./types";
 import type { BackendResource, PageQuery } from "./types";
 
-// The structured payload the frontend keeps inside folders.folder_info /
-// files.file_info (the API stores it verbatim as JSONB and echoes it back as
-// BackendResource.resource_info). Unknown keys — UI colour/icon and the like — are
-// preserved whenever the frontend rewrites this on an edit.
+// Stored verbatim in folder_info/file_info; unknown keys are preserved on edit.
 export interface FolderCreationInfo {
   user_id?: string;
-  // No user_name here by design — the creator's display name is resolved live from
-  // user_id via GET /user/user-by-id (public_info.display_name) instead of stamped
-  // once at creation, so it doesn't go stale when the creator renames themselves.
-  // No created_at/parent_folder_id either — both duplicate fields the resource
-  // already carries at the top level (BackendResource.created_at/.parent_folder_id),
-  // so there's nothing here to read that isn't already available there.
-  // Older resources created before this change may still carry user_name/
-  // created_at/parent_folder_id keys in their stored JSON; they're simply ignored
-  // now (ResourceInfo's index signature still accepts them, nothing breaks parsing).
+  // Creator name is resolved live from user_id so it doesn't go stale.
 }
 
-// Per-item UI preferences (Drive-style): folder colour, folder icon. Server-backed
-// so they follow the user across devices.
 export interface ResourceUiInfo {
   color?: string; // CSS colour, e.g. "#e8710a"
-  icon?: string; // key from the frontend's fixed folder-icon set
+  icon?: string;
 }
 
-// Nothing here marks an item as trashed: the Trash is an ordinary folder, so being
-// in it is purely a matter of location. Older resources may still carry a legacy
-// trash_info key — it's ignored, the index signature just lets it parse.
+// Trash is a regular folder, so nothing here marks an item as trashed.
 export interface ResourceInfo {
   creation_info?: FolderCreationInfo;
   ui?: ResourceUiInfo;
-  // Free-text note on the resource itself, so everyone the folder is shared with
-  // sees it.
   description?: string;
   [key: string]: unknown;
 }
 
-// Default page size for every list endpoint. The UI pages through with infinite
-// scroll, requesting the next `limit`-sized window as the user nears the end.
 const DEFAULT_PAGE: PageQuery = { limit: PAGE_SIZE, offset: 0 };
 
 const pageParams = (page: Partial<PageQuery> = {}): string => {
@@ -69,14 +67,10 @@ export const listFolderChildren = async (
   return data ?? [];
 };
 
-// The owning user is taken from the session now, not the body. `sharedFolderId` is
-// only set when the target folder lives inside a "Shared with me" folder — the API
-// then checks the caller's share permissions and writes as the folder's owner.
+// Set only for targets inside a "Shared with me" folder.
 type SharedFolderScope = { sharedFolderId?: string | null };
 
-// POST /folders/create — the API doesn't echo the new folder back, callers should
-// re-list the parent afterwards to pick it up. For a shared-folder target both
-// parentFolderId and sharedFolderId are required.
+// POST /folders/create — no echo; re-list the parent.
 export const createFolder = async (
   accessToken: string,
   params: {
@@ -120,12 +114,7 @@ export const editFolder = async (
   });
 };
 
-// DELETE /folders/delete — permanently deletes a folder and everything under it.
-// folder_name/folder_info are written first (same as editFolder — worth passing the
-// current values, not placeholders, since they land in the same row update), then the
-// server marks the whole subtree deleted_at immediately and purges it (storage bytes,
-// file_versions/files/folders rows, quota) in a background task — this returns 202
-// Accepted once the delete is queued, not once it's actually finished.
+// DELETE /folders/delete — deletes the subtree in the background; 202 once queued.
 export const deleteFolder = async (
   accessToken: string,
   params: {

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import {
   Folder,
   FolderHeart,
@@ -63,8 +80,6 @@ export function getFileIcon(type: FileItem["type"], className = "w-5 h-5") {
   }
 }
 
-// Icon for a specific item — folders honour their custom colour/icon, everything
-// else falls back to the type-based icon.
 export function getItemIcon(item: Pick<FileItem, "isFolder" | "type" | "color" | "icon">, className = "w-5 h-5") {
   if (item.isFolder) {
     const Icon = (item.icon && FOLDER_ICON_MAP[item.icon]) || Folder;

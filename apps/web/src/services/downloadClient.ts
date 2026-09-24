@@ -1,8 +1,23 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { requestFileDownload, type FileDownloadRequest, type DownloadSession } from "@yfs/service";
 
-// Talks to the real download backend: ask YFS-Main-API for a per-file download
-// session (POST /files/download -> token + Storage API URL), then GET the bytes
-// from the Storage API directly with that token. Mirrors uploadClient.ts.
+// Gets a download session from YFS-Main-API, then fetches the bytes from the Storage API.
 
 export const downloadClient = {
   requestSession(token: string, req: FileDownloadRequest): Promise<DownloadSession> {
@@ -10,10 +25,7 @@ export const downloadClient = {
   },
 
   async fetchBytes(session: DownloadSession, signal?: AbortSignal): Promise<Blob> {
-    // session.url already carries the grant as ?token=…, which the Storage API accepts on
-    // its own. Only add an Authorization header when the URL lacks it: a header makes the
-    // browser send a CORS preflight, and the server prefers the header over the query
-    // string, so a wrong/missing header value would 401 an otherwise valid URL.
+    // Only add Authorization when the URL has no ?token=: the header forces a preflight and takes precedence.
     const hasUrlToken = new URL(session.url, window.location.href).searchParams.has("token");
     const res = await fetch(session.url, {
       headers: hasUrlToken || !session.token ? undefined : { Authorization: `Bearer ${session.token}` },

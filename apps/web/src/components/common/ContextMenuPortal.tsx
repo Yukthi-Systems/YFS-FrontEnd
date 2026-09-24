@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Yukthi Systems Private Limited
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 3 along with this program. If not, see
+ * <https://www.gnu.org/licenses/>.
+ */
+
 import { createPortal } from "react-dom";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -9,10 +26,7 @@ export interface AnchorRect {
   bottom: number;
 }
 
-// Renders a dropdown outside the normal DOM tree (into document.body) so it can't be
-// clipped by an ancestor's overflow — e.g. the file table's horizontal-scroll wrapper,
-// which the CSS spec forces into overflow-y: auto too once overflow-x isn't "visible",
-// turning it into an accidental clipping/scrolling box for anything positioned inside it.
+// Portaled to document.body so overflow containers can't clip it.
 export function ContextMenuPortal({
   anchor,
   align = "end",
