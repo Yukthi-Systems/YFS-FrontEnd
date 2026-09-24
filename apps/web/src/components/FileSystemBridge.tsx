@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
+import { userDisplayName } from "../utils/format";
 import { bootFileSystem, resetFileSystem, setAuthSnapshot, setUserSnapshot } from "../services/fileSystemStore";
-
-const displayName = (u: ReturnType<typeof useAuth>["user"]) =>
-  u?.username || [u?.first_name, u?.last_name].filter(Boolean).join(" ") || u?.email || undefined;
 
 // Wires the signed-in session into services/fileSystemStore.ts (a singleton store with
 // no component of its own) and runs the boot-on-login / reset-on-logout sequence.
@@ -15,7 +13,7 @@ export function FileSystemBridge() {
   // descendant) that might read it in this same commit.
   useLayoutEffect(() => {
     setAuthSnapshot({ token, userId, refreshAccessToken });
-    setUserSnapshot(user?.email, displayName(user));
+    setUserSnapshot(user?.email, userDisplayName(user));
   });
 
   useEffect(() => {

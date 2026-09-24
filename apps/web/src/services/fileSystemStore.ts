@@ -270,7 +270,9 @@ const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
           typeof user.public_info?.display_name === "string" ? user.public_info.display_name.trim() : "";
         const name = displayName || user.email.split("@")[0];
         for (const item of items) {
-          if (creatorIdOf(item) === userId) item.createdBy = name;
+          if (creatorIdOf(item) !== userId) continue;
+          item.createdBy = name;
+          item.createdByEmail = user.email;
         }
       } catch {
         /* leave unresolved — createdBy just stays unset for this item */
@@ -911,6 +913,7 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
     type: "folder",
     resourceInfo: creationInfo,
     createdBy: userName,
+    createdByEmail: ownerEmail,
     origin: "local",
   };
 
@@ -1060,6 +1063,7 @@ export const addFile = (input: AddFileInput): FileItem => {
     version: input.version,
     resourceInfo: buildCreationInfo(),
     createdBy: userName,
+    createdByEmail: ownerEmail,
     origin: "local",
   };
 
@@ -1105,7 +1109,7 @@ export const renameItem = (id: string, newName: string) => {
   if (!safeName) return;
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);
-  if (!target || isItemLocked(target)) return;
+  if (!target || target.isDeleted || isItemLocked(target)) return;
   persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
   const tk = authSnapshot.token;
@@ -1242,6 +1246,7 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
   if ("color" in style) patch.color = style.color ?? undefined;
   if ("icon" in style) patch.icon = style.icon ?? undefined;
   const files = store.get(filesAtom);
+  if (files.find((f) => f.id === id)?.isDeleted) return;
   persist(
     files.map((f) =>
       f.id === id

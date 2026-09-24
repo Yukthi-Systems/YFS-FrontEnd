@@ -17,6 +17,11 @@ export function useDragAndDrop({
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
   const handleDragStartItem = (item: FileItem, e: React.DragEvent) => {
+    if (item.isDeleted) {
+      e.preventDefault();
+      showToast("Items in Trash can't be moved — restore them first", "error");
+      return;
+    }
     if (isItemLocked(item)) {
       e.preventDefault();
       showToast(`"${item.name}" is locked and cannot be moved`, "error");
@@ -27,6 +32,7 @@ export function useDragAndDrop({
   };
 
   const handleDragOverFolder = (item: FileItem, e: React.DragEvent) => {
+    if (item.isDeleted) return;
     e.preventDefault();
     setDragOverFolderId(item.id);
   };
@@ -39,6 +45,7 @@ export function useDragAndDrop({
     e.preventDefault();
     e.stopPropagation();
     setDragOverFolderId(null);
+    if (item.isDeleted) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       onDropFiles(e.dataTransfer.files, item.id);

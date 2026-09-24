@@ -1,3 +1,6 @@
+import type { UserInfo } from "../atoms/auth";
+import type { FileItem } from "../types/file";
+
 // A file's size comes back 0/unset until the Storage API's server-side callback
 // confirms the upload to YFS-Main-API — that's "processing". If it's been stuck
 // that way since longer than this ago, the callback almost certainly never landed
@@ -100,4 +103,16 @@ export const formatDate = (isoString: string): string => {
     day: "numeric",
     year: "numeric",
   });
+};
+
+export const userDisplayName = (u: UserInfo | null | undefined) =>
+  u?.username || [u?.first_name, u?.last_name].filter(Boolean).join(" ") || u?.email || undefined;
+
+// Own-drive items carry owner.name "me" until the creator lookup resolves a real name.
+export const getOwnerDisplay = (item: FileItem, me: UserInfo | null | undefined) => {
+  const ownDrive = item.owner.name === "me";
+  const email = item.createdByEmail || (item.createdBy ? "" : item.owner.email);
+  const name = item.createdBy || (ownDrive ? userDisplayName(me) || "me" : item.owner.name);
+  const isMe = !!me?.email && (email ? email === me.email : ownDrive);
+  return { label: isMe && name !== "me" ? `${name} (me)` : name, email };
 };

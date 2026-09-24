@@ -475,7 +475,7 @@ export function DetailsDrawer({
               <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
             </button>
           )}
-          {(!shared || effectivePermissions?.can_update) && (
+          {!item.isDeleted && (!shared || effectivePermissions?.can_update) && (
             <div className="flex gap-2">
               <button
                 onClick={onRename}

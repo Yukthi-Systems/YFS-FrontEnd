@@ -82,6 +82,11 @@ export function useFileActions({
   };
 
   const openRenameModal = (item: FileItem) => {
+    if (item.isDeleted) {
+      showToast("Items in Trash can't be renamed — restore them first", "error");
+      closeContextMenu();
+      return;
+    }
     if (isItemLocked(item)) {
       showToast(`"${item.name}" is locked and cannot be renamed`, "error");
       closeContextMenu();
@@ -224,6 +229,11 @@ export function useFileActions({
   };
 
   const openMoveModal = (ids: string[]) => {
+    if (ids.some((id) => files.find((f) => f.id === id)?.isDeleted)) {
+      showToast("Items in Trash can't be moved — restore them first", "error");
+      closeContextMenu();
+      return;
+    }
     const lockedItems = ids
       .map((id) => files.find((f) => f.id === id))
       .filter((f): f is FileItem => !!f && isItemLocked(f));
