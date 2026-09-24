@@ -21,6 +21,8 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
+  --font-sans: "Inter Variable", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, Consolas, monospace;
   --color-accent: var(--accent);
   --color-accent-bg: var(--accent-bg);
   --color-accent-border: var(--accent-border);
@@ -44,9 +46,9 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: "Inter Variable", system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: "Inter Variable", system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, Consolas, monospace;
 
   font: 15px/1.4 var(--sans);
   letter-spacing: 0.1px;
