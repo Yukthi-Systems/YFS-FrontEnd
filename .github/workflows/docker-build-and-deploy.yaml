@@ -1,6 +1,6 @@
 name: Docker Build and Deploy
 
-# Push-only: this runs on a self-hosted runner with registry and SSH secrets, so it must never run for pull requests.
+# Push-only: uses registry secrets, so it must never run for pull requests.
 on:
   push:
     branches:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: Het-8v-16G
+    runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.get_tag.outputs.tag }}
     steps:
@@ -48,7 +48,7 @@ jobs:
   # Deploy disabled for now.
   # deploy:
   #   needs: build
-  #   runs-on: Het-8v-16G
+  #   runs-on: ubuntu-latest
   #   steps:
   #     - name: Checkout repository
   #       uses: actions/checkout@v4
