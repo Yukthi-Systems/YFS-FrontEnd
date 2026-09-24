@@ -33,3 +33,7 @@ export const queryClient = new QueryClient({
     mutations: { retry: shouldRetry },
   },
 })
+
+// One cache entry per user, shared by every getUserById caller.
+export const userQueryKey = (userId: string) => ["userById", userId] as const;
+export const USER_STALE_MS = 5 * 60 * 1000;

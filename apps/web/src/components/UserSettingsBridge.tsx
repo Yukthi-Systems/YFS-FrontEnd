@@ -18,7 +18,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAtom, useSetAtom } from "jotai";
-import { getUserById, updateUserInfo } from "@yfs/service";
+import { getUserById, updateUserInfo, type BasicUserInfo } from "@yfs/service";
 import { useAuth } from "../hooks/useAuth";
 import { withAuthRetry } from "../utils/authRetry";
 import { useTheme, useAccentColor } from "../atoms/theme";
@@ -34,6 +34,7 @@ import {
 } from "../atoms/userSettings";
 import type { GridSize, SortField, SortOrder, ViewMode } from "../types/file";
 import type { Theme } from "../utils/theme";
+import { queryClient, userQueryKey, USER_STALE_MS } from "../lib/queryClient";
 
 // Syncs private_info (UI prefs) and public_info (profile) with the server. Both are written wholesale, so values are merged before a debounced save.
 
@@ -59,6 +60,12 @@ interface PrivateBlob {
   [k: string]: unknown; // preserve keys we don't model
 }
 
+// Keep the shared user cache in step with what was just saved.
+const patchCachedUser = (userId: string | null, patch: Partial<BasicUserInfo>) => {
+  if (!userId) return;
+  queryClient.setQueryData<BasicUserInfo | null>(userQueryKey(userId), (old) => (old ? { ...old, ...patch } : old));
+};
+
 export function UserSettingsBridge() {
   const { token, userId, refreshAccessToken } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -72,9 +79,10 @@ export function UserSettingsBridge() {
   const setSavingProfile = useSetAtom(savingProfileAtom);
 
   const query = useQuery({
-    queryKey: ["userSettings", userId],
+    queryKey: userQueryKey(userId ?? ""),
     queryFn: () => withAuthRetry(token, refreshAccessToken, (tk) => getUserById(tk, userId!)),
     enabled: !!token && !!userId,
+    staleTime: USER_STALE_MS,
   });
 
   useEffect(() => {
@@ -165,14 +173,15 @@ export function UserSettingsBridge() {
     clearTimeout(privTimer.current);
     privTimer.current = setTimeout(() => {
       if (!token) return;
-      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "private", privateBlobRef.current)).catch(
-        (err) => {
+      const blob = privateBlobRef.current;
+      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "private", blob))
+        .then(() => patchCachedUser(userId, { private_info: blob }))
+        .catch((err) => {
           console.warn("private_info save failed", err);
           showToast(err instanceof Error ? err.message : "Couldn't save your preferences", "error");
-        }
-      );
+        });
     }, SAVE_DEBOUNCE_MS);
-  }, [theme, accentColor, viewMode, gridSize, sortField, sortOrder, sidebarCollapsed, token, refreshAccessToken]);
+  }, [theme, accentColor, viewMode, gridSize, sortField, sortOrder, sidebarCollapsed, token, userId, refreshAccessToken]);
 
   useEffect(() => {
     if (!initedRef.current) return;
@@ -192,14 +201,16 @@ export function UserSettingsBridge() {
         setSavingProfile(false);
         return;
       }
-      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "public", publicBlobRef.current))
+      const blob = publicBlobRef.current;
+      withAuthRetry(token, refreshAccessToken, (tk) => updateUserInfo(tk, "public", blob))
+        .then(() => patchCachedUser(userId, { public_info: blob }))
         .catch((err) => {
           console.warn("public_info save failed", err);
           showToast(err instanceof Error ? err.message : "Couldn't save your profile", "error");
         })
         .finally(() => setSavingProfile(false));
     }, SAVE_DEBOUNCE_MS);
-  }, [publicProfile, token, setSavingProfile, refreshAccessToken]);
+  }, [publicProfile, token, userId, setSavingProfile, refreshAccessToken]);
 
   return null;
 }

@@ -39,6 +39,7 @@ import { Avatar } from "../common/Avatar";
 import { Checkbox } from "../common/Checkbox";
 import { PermissionPicker, permsEqual, permsOf } from "../common/PermissionPicker";
 import { ModalShell } from "./ModalShell";
+import { userQueryKey, USER_STALE_MS } from "../../lib/queryClient";
 
 const DEFAULT_PERMS: InternalSharePermissions = {
   can_preview: true,
@@ -239,7 +240,11 @@ export function ShareModal({ item, onClose }: { item: FileItem; onClose: () => v
           let email = s.shared_with_user_id;
           let name: string | undefined;
           try {
-            const u = await withAuthRetry(token, refreshAccessToken, (tk) => getUserById(tk, s.shared_with_user_id));
+            const u = await queryClient.fetchQuery({
+              queryKey: userQueryKey(s.shared_with_user_id),
+              queryFn: () => withAuthRetry(token, refreshAccessToken, (tk) => getUserById(tk, s.shared_with_user_id)),
+              staleTime: USER_STALE_MS,
+            });
             if (u) {
               email = u.email;
               name = displayNameOf(u);

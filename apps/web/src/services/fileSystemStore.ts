@@ -50,7 +50,7 @@ import {
 import { sanitizeName, categorizeByName } from "../utils/fileType";
 import { isItemLocked } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
-import { queryClient } from "../lib/queryClient";
+import { queryClient, userQueryKey, USER_STALE_MS } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
 import {
   filesAtom,
@@ -233,6 +233,14 @@ const mapSharedResource = (r: InternalSharedResource): FileItem => {
 const creatorIdOf = (item: FileItem): string | undefined =>
   (item.resourceInfo as ResourceInfo | undefined)?.creation_info?.user_id;
 
+// Shared cache for user lookups (owners, creators, share recipients, own settings).
+const fetchUserById = (userId: string) =>
+  queryClient.fetchQuery({
+    queryKey: userQueryKey(userId),
+    queryFn: () => withFreshToken((tk) => getUserById(tk, userId)),
+    staleTime: USER_STALE_MS,
+  });
+
 // Resolves creator names from creation_info.user_id, cached per user.
 const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
   const userIds = [...new Set(items.map(creatorIdOf).filter((id): id is string => !!id))];
@@ -240,11 +248,7 @@ const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
   await Promise.all(
     userIds.map(async (userId) => {
       try {
-        const user = await queryClient.fetchQuery({
-          queryKey: ["userById", userId],
-          queryFn: () => withFreshToken((tk) => getUserById(tk, userId)),
-          staleTime: 5 * 60 * 1000,
-        });
+        const user = await fetchUserById(userId);
         if (!user) return;
         const displayName =
           typeof user.public_info?.display_name === "string" ? user.public_info.display_name.trim() : "";
@@ -537,7 +541,7 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
     await Promise.all(
       [...new Set(shared.map((s) => s.user_id))].map(async (ownerId) => {
         try {
-          const owner = await withFreshToken((tk) => getUserById(tk, ownerId));
+          const owner = await fetchUserById(ownerId);
           if (owner) {
             const displayName =
               typeof owner.public_info?.display_name === "string" ? owner.public_info.display_name.trim() : "";
