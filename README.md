@@ -88,7 +88,6 @@ cp apps/web/.env.example apps/web/.env
 | `VITE_STORAGE_URL` | Storage API origin, used when an upload session has no `base_url` |
 | `VITE_COLLABORA_URL` | Collabora Online origin |
 | `VITE_COLLABORA_LOADER_URL` | Optional. Collabora loader URL used when `discovery.xml` can't be fetched |
-| `VITE_ALLOWED_HOSTS` | Extra hosts the Vite dev server may be served on |
 
 ## 💻 Development
 
