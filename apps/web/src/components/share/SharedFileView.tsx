@@ -32,7 +32,7 @@ import { useToast } from "../../atoms/toast";
 import { FileListTable } from "../files/FileListTable";
 import { FileGrid } from "../files/FileGrid";
 import { FileTiles } from "../files/FileTiles";
-import { RefreshButton, SelectionPill, SortControls, pillActionClass } from "../files/FilterSortBar";
+import { SelectionPill, SortControls, pillActionClass } from "../files/FilterSortBar";
 import { Breadcrumbs, type BreadcrumbSegment } from "../layout/Breadcrumbs";
 import { ViewModeToggle } from "../layout/ViewModeToggle";
 import { ListSkeleton, GridSkeleton, TilesSkeleton } from "../common/Skeletons";
@@ -540,7 +540,6 @@ function SharedFolderBrowser({
           <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Breadcrumbs segments={segments} onNavigate={goToBreadcrumb} />
-              <RefreshButton onRefresh={() => folderQuery.refetch()} refreshing={refreshing} />
             </div>
 
             {moveTarget ? (
@@ -579,11 +578,12 @@ function SharedFolderBrowser({
             )}
 
             <SortControls
-              viewMode={viewMode}
               sortField={sortField}
               onSortFieldChange={setSortField}
               sortOrder={sortOrder}
               onToggleSortOrder={toggleSortOrder}
+              onRefresh={() => folderQuery.refetch()}
+              refreshing={refreshing}
             />
           </div>
 

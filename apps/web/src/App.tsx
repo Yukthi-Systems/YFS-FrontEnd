@@ -562,7 +562,6 @@ function App() {
                     onBreadcrumbNavigate={goToBreadcrumb}
                     activeSidebarTab={nav.activeSidebarTab}
                     checkedCount={selection.checkedItemIds.length}
-                    viewMode={viewMode}
                     sortField={sortField}
                     onSortFieldChange={setSortField}
                     sortOrder={sortOrder}
