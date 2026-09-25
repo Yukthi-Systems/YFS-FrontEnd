@@ -23,6 +23,7 @@ import { useFileSystem } from "../../hooks/useFileSystem";
 import { useToast } from "../../atoms/toast";
 import { Checkbox } from "../common/Checkbox";
 import { PermissionPicker, permsOf } from "../common/PermissionPicker";
+import { PhoneListInput } from "../common/PhoneListInput";
 import { ModalShell } from "./ModalShell";
 
 // Local calendar date an ISO instant falls on (not a raw UTC slice) — must agree with toExpiresIso below.
@@ -178,12 +179,7 @@ export function EditShareLinkModal({ share, onClose }: { share: ExternalShare; o
               />
             </Field>
             <Field label="OTP phone numbers (optional)">
-              <input
-                value={otpPhones}
-                onChange={(e) => setOtpPhones(e.target.value)}
-                placeholder="+1 555 0100, …"
-                className="dialog-input"
-              />
+              <PhoneListInput value={otpPhones} onChange={setOtpPhones} />
             </Field>
           </div>
 

@@ -26,11 +26,15 @@ import {
   Loader2,
   Lock,
   LogOut,
+  Mail,
   Pencil,
+  Send,
   ShieldAlert,
+  ShieldCheck,
+  Smartphone,
   File as FileIcon,
 } from "lucide-react";
-import type { BackendResource, PublicSession } from "@yfs/service";
+import type { BackendResource, OtpType, PublicSession } from "@yfs/service";
 import type { FileItem, GridSize, SortField, SortOrder, ViewMode } from "../../types/file";
 import { categorizeByName } from "../../utils/fileType";
 import { shortName } from "../../utils/format";
@@ -39,11 +43,13 @@ import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import {
   useCreatePublicFolder,
   useCreatePublicSession,
+  useGeneratePublicOtp,
   useMovePublicFolder,
   usePublicFolderChildren,
   usePublicLogout,
   usePublicSessionInfo,
   useRenamePublicFolder,
+  useValidatePublicOtp,
   useValidatePublicPassword,
 } from "../../hooks/usePublicSession";
 import { useToast } from "../../atoms/toast";
@@ -58,6 +64,7 @@ import { EmptyState } from "../common/EmptyState";
 import { ToastContainer } from "../common/ToastContainer";
 import { CreateFolderModal } from "../modals/CreateFolderModal";
 import { RenameModal } from "../modals/RenameModal";
+import { PhoneInput } from "../common/PhoneInput";
 import { ShareAccessBadge, ShareNoteBanner } from "./ShareAccessBadge";
 import { SharedDetailsPanel } from "./SharedDetailsPanel";
 import { ShareGate, gatePrimaryButton, gateSecondaryButton } from "./ShareGate";
@@ -71,8 +78,19 @@ const VIEW_KEY = "yfs_share_view";
 const GRID_SIZE_KEY = "yfs_share_grid_size";
 const ROOT_NAME = "Shared folder";
 const FILE_UNAVAILABLE = "Opening and downloading files from a shared link isn't available yet.";
+// The OTP itself is valid server-side for 5 minutes (see routes/auth.rs
+// public_session_generate_otp), but "Resend code" stays disabled for its own separate
+// 3-minute cooldown regardless of that — not a real expiry check, just paced re-sends.
+const OTP_RESEND_COOLDOWN_MS = 3 * 60 * 1000;
 
 const noop = () => {};
+
+const formatCountdown = (ms: number): string => {
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
 
 const readStored = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
   try {
@@ -153,10 +171,58 @@ export function SharedFileView() {
   const passwordMutation = useValidatePublicPassword();
   const [passwordInput, setPasswordInput] = useState("");
   const needsPassword = !!session?.is_password_protected && !passwordMutation.isSuccess;
-  const needsOtp = !!session && (session.is_email_otp_protected || session.is_phone_otp_protected);
+
+  const generateOtpMutation = useGeneratePublicOtp();
+  const otpMutation = useValidatePublicOtp();
+  const availableOtpTypes = useMemo<OtpType[]>(() => {
+    if (!session) return [];
+    const types: OtpType[] = [];
+    if (session.is_email_otp_protected) types.push("email");
+    if (session.is_phone_otp_protected) types.push("sms");
+    return types;
+  }, [session]);
+  const [otpType, setOtpType] = useState<OtpType | null>(null);
+  const effectiveOtpType = otpType ?? availableOtpTypes[0] ?? null;
+  const [otpAddress, setOtpAddress] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
+  // Ticks once a second only while a cooldown is actually running, purely to re-render
+  // the "Resend in m:ss" countdown — not used for anything else.
+  const [cooldownTick, setCooldownTick] = useState(0);
+  useEffect(() => {
+    if (!resendAvailableAt || resendAvailableAt <= Date.now()) return;
+    const id = window.setInterval(() => setCooldownTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [resendAvailableAt]);
+  const resendRemainingMs = resendAvailableAt ? Math.max(0, resendAvailableAt - Date.now()) : 0;
+  void cooldownTick; // read only to force the re-render above; the ms value itself comes from Date.now()
+  const canResendOtp = resendRemainingMs <= 0;
+
+  const needsOtp = !!session && (session.is_email_otp_protected || session.is_phone_otp_protected) && !otpMutation.isSuccess;
   const granted = !!session && !needsPassword && !needsOtp;
 
   const infoQuery = usePublicSessionInfo(token, granted);
+
+  const submitSendOtp = () => {
+    if (!token || !effectiveOtpType || !otpAddress.trim() || generateOtpMutation.isPending) return;
+    generateOtpMutation.mutate(
+      { token, otpType: effectiveOtpType, phoneOrEmail: otpAddress.trim() },
+      {
+        onSuccess: () => {
+          setOtpSent(true);
+          setOtpCode("");
+          if (otpMutation.isError) otpMutation.reset();
+          setResendAvailableAt(Date.now() + OTP_RESEND_COOLDOWN_MS);
+        },
+      }
+    );
+  };
+
+  const submitVerifyOtp = () => {
+    if (!token || !effectiveOtpType || !otpAddress.trim() || otpCode.trim().length !== 6 || otpMutation.isPending) return;
+    otpMutation.mutate({ token, otpType: effectiveOtpType, phoneOrEmail: otpAddress.trim(), otp: otpCode.trim() });
+  };
 
   const submitPassword = () => {
     if (!token || !passwordInput || passwordMutation.isPending) return;
@@ -259,12 +325,146 @@ export function SharedFileView() {
   }
 
   if (needsOtp) {
+    const typeNoun = (t: OtpType) => (t === "email" ? "email address" : "phone number");
     return (
       <ShareGate
-        icon={<Lock className="w-7 h-7" />}
+        icon={<ShieldCheck className="w-7 h-7" />}
         title="Verification required"
-        description="This link needs a one-time code sent to an approved email or phone. Code verification isn't available yet — ask the owner to share it without one."
+        description={
+          otpSent
+            ? `Enter the 6-digit code we sent to ${otpAddress}.`
+            : `The owner protected this link with a one-time code. Enter an approved ${
+                availableOtpTypes.length > 1 ? "email address or phone number" : typeNoun(availableOtpTypes[0])
+              } to receive one.`
+        }
       >
+        {!otpSent ? (
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitSendOtp();
+            }}
+          >
+            {availableOtpTypes.length > 1 && (
+              <div className="flex gap-1.5 p-1 bg-code-bg rounded-2xl">
+                {availableOtpTypes.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setOtpType(t);
+                      setOtpAddress("");
+                      if (generateOtpMutation.isError) generateOtpMutation.reset();
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition border-none ${
+                      effectiveOtpType === t ? "bg-bg-main text-text-heading shadow-sm" : "bg-transparent text-text-main hover:text-text-heading"
+                    }`}
+                  >
+                    {t === "email" ? <Mail className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+                    {t === "email" ? "Email" : "Phone (SMS)"}
+                  </button>
+                ))}
+              </div>
+            )}
+            {effectiveOtpType === "sms" ? (
+              <PhoneInput
+                value={otpAddress}
+                onChange={(v) => {
+                  setOtpAddress(v);
+                  if (generateOtpMutation.isError) generateOtpMutation.reset();
+                }}
+                ariaLabel={typeNoun("sms")}
+                invalid={generateOtpMutation.isError}
+                autoFocus
+              />
+            ) : (
+              <input
+                type="email"
+                value={otpAddress}
+                onChange={(e) => {
+                  setOtpAddress(e.target.value);
+                  if (generateOtpMutation.isError) generateOtpMutation.reset();
+                }}
+                placeholder="you@example.com"
+                aria-label={typeNoun("email")}
+                aria-invalid={generateOtpMutation.isError}
+                autoFocus
+                className={`w-full py-3 px-4 rounded-2xl border bg-code-bg text-text-heading text-sm transition focus:outline-none focus:bg-bg-main focus:ring-4 ${
+                  generateOtpMutation.isError ? "border-red-500/60 focus:ring-red-500/10" : "border-border-main focus:border-accent focus:ring-accent-bg"
+                }`}
+              />
+            )}
+            {generateOtpMutation.isError && (
+              <span className="flex items-center gap-1.5 text-xs text-red-500">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {errorMessage(generateOtpMutation.error, "Couldn't send the code — check the address and try again")}
+              </span>
+            )}
+            <button type="submit" disabled={!otpAddress.trim() || generateOtpMutation.isPending} className={gatePrimaryButton}>
+              {generateOtpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {generateOtpMutation.isPending ? "Sending…" : "Send code"}
+            </button>
+          </form>
+        ) : (
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitVerifyOtp();
+            }}
+          >
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => {
+                setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                if (otpMutation.isError) otpMutation.reset();
+              }}
+              placeholder="······"
+              aria-label="Verification code"
+              aria-invalid={otpMutation.isError}
+              autoFocus
+              className={`w-full py-3 px-4 rounded-2xl border bg-code-bg text-text-heading text-lg tracking-[0.4em] text-center font-semibold transition focus:outline-none focus:bg-bg-main focus:ring-4 ${
+                otpMutation.isError ? "border-red-500/60 focus:ring-red-500/10" : "border-border-main focus:border-accent focus:ring-accent-bg"
+              }`}
+            />
+            {otpMutation.isError && (
+              <span className="flex items-center gap-1.5 text-xs text-red-500">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {errorMessage(otpMutation.error, "Incorrect or expired code")}
+              </span>
+            )}
+            <button type="submit" disabled={otpCode.length !== 6 || otpMutation.isPending} className={gatePrimaryButton}>
+              {otpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              {otpMutation.isPending ? "Verifying…" : "Verify"}
+            </button>
+            <div className="flex items-center justify-between text-xs pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setOtpSent(false);
+                  setOtpCode("");
+                  otpMutation.reset();
+                }}
+                className="text-text-main hover:text-text-heading cursor-pointer bg-transparent border-none underline p-0"
+              >
+                Use a different {effectiveOtpType ? typeNoun(effectiveOtpType) : "address"}
+              </button>
+              <button
+                type="button"
+                onClick={submitSendOtp}
+                disabled={!canResendOtp || generateOtpMutation.isPending}
+                className="text-accent hover:text-accent/80 disabled:text-text-main disabled:cursor-not-allowed cursor-pointer bg-transparent border-none font-semibold p-0"
+              >
+                {canResendOtp ? "Resend code" : `Resend in ${formatCountdown(resendRemainingMs)}`}
+              </button>
+            </div>
+          </form>
+        )}
         <button onClick={exitShare} className={gateSecondaryButton}>
           <LogOut className="w-4 h-4" /> Exit
         </button>

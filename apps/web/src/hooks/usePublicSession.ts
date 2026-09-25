@@ -20,12 +20,15 @@ import {
   createPublicFolder,
   createPublicSession,
   editPublicFolder,
+  generatePublicSessionOtp,
   getPublicSession,
   listPublicFolderChildren,
   movePublicFolder,
   PAGE_SIZE,
   publicLogout,
+  validatePublicSessionOtp,
   validatePublicSessionPassword,
+  type OtpType,
 } from "@yfs/service";
 
 const folderKey = (token: string, folderId: string | null) => ["publicFolder", token, folderId] as const;
@@ -36,6 +39,18 @@ export const useCreatePublicSession = () => useMutation({ mutationFn: (shareId: 
 export const useValidatePublicPassword = () =>
   useMutation({
     mutationFn: (vars: { token: string; password: string }) => validatePublicSessionPassword(vars.token, vars.password),
+  });
+
+export const useGeneratePublicOtp = () =>
+  useMutation({
+    mutationFn: (vars: { token: string; otpType: OtpType; phoneOrEmail: string }) =>
+      generatePublicSessionOtp(vars.token, vars.otpType, vars.phoneOrEmail),
+  });
+
+export const useValidatePublicOtp = () =>
+  useMutation({
+    mutationFn: (vars: { token: string; otpType: OtpType; phoneOrEmail: string; otp: string }) =>
+      validatePublicSessionOtp(vars.token, vars.otpType, vars.phoneOrEmail, vars.otp),
   });
 
 export const usePublicSessionInfo = (token: string, enabled: boolean) =>

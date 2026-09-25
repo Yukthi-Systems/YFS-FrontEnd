@@ -70,6 +70,43 @@ export const getPublicSession = async (publicSessionToken: string): Promise<Publ
   return data;
 };
 
+export type OtpType = "sms" | "email";
+
+// POST /public/otp/generate/{otp_type}/{phone_or_email} — sends a 6-digit OTP (5-minute
+// server-side TTL) to the given phone/email. It must exactly match one of the addresses
+// the share owner pre-approved (external_shares.phones_for_otp / emails_for_otp) —
+// nothing here reveals that list, the visitor has to already know their own entry on
+// it. 400/422 if it isn't. No request body.
+export const generatePublicSessionOtp = async (
+  publicSessionToken: string,
+  otpType: OtpType,
+  phoneOrEmail: string
+): Promise<void> => {
+  await apiRequest(`/public/otp/generate/${otpType}/${encodeURIComponent(phoneOrEmail)}`, {
+    method: "POST",
+    parseJson: false,
+    headers: { [PUBLIC_HEADER]: publicSessionToken },
+  });
+};
+
+// POST /public/otp/validate/{otp_type}/{phone_or_email}/{otp} — on success the server
+// swaps in a fully-granted session under the same token (3h TTL) — keep using it
+// afterwards, same pattern as validatePublicSessionPassword. On a wrong code the
+// server deletes that OTP from its cache (no retries against the same code; request a
+// new one via generatePublicSessionOtp instead).
+export const validatePublicSessionOtp = async (
+  publicSessionToken: string,
+  otpType: OtpType,
+  phoneOrEmail: string,
+  otp: string
+): Promise<void> => {
+  await apiRequest(`/public/otp/validate/${otpType}/${encodeURIComponent(phoneOrEmail)}/${encodeURIComponent(otp)}`, {
+    method: "POST",
+    parseJson: false,
+    headers: { [PUBLIC_HEADER]: publicSessionToken },
+  });
+};
+
 export const publicLogout = async (publicSessionToken: string): Promise<void> => {
   await apiRequest("/public/logout", {
     method: "DELETE",
