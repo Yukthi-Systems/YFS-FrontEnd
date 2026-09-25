@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import type { ArchiveExportType, ResourceInfo } from "@yfs/service";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked, itemBusyReason } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 import { ARCHIVE_FORMATS, canArchiveOnServer, useStreamUrl } from "../../hooks/useDownload";
@@ -285,11 +285,13 @@ export function DetailsDrawer({
   const shared = effectivePermissions !== null;
   const { data: fileInfo } = useFileInfo(item, !item.isFolder);
   const locked = isItemLocked(item, fileInfo);
+  const busy = itemBusyReason(item, fileInfo);
+  const busyTitle = busy ? `File is ${busy}` : undefined;
 
   const allowDownload = !shared || effectivePermissions.can_download;
-  const allowEdit = (!shared || effectivePermissions.can_update) && !locked;
-  const allowMove = (!shared || (effectivePermissions.can_update && effectivePermissions.can_create)) && !locked;
-  const allowDelete = !shared && !item.isDeleted && !locked;
+  const allowEdit = (!shared || effectivePermissions.can_update) && !busy;
+  const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
+  const allowDelete = !shared && !item.isDeleted;
   const allowShare = !shared;
 
   const [copiedId, setCopiedId] = useState(false);
@@ -530,7 +532,7 @@ export function DetailsDrawer({
               <button
                 onClick={onRename}
                 disabled={!allowEdit}
-                title={locked ? "File is locked and cannot be renamed" : !allowEdit ? "No permission to rename" : undefined}
+                title={busyTitle ?? (!allowEdit ? "No permission to rename" : undefined)}
                 className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs"
               >
                 Rename
@@ -552,8 +554,8 @@ export function DetailsDrawer({
               {allowMove && (
                 <button
                   onClick={onMove}
-                  disabled={locked}
-                  title={locked ? "File is locked and cannot be moved" : undefined}
+                  disabled={!!busy}
+                  title={busyTitle}
                   className="flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
                 >
                   <FolderInput className="w-3.5 h-3.5" /> Move
@@ -564,7 +566,9 @@ export function DetailsDrawer({
           {!item.isDeleted && allowShare && (
             <button
               onClick={onShare}
-              className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
+              disabled={!!busy}
+              title={busyTitle}
+              className="w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
             >
               <Share2 className="w-3.5 h-3.5" /> Share
             </button>
@@ -572,7 +576,9 @@ export function DetailsDrawer({
           {item.isDeleted ? (
             <button
               onClick={onRestore}
-              className="w-full py-2 bg-transparent border border-green-500/50 text-green-600 font-semibold rounded-xl hover:bg-green-500/10 cursor-pointer transition text-xs"
+              disabled={!!busy}
+              title={busyTitle}
+              className="w-full py-2 bg-transparent border border-green-500/50 text-green-600 font-semibold rounded-xl hover:bg-green-500/10 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs"
             >
               Restore Item
             </button>
@@ -580,8 +586,8 @@ export function DetailsDrawer({
             allowDelete && (
               <button
                 onClick={onTrash}
-                disabled={locked}
-                title={locked ? "File is locked and cannot be moved to trash" : undefined}
+                disabled={!!busy}
+                title={busyTitle}
                 className="w-full py-2 bg-transparent border border-red-500/50 text-red-500 font-semibold rounded-xl hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs flex items-center justify-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Move to Trash

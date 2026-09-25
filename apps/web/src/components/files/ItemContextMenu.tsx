@@ -19,7 +19,7 @@ import { useState } from "react";
 import { ChevronDown, Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { SHARED_ROOT_ID } from "../../types/file";
-import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import { isItemFailed, isItemProcessing, isItemLocked, itemBusyReason } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
 import type { ArchiveExportType } from "@yfs/service";
 import { ARCHIVE_FORMATS, canArchiveOnServer } from "../../hooks/useDownload";
@@ -70,6 +70,8 @@ export function ItemContextMenu({
 
   const effectivePermissions = permissions ?? item.sharedIn?.permissions ?? null;
   const locked = isItemLocked(item);
+  const busy = itemBusyReason(item);
+  const busyTitle = busy ? `File is ${busy}` : undefined;
 
   // In a shared subtree, only offer what the share grants. Own items: everything.
   const shared = effectivePermissions !== null;
@@ -146,8 +148,8 @@ export function ItemContextMenu({
       {allowEdit && !item.isDeleted && (
         <button
           onClick={onRename}
-          disabled={locked}
-          title={locked ? "File is locked and cannot be renamed" : undefined}
+          disabled={!!busy}
+          title={busyTitle}
           className={itemClass}
         >
           <Pencil className="w-3.5 h-3.5" /> Rename
@@ -168,15 +170,15 @@ export function ItemContextMenu({
           {allowMove && (
             <button
               onClick={onMove}
-              disabled={locked}
-              title={locked ? "File is locked and cannot be moved" : undefined}
+              disabled={!!busy}
+              title={busyTitle}
               className={itemClass}
             >
               <FolderInput className="w-3.5 h-3.5" /> Move to…
             </button>
           )}
           {allowShare && (
-            <button onClick={onShare} className={itemClass}>
+            <button onClick={onShare} disabled={!!busy} title={busyTitle} className={itemClass}>
               <Share2 className="w-3.5 h-3.5" /> Share
             </button>
           )}
@@ -238,16 +240,16 @@ export function ItemContextMenu({
         <>
           <button
             onClick={onRestore}
-            disabled={locked}
-            title={locked ? "File is locked" : undefined}
+            disabled={!!busy}
+            title={busyTitle}
             className={itemClass}
           >
             <RotateCcw className="w-3.5 h-3.5" /> Restore
           </button>
           <button
             onClick={onPermanentDelete}
-            disabled={locked}
-            title={locked ? "File is locked" : undefined}
+            disabled={!!busy}
+            title={busyTitle}
             className={destructiveClass}
           >
             <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
@@ -258,8 +260,8 @@ export function ItemContextMenu({
           {allowTrash && (
             <button
               onClick={onTrash}
-              disabled={locked}
-              title={locked ? "File is locked and cannot be moved to trash" : undefined}
+              disabled={!!busy}
+              title={busyTitle}
               className={destructiveClass}
             >
               <Trash2 className="w-3.5 h-3.5" /> Move to Trash
@@ -269,8 +271,8 @@ export function ItemContextMenu({
             // Skips Trash; distinct icon from "Move to Trash".
             <button
               onClick={onPermanentDelete}
-              disabled={locked}
-              title={locked ? "File is locked and cannot be deleted" : undefined}
+              disabled={!!busy}
+              title={busyTitle}
               className={destructiveClass}
             >
               <XCircle className="w-3.5 h-3.5" /> Delete Permanently

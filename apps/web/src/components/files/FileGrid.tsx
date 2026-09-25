@@ -140,7 +140,7 @@ export function FileGrid({
       <div
         key={item.id}
         data-item-id={item.id}
-        draggable={!locked}
+        draggable={!locked && !isItemProcessing(item)}
         onDragStart={(e) => onDragStartItem(item, e)}
         onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
         onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}

@@ -20,9 +20,10 @@ import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
 import type { FileWithRelativePath } from "../atoms/uploadQueue";
 import { downloadAsZip } from "../utils/zipDownload";
-import { isItemLocked } from "../utils/format";
+import { busyMessage, itemBusyReason } from "../utils/format";
 import { canArchiveOnServer, useDownload, useFolderArchive } from "./useDownload";
 import type { ArchiveExportType } from "@yfs/service";
+import type { MoveResult } from "../services/fileSystemStore";
 
 interface PendingConfirm {
   title: string;
@@ -52,13 +53,13 @@ export function useFileActions({
   files: FileItem[];
   currentFolderId: string | null;
   fileSystem: {
-    createFolder: (name: string, parentId: string | null) => FileItem | null;
-    renameItem: (id: string, newName: string) => void;
-    trashItems: (ids: string[]) => void;
-    restoreItems: (ids: string[], destinationId: string | null) => { moved: number; blocked: number; unsupported: number };
+    createFolder: (name: string, parentId: string | null) => { folder: FileItem; synced: Promise<boolean> } | null;
+    renameItem: (id: string, newName: string) => Promise<boolean>;
+    trashItems: (ids: string[]) => Promise<MoveResult>;
+    restoreItems: (ids: string[], destinationId: string | null) => Promise<MoveResult>;
     permanentDeleteItems: (ids: string[]) => Promise<{ deleted: number; blocked: number }>;
     deleteFileVersion: (item: FileItem, version: number) => Promise<boolean>;
-    moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
+    moveItems: (ids: string[], newParentId: string | null) => Promise<MoveResult>;
     updateFileContent: (id: string, blob: Blob) => Promise<void>;
   };
   enqueueFiles: (items: FileWithRelativePath[], parentId: string | null) => void;
@@ -78,11 +79,14 @@ export function useFileActions({
   const openCreateFolderModal = () => setActiveModal("createFolder");
   const closeCreateFolderModal = () => setActiveModal(null);
 
-  const handleCreateFolderConfirm = (name: string) => {
-    const folder = fileSystem.createFolder(name, currentFolderId);
-    if (folder) showToast(`Created folder "${folder.name}"`, "success");
-    else showToast("Folder name can't be empty", "error");
+  const handleCreateFolderConfirm = async (name: string) => {
     setActiveModal(null);
+    const created = fileSystem.createFolder(name, currentFolderId);
+    if (!created) {
+      showToast("Folder name can't be empty", "error");
+      return;
+    }
+    if (await created.synced) showToast(`Created folder "${created.folder.name}"`, "success");
   };
 
   const handleUploadFiles = (fileList: FileList, parentId: string | null) => {
@@ -98,14 +102,24 @@ export function useFileActions({
     enqueueFiles(items, parentId);
   };
 
+  const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
+
+  // Drops locked/processing items, telling the user why; returns the ids that can proceed.
+  const withoutBusy = (ids: string[], action: string): string[] => {
+    const items = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
+    const busy = items.filter((f) => itemBusyReason(f));
+    if (busy.length === 1 && items.length === 1) showToast(busyMessage(busy[0], action)!, "error");
+    else if (busy.length > 0) showToast(`Skipping ${plural(busy.length, "item")} that are locked or still processing`, "error");
+    return items.filter((f) => !itemBusyReason(f)).map((f) => f.id);
+  };
+
   const openRenameModal = (item: FileItem) => {
     if (item.isDeleted) {
       showToast("Items in Trash can't be renamed — restore them first", "error");
       closeContextMenu();
       return;
     }
-    if (isItemLocked(item)) {
-      showToast(`"${item.name}" is locked and cannot be renamed`, "error");
+    if (withoutBusy([item.id], "renamed").length === 0) {
       closeContextMenu();
       return;
     }
@@ -115,29 +129,18 @@ export function useFileActions({
 
   const closeRenameModal = () => setRenameTarget(null);
 
-  const handleRenameConfirm = (name: string) => {
-    if (renameTarget) {
-      fileSystem.renameItem(renameTarget.id, name);
-      showToast("Renamed", "success");
-    }
+  const handleRenameConfirm = async (name: string) => {
+    const target = renameTarget;
     setRenameTarget(null);
+    if (target && (await fileSystem.renameItem(target.id, name))) showToast("Renamed", "success");
   };
-
-  const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
   const requestTrash = (ids: string[]) => {
     if (ids.length === 0) return;
-    const unlockedIds = ids.filter((id) => {
-      const item = files.find((f) => f.id === id);
-      return !isItemLocked(item);
-    });
+    const unlockedIds = withoutBusy(ids, "moved to Trash");
     if (unlockedIds.length === 0) {
-      showToast("Locked items cannot be moved to Trash", "error");
       closeContextMenu();
       return;
-    }
-    if (unlockedIds.length < ids.length) {
-      showToast(`Skipping ${ids.length - unlockedIds.length} locked item(s)`, "error");
     }
 
     closeContextMenu();
@@ -148,13 +151,13 @@ export function useFileActions({
       } later from the Trash tab.`,
       confirmLabel: "Move to Trash",
       destructive: true,
-      onConfirm: () => {
-        fileSystem.trashItems(unlockedIds);
-        showToast(`Moved ${plural(unlockedIds.length, "item")} to Trash`, "success");
+      onConfirm: async () => {
+        setPendingConfirm(null);
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
-        setPendingConfirm(null);
+        const { moved } = await fileSystem.trashItems(unlockedIds);
+        if (moved > 0) showToast(`Moved ${plural(moved, "item")} to Trash`, "success");
       },
     });
   };
@@ -162,9 +165,11 @@ export function useFileActions({
   // Not optimistic: permanentDeleteItems reports what actually succeeded.
   const requestPermanentDelete = (ids: string[]) => {
     if (ids.length === 0) return;
-    const targets = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is FileItem => !!f);
-    const removable = targets.map((f) => f.id);
-    if (removable.length === 0) return;
+    const removable = withoutBusy(ids, "deleted");
+    if (removable.length === 0) {
+      closeContextMenu();
+      return;
+    }
 
     closeContextMenu();
     setPendingConfirm({
@@ -236,46 +241,27 @@ export function useFileActions({
       closeContextMenu();
       return;
     }
-    const lockedItems = ids
-      .map((id) => files.find((f) => f.id === id))
-      .filter((f): f is FileItem => !!f && isItemLocked(f));
-    if (lockedItems.length > 0) {
-      if (ids.length === 1) {
-        showToast(`"${lockedItems[0].name}" is locked and cannot be moved`, "error");
-        closeContextMenu();
-        return;
-      }
-      showToast(`Skipping ${lockedItems.length} locked item${lockedItems.length > 1 ? "s" : ""}`, "error");
-      const unlockedIds = ids.filter((id) => !lockedItems.some((item) => item.id === id));
-      if (unlockedIds.length === 0) {
-        closeContextMenu();
-        return;
-      }
-      setMoveCopyState({ mode: "move", ids: unlockedIds });
-      closeContextMenu();
-      return;
-    }
-    setMoveCopyState({ mode: "move", ids });
+    const movable = withoutBusy(ids, "moved");
     closeContextMenu();
+    if (movable.length > 0) setMoveCopyState({ mode: "move", ids: movable });
   };
 
   const closeMoveCopyModal = () => setMoveCopyState(null);
 
-  const handleMoveCopyConfirm = (destinationId: string | null) => {
+  const handleMoveCopyConfirm = async (destinationId: string | null) => {
     if (!moveCopyState) return;
-    if (moveCopyState.mode === "move") {
-      const { moved, blocked, unsupported } = fileSystem.moveItems(moveCopyState.ids, destinationId);
-      if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""}`, "success");
-      if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — locked or cannot move into itself`, "error");
-      if (unsupported > 0) showToast(`Skipped ${unsupported} file${unsupported > 1 ? "s" : ""} — moving a file to My Drive root isn't supported yet`, "error");
-    } else if (moveCopyState.mode === "restore") {
-      const { moved, blocked, unsupported } = fileSystem.restoreItems(moveCopyState.ids, destinationId);
-      if (moved > 0) showToast(`Restored ${plural(moved, "item")}`, "success");
-      if (blocked > 0) showToast(`Skipped ${plural(blocked, "item")} — locked or cannot restore into itself`, "error");
-      if (unsupported > 0) showToast(`Skipped ${plural(unsupported, "file")} — restoring to My Drive root isn't supported yet`, "error");
-    }
+    const { mode, ids } = moveCopyState;
     setMoveCopyState(null);
     setCheckedItemIds([]);
+    const restoring = mode === "restore";
+    const { moved, blocked, unsupported } = restoring
+      ? await fileSystem.restoreItems(ids, destinationId)
+      : await fileSystem.moveItems(ids, destinationId);
+    if (moved > 0) showToast(`${restoring ? "Restored" : "Moved"} ${plural(moved, "item")}`, "success");
+    if (blocked > 0)
+      showToast(`Skipped ${plural(blocked, "item")} — locked, still processing, or can't go into itself`, "error");
+    if (unsupported > 0)
+      showToast(`Skipped ${plural(unsupported, "file")} — ${restoring ? "restoring" : "moving"} a file to My Drive root isn't supported yet`, "error");
   };
 
   const handleDownload = async (item: FileItem, format: ArchiveExportType = "zip") => {

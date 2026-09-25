@@ -17,13 +17,20 @@
 
 import { useState } from "react";
 import type { FileItem } from "../types/file";
+import { showToast } from "../atoms/toast";
+import { busyMessage } from "../utils/format";
 
 export function useShareSettings({ closeContextMenu }: { closeContextMenu: () => void }) {
   const [shareItemId, setShareItemId] = useState<string | null>(null);
 
   const openShareModal = (item: FileItem) => {
-    setShareItemId(item.id);
     closeContextMenu();
+    const busy = busyMessage(item, "shared");
+    if (busy) {
+      showToast(busy, "error");
+      return;
+    }
+    setShareItemId(item.id);
   };
 
   const closeShareModal = () => setShareItemId(null);

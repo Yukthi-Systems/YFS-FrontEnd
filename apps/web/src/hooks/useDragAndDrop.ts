@@ -18,7 +18,8 @@
 import { useState } from "react";
 import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
-import { isItemLocked } from "../utils/format";
+import { busyMessage } from "../utils/format";
+import type { MoveResult } from "../services/fileSystemStore";
 
 export function useDragAndDrop({
   checkedItemIds,
@@ -27,7 +28,7 @@ export function useDragAndDrop({
   onDropFiles,
 }: {
   checkedItemIds: string[];
-  moveItems: (ids: string[], newParentId: string | null) => { moved: number; blocked: number; unsupported: number };
+  moveItems: (ids: string[], newParentId: string | null) => Promise<MoveResult>;
   showToast: (message: string, variant?: ToastVariant) => void;
   onDropFiles: (fileList: FileList, parentId: string) => void;
 }) {
@@ -39,9 +40,10 @@ export function useDragAndDrop({
       showToast("Items in Trash can't be moved — restore them first", "error");
       return;
     }
-    if (isItemLocked(item)) {
+    const busy = busyMessage(item, "moved");
+    if (busy) {
       e.preventDefault();
-      showToast(`"${item.name}" is locked and cannot be moved`, "error");
+      showToast(busy, "error");
       return;
     }
     e.dataTransfer.setData("application/x-yfs-item", item.id);
@@ -58,7 +60,7 @@ export function useDragAndDrop({
     setDragOverFolderId((prev) => (prev === item.id ? null : prev));
   };
 
-  const handleDropOnFolder = (item: FileItem, e: React.DragEvent) => {
+  const handleDropOnFolder = async (item: FileItem, e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverFolderId(null);
@@ -72,9 +74,9 @@ export function useDragAndDrop({
     const draggedId = e.dataTransfer.getData("application/x-yfs-item");
     if (!draggedId) return;
     const ids = checkedItemIds.includes(draggedId) ? checkedItemIds : [draggedId];
-    const { moved, blocked } = moveItems(ids, item.id);
+    const { moved, blocked } = await moveItems(ids, item.id);
     if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""} into "${item.name}"`, "success");
-    if (blocked > 0) showToast("Can't move a folder into itself", "error");
+    if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — locked, still processing, or can't go into itself`, "error");
   };
 
   return { dragOverFolderId, handleDragStartItem, handleDragOverFolder, handleDragLeaveFolder, handleDropOnFolder };
