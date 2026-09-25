@@ -58,6 +58,22 @@ export const isItemLocked = (
   return false;
 };
 
+// Locked or still-processing files can't be renamed, moved, shared, trashed or deleted.
+export const itemBusyReason = (
+  item: (LockCheckItem & ProcessingCheckItem) | null | undefined,
+  fileInfo?: { is_locked?: boolean } | null
+): "locked" | "still processing" | null => {
+  if (!item) return null;
+  if (isItemLocked(item, fileInfo)) return "locked";
+  if (isItemProcessing(item)) return "still processing";
+  return null;
+};
+
+export const busyMessage = (item: { name: string } & Parameters<typeof itemBusyReason>[0], action: string): string | null => {
+  const reason = itemBusyReason(item);
+  return reason ? `"${item.name}" is ${reason} and can't be ${action}` : null;
+};
+
 export const formatBytes = (bytes: number): string => {
   if (!bytes || bytes <= 0) return "-";
   const k = 1024;

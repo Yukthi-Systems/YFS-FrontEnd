@@ -48,7 +48,7 @@ import {
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
-import { isItemLocked } from "../utils/format";
+import { isItemLocked, itemBusyReason } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient, userQueryKey, USER_STALE_MS } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
@@ -388,15 +388,17 @@ const withFreshToken = async <T,>(fn: (token: string) => Promise<T>): Promise<T 
 };
 
 // Fire-and-forget write through the MutationCache; no rollback except createFolder's own.
+// Resolves true on success, false on failure (onError has already handled it).
 const runMutation = <TVariables>(
   mutationFn: (variables: TVariables) => Promise<unknown>,
   variables: TVariables,
   onError: (err: unknown) => void
-) => {
+): Promise<boolean> => {
   const mutation = queryClient.getMutationCache().build(queryClient, { mutationFn, onError });
-  mutation.execute(variables).catch(() => {
-    // onError already handled it; avoid an unhandled rejection.
-  });
+  return mutation.execute(variables).then(
+    () => true,
+    () => false
+  );
 };
 
 const notifySyncFailed = (context: string, fallback: string) => (err: unknown) => {
@@ -810,7 +812,11 @@ export const bootFileSystem = async (signal: { cancelled: boolean }) => {
 };
 
 // Optimistic create, then sync server-side and swap in the real id.
-export const createFolder = (name: string, parentId: string | null): FileItem | null => {
+// `synced` resolves once the server confirms (false if it failed and the folder was rolled back).
+export const createFolder = (
+  name: string,
+  parentId: string | null
+): { folder: FileItem; synced: Promise<boolean> } | null => {
   const safeName = sanitizeName(name);
   if (!safeName) return null;
 
@@ -843,11 +849,11 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
     // Parent is still a temp id; the request would 400.
     if (!isServerId(parentId)) {
       showToast("That folder is still being saved — try again in a moment", "error");
-      return newFolder;
+      return { folder: newFolder, synced: Promise.resolve(false) };
     }
     // shared_folder_id is the share root, not the immediate parent.
     const sharedFolderId = parentId !== null ? (sharedSubtreeContext(store.get(filesAtom), parentId)?.rootId ?? null) : null;
-    runMutation(
+    const synced = runMutation(
       () =>
         withFreshToken((t) =>
           apiCreateFolder(t, {
@@ -869,9 +875,10 @@ export const createFolder = (name: string, parentId: string | null): FileItem | 
         loadFolder(parentId, { force: true }).catch(() => {});
       }
     );
+    return { folder: newFolder, synced };
   }
 
-  return newFolder;
+  return { folder: newFolder, synced: Promise.resolve(true) };
 };
 
 // Resolves a folder path to server ids, creating missing folders. Returns the deepest id, or null.
@@ -896,7 +903,7 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
 
     const tk = authSnapshot.token;
     if (!tk) {
-      const local = known ?? createFolder(segment, parentId);
+      const local = known ?? createFolder(segment, parentId)?.folder;
       if (!local) return null;
       parentId = local.id;
       continue;
@@ -1001,22 +1008,25 @@ const sharedWrite = (id: string): { sharedFolderId: string; perms: InternalShare
   return ctx ? { sharedFolderId: ctx.rootId, perms: ctx.permissions } : null;
 };
 
-export const renameItem = (id: string, newName: string) => {
+// Resolves once the server confirms; a failed rename is rolled back.
+export const renameItem = async (id: string, newName: string): Promise<boolean> => {
   const safeName = sanitizeName(newName);
-  if (!safeName) return;
+  if (!safeName) return false;
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);
-  if (!target || target.isDeleted || isItemLocked(target)) return;
+  if (!target || target.isDeleted || itemBusyReason(target)) return false;
+  const oldName = target.name;
   persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
   const tk = authSnapshot.token;
-  if (!tk || !target) return;
+  if (!tk) return true;
   const shared = sharedWrite(id);
+  if (shared && !shared.perms.can_update) return true; // no edit permission — optimistic only
 
+  let ok = true;
   // Edit replaces *_info wholesale, so carry the existing info through.
   if (target.isFolder && (target.origin === "server" || target.origin === "shared")) {
-    if (shared && !shared.perms.can_update) return; // no edit permission — optimistic only
-    runMutation(
+    ok = await runMutation(
       () =>
         withFreshToken((t) =>
           apiEditFolder(t, {
@@ -1030,15 +1040,14 @@ export const renameItem = (id: string, newName: string) => {
       notifySyncFailed("Folder rename did not sync to API", "Couldn't rename the folder")
     );
   } else if (!target.isFolder && target.origin === "server" && target.fileId) {
-    if (shared && !shared.perms.can_update) return; // no edit permission
-    runMutation(
+    ok = await runMutation(
       () =>
         withFreshToken((t) =>
-          apiUpdateFileInfo(t, { 
+          apiUpdateFileInfo(t, {
             folder_id: target.parentId!,
-            file_id: target.fileId!, 
+            file_id: target.fileId!,
             shared_folder_id: shared?.sharedFolderId ?? null,
-            file_name: safeName, 
+            file_name: safeName,
             file_info: target.resourceInfo ?? {},
             file_type: fileTypeGuess(target),
             file_version: target.version ?? 1,
@@ -1049,6 +1058,8 @@ export const renameItem = (id: string, newName: string) => {
       notifySyncFailed("File rename did not sync to API", "Couldn't rename the file")
     );
   }
+  if (!ok) persist(store.get(filesAtom).map((f) => (f.id === id ? { ...f, name: oldName } : f)));
+  return ok;
 };
 
 // Merged into the existing info blob; empty string clears it.
@@ -1154,26 +1165,24 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
 };
 
 // Trash is a folder: trashing and restoring are moves.
-export const trashItems = (ids: string[]) => {
+export const trashItems = async (ids: string[]): Promise<MoveResult> => {
   const trashId = store.get(trashFolderIdAtom);
-  if (!trashId) return;
-  moveItems(ids, trashId);
+  if (!trashId) return { moved: 0, blocked: ids.length, unsupported: 0, failed: 0 };
+  return moveItems(ids, trashId);
 };
 
-export const restoreItems = (
-  ids: string[],
-  destinationId: string | null
-): { moved: number; blocked: number; unsupported: number } => moveItems(ids, destinationId);
+export const restoreItems = (ids: string[], destinationId: string | null): Promise<MoveResult> =>
+  moveItems(ids, destinationId);
 
 // Not optimistic — items disappear only once the server confirms.
 export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: number; blocked: number }> => {
   const files = store.get(filesAtom);
   const targets = ids
     .map((id) => files.find((f) => f.id === id))
-    .filter((f): f is FileItem => !!f && !isItemLocked(f));
+    .filter((f): f is FileItem => !!f && !itemBusyReason(f));
 
   if (targets.length < ids.length) {
-    showToast(`Skipped ${ids.length - targets.length} locked item(s)`, "error");
+    showToast(`Skipped ${ids.length - targets.length} locked or processing item(s)`, "error");
   }
   if (targets.length === 0) {
     return { deleted: 0, blocked: ids.length };
@@ -1284,10 +1293,15 @@ export const deleteFileVersion = async (item: FileItem, version: number): Promis
   }
 };
 
-export const moveItems = (
-  ids: string[],
-  newParentId: string | null
-): { moved: number; blocked: number; unsupported: number } => {
+export interface MoveResult {
+  moved: number;
+  blocked: number;
+  unsupported: number;
+  failed: number;
+}
+
+// Optimistic, but resolves only after the server answers; items it rejects are moved back.
+export const moveItems = async (ids: string[], newParentId: string | null): Promise<MoveResult> => {
   let moved = 0;
   let blocked = 0;
   let unsupported = 0;
@@ -1310,11 +1324,14 @@ export const moveItems = (
   const intoTrash =
     newParentId !== null && (newParentId === trashId || !!next.find((f) => f.id === newParentId)?.isDeleted);
   const movedIds: string[] = [];
+  const before = new Map(files.map((f) => [f.id, { parentId: f.parentId, isDeleted: f.isDeleted, modifiedAt: f.modifiedAt }]));
 
   for (const id of ids) {
-    const item = next.find((f) => f.id === id);
-    if (!item) continue;
-    if (isItemLocked(item)) {
+    const idx = next.findIndex((f) => f.id === id);
+    if (idx < 0) continue;
+    const item = { ...next[idx] };
+    next[idx] = item;
+    if (itemBusyReason(item)) {
       blocked++;
       continue;
     }
@@ -1368,21 +1385,34 @@ export const moveItems = (
 
   if (moved > 0) {
     const subtree = new Set(movedIds.flatMap((id) => getDescendantIds(id)));
-    for (const f of next) if (subtree.has(f.id)) f.isDeleted = intoTrash;
+    for (let i = 0; i < next.length; i++) if (subtree.has(next[i].id)) next[i] = { ...next[i], isDeleted: intoTrash };
     persist(next);
   }
+
+  const rollback = (id: string) => {
+    const affected = new Set([id, ...getDescendantIds(id)]);
+    persist(store.get(filesAtom).map((f) => (affected.has(f.id) && before.has(f.id) ? { ...f, ...before.get(f.id)! } : f)));
+  };
+
+  const calls: Promise<void>[] = [];
+  let failed = 0;
+  const settle = (id: string) => (ok: boolean) => {
+    if (ok) return;
+    failed++;
+    rollback(id);
+  };
 
   const tk = authSnapshot.token;
   if (tk) {
     folderMoves.forEach(({ id, sharedFolderId }) => {
-      runMutation(
+      calls.push(runMutation(
         () => trackPendingSync(id, withFreshToken((t) => apiMoveFolder(t, { folderId: id, newParentFolderId: newParentId, sharedFolderId }))),
         { id, sharedFolderId },
         notifySyncFailed("Folder move did not sync to API", "Couldn't move that folder")
-      );
+      ).then(settle(id)));
     });
     fileMoves.forEach(({ id, fileId, sharedFolderId, sourceFolderId, fileName, fileInfo, fileType, fileVersion, expectedFileSize }) => {
-      runMutation(
+      calls.push(runMutation(
         () =>
           trackPendingSync(
             id,
@@ -1401,11 +1431,12 @@ export const moveItems = (
           ),
         { id, sharedFolderId },
         notifySyncFailed("File move did not sync to API", "Couldn't move that file")
-      );
+      ).then(settle(id)));
     });
   }
 
-  return { moved, blocked, unsupported };
+  await Promise.all(calls);
+  return { moved: moved - failed, blocked, unsupported, failed };
 };
 
 export const updateFileContent = async (id: string, blob: Blob): Promise<void> => {
