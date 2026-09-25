@@ -68,6 +68,7 @@ import { EditShareLinkModal } from "./components/modals/EditShareLinkModal";
 import { ViewerModal } from "./components/viewers/ViewerModal";
 import { UploadDropzone } from "./components/upload/UploadDropzone";
 import { UploadTray } from "./components/upload/UploadTray";
+import { DownloadTray } from "./components/download/DownloadTray";
 
 function App() {
   const { user, isAuthenticated, isLoading: authLoading, errorMsg, loginWithSso, logout, clearError } = useAuth();
@@ -429,7 +430,7 @@ function App() {
       item={item}
       permissions={getSharedPermissions(item.id)}
       onOpen={() => handleItemDoubleClick(item)}
-      onDownload={() => fileActions.handleDownload(item)}
+      onDownload={(format) => fileActions.handleDownload(item, format)}
       onRename={() => fileActions.openRenameModal(item)}
       onMove={() => fileActions.openMoveModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
@@ -654,7 +655,7 @@ function App() {
             permissions={selectedItem.sharedIn?.permissions ?? getSharedPermissions(selectedItem.id)}
             onClose={selection.clearSelection}
             onOpenFull={() => setViewerItem(selectedItem)}
-            onDownload={() => fileActions.handleDownload(selectedItem)}
+            onDownload={(format) => fileActions.handleDownload(selectedItem, format)}
             onRename={() => fileActions.openRenameModal(selectedItem)}
             onMove={() => fileActions.openMoveModal([selectedItem.id])}
             onVersionHistory={() => versionHistory.openVersionHistory(selectedItem)}
@@ -796,7 +797,10 @@ function App() {
       )}
 
       <ToastContainer />
-      <UploadTray />
+      <div className="fixed bottom-5 right-5 z-[1900] w-full max-w-sm flex flex-col gap-3 max-[480px]:right-3 max-[480px]:left-3 max-[480px]:w-auto">
+        <DownloadTray />
+        <UploadTray />
+      </div>
     </div>
   );
 }

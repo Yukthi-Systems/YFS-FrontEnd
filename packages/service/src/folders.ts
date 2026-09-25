@@ -152,3 +152,52 @@ export const moveFolder = async (
     }),
   });
 };
+
+export type ArchiveExportType = "zip" | "tar";
+
+// Archive job created by the YFS Archive API; progress streams from `events_url` (SSE).
+export interface FolderArchiveJob {
+  job_id: string;
+  status: "queued" | "processing" | "completed" | "failed" | "expired";
+  events_url: string;
+  expires_in: number;
+}
+
+// Payload of the SSE "progress" event.
+export interface ArchiveProgressEvent {
+  processed_files: number;
+  total_files: number;
+  processed_bytes: number;
+  total_bytes: number;
+}
+
+// Payload of the SSE "completed" event; fetch `download_url?token=download_token`.
+export interface ArchiveCompletedEvent {
+  job_id: string;
+  download_url: string;
+  download_token: string;
+  expires_in: number;
+}
+
+// POST /folders/download/{export_type} — queues an archive of the folder. 422 if it's empty or over the size limit.
+export const requestFolderArchive = async (
+  accessToken: string,
+  params: {
+    folderId: string;
+    archiveName: string;
+    exportType: ArchiveExportType;
+    folderInfo?: Record<string, unknown>;
+  } & SharedFolderScope
+): Promise<FolderArchiveJob> => {
+  const { data } = await apiRequest<FolderArchiveJob>(`/folders/download/${params.exportType}`, {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify({
+      folder_id: params.folderId,
+      shared_folder_id: params.sharedFolderId ?? null,
+      folder_name: params.archiveName,
+      folder_info: params.folderInfo ?? {},
+    }),
+  });
+  return data;
+};
