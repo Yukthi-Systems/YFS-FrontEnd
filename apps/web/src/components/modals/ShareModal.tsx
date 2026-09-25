@@ -38,6 +38,7 @@ import { useToast } from "../../atoms/toast";
 import { Avatar } from "../common/Avatar";
 import { Checkbox } from "../common/Checkbox";
 import { PermissionPicker, permsEqual, permsOf } from "../common/PermissionPicker";
+import { PhoneListInput } from "../common/PhoneListInput";
 import { ModalShell } from "./ModalShell";
 import { userQueryKey, USER_STALE_MS } from "../../lib/queryClient";
 
@@ -935,12 +936,7 @@ function LinkCard({
                 />
               </Field>
               <Field label="OTP phone numbers (optional)">
-                <input
-                  value={l.otpPhones}
-                  onChange={(e) => onPatch({ otpPhones: e.target.value })}
-                  placeholder="+1 555 0100, …"
-                  className="dialog-input"
-                />
+                <PhoneListInput value={l.otpPhones} onChange={(v) => onPatch({ otpPhones: v })} />
               </Field>
             </div>
 
