@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import {
+  ChevronDown,
   AlertCircle,
   Download,
   Expand,
@@ -31,11 +32,11 @@ import {
   Lock,
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
-import type { ResourceInfo } from "@yfs/service";
+import type { ArchiveExportType, ResourceInfo } from "@yfs/service";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
-import { useStreamUrl } from "../../hooks/useDownload";
+import { ARCHIVE_FORMATS, canArchiveOnServer, useStreamUrl } from "../../hooks/useDownload";
 import { useFileInfo } from "../../hooks/useFileInfo";
 
 const PLACEHOLDER_SVG =
@@ -271,7 +272,7 @@ export function DetailsDrawer({
   permissions?: InternalSharePermissions | null;
   onClose: () => void;
   onOpenFull: () => void;
-  onDownload: () => void;
+  onDownload: (format?: ArchiveExportType) => void;
   onRename: () => void;
   onMove: () => void;
   onVersionHistory: () => void;
@@ -292,6 +293,7 @@ export function DetailsDrawer({
   const allowShare = !shared;
 
   const [copiedId, setCopiedId] = useState(false);
+  const [formatsOpen, setFormatsOpen] = useState(false);
   const handleCopyId = () => {
     navigator.clipboard.writeText(item.id);
     setCopiedId(true);
@@ -479,14 +481,49 @@ export function DetailsDrawer({
             </button>
           )}
           {allowDownload && (
-            <button
-              onClick={onDownload}
-              disabled={isItemProcessing(item) || isItemFailed(item)}
-              title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
-              className="flex items-center justify-center gap-2 w-full py-2 bg-transparent border border-border-main text-text-heading font-semibold rounded-xl hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs"
-            >
-              <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex">
+                <button
+                  onClick={() => onDownload()}
+                  disabled={isItemProcessing(item) || isItemFailed(item)}
+                  title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
+                  className={`flex items-center justify-center gap-2 flex-1 py-2 bg-transparent border border-border-main text-text-heading font-semibold hover:bg-code-bg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition text-xs ${
+                    canArchiveOnServer(item) ? "rounded-l-xl" : "rounded-xl"
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
+                </button>
+                {canArchiveOnServer(item) && (
+                  <button
+                    onClick={() => setFormatsOpen((v) => !v)}
+                    title="Choose format"
+                    aria-label="Choose download format"
+                    aria-expanded={formatsOpen}
+                    className={`px-2.5 border border-l-0 border-border-main rounded-r-xl text-text-main hover:bg-code-bg hover:text-text-heading cursor-pointer transition ${
+                      formatsOpen ? "bg-code-bg text-text-heading" : "bg-transparent"
+                    }`}
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${formatsOpen ? "rotate-180" : ""}`} />
+                  </button>
+                )}
+              </div>
+              {formatsOpen && (
+                <div className="flex gap-1.5">
+                  {ARCHIVE_FORMATS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      onClick={() => {
+                        setFormatsOpen(false);
+                        onDownload(value);
+                      }}
+                      className="flex-1 py-1.5 bg-code-bg border border-border-main rounded-lg text-[11px] font-semibold text-text-heading hover:border-accent hover:text-accent cursor-pointer transition"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {!item.isDeleted && (!shared || effectivePermissions?.can_update) && (
             <div className="flex gap-2">

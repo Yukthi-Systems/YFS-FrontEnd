@@ -21,7 +21,8 @@ import type { ToastVariant } from "../atoms/toast";
 import type { FileWithRelativePath } from "../atoms/uploadQueue";
 import { downloadAsZip } from "../utils/zipDownload";
 import { isItemLocked } from "../utils/format";
-import { useDownload } from "./useDownload";
+import { canArchiveOnServer, useDownload, useFolderArchive } from "./useDownload";
+import type { ArchiveExportType } from "@yfs/service";
 
 interface PendingConfirm {
   title: string;
@@ -72,6 +73,7 @@ export function useFileActions({
   const [moveCopyState, setMoveCopyState] = useState<MoveCopyState | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const { fetchBlob, downloadFile } = useDownload();
+  const { startFolderArchive } = useFolderArchive();
 
   const openCreateFolderModal = () => setActiveModal("createFolder");
   const closeCreateFolderModal = () => setActiveModal(null);
@@ -276,9 +278,13 @@ export function useFileActions({
     setCheckedItemIds([]);
   };
 
-  const handleDownload = async (item: FileItem) => {
+  const handleDownload = async (item: FileItem, format: ArchiveExportType = "zip") => {
     closeContextMenu();
 
+    if (canArchiveOnServer(item)) {
+      await startFolderArchive(item, format);
+      return;
+    }
     if (item.isFolder) {
       showToast(`Zipping "${item.name}"…`, "info");
       const { skipped } = await downloadAsZip([item], files, item.name, fetchBlob);
@@ -300,7 +306,7 @@ export function useFileActions({
     const items = files.filter((f) => ids.includes(f.id));
     if (items.length === 0) return;
 
-    if (items.length === 1 && !items[0].isFolder) {
+    if (items.length === 1) {
       await handleDownload(items[0]);
       return;
     }

@@ -16,11 +16,13 @@
  */
 
 import { useState } from "react";
-import { Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
+import { ChevronDown, Download, FolderOpen, RotateCcw, Trash2, XCircle, FolderInput, Pencil, History, Share2, Palette, Check, Lock, Link2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { SHARED_ROOT_ID } from "../../types/file";
 import { isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { FOLDER_COLORS, FOLDER_ICONS } from "./FileIcon";
+import type { ArchiveExportType } from "@yfs/service";
+import { ARCHIVE_FORMATS, canArchiveOnServer } from "../../hooks/useDownload";
 
 export function ItemContextMenu({
   item,
@@ -44,7 +46,7 @@ export function ItemContextMenu({
   permissions?: InternalSharePermissions | null;
   // Folders only — opens the folder (same as double-click).
   onOpen?: () => void;
-  onDownload: () => void;
+  onDownload: (format?: ArchiveExportType) => void;
   onRename: () => void;
   onMove: () => void;
   onVersionHistory: () => void;
@@ -59,6 +61,7 @@ export function ItemContextMenu({
   className?: string;
 }) {
   const [customizing, setCustomizing] = useState(false);
+  const [formatsOpen, setFormatsOpen] = useState(false);
 
   const itemClass =
     "flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-xs font-semibold text-left cursor-pointer hover:bg-code-bg hover:text-text-heading transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main";
@@ -80,6 +83,39 @@ export function ItemContextMenu({
 
   const canCustomize = item.isFolder && !item.isDeleted && allowEdit;
 
+  const unavailable = isItemProcessing(item) || isItemFailed(item);
+  const downloadControl = (
+    <>
+      <div className="flex items-center gap-0.5">
+        <button
+          onClick={() => onDownload()}
+          disabled={unavailable}
+          title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
+          className={`${itemClass} flex-1 ${unavailable ? "opacity-50 cursor-not-allowed" : ""}`}
+        >
+          <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
+        </button>
+        {canArchiveOnServer(item) && (
+          <button
+            onClick={() => setFormatsOpen((v) => !v)}
+            title="Choose format"
+            aria-label="Choose download format"
+            aria-expanded={formatsOpen}
+            className={`${itemClass} px-2! ${formatsOpen ? "bg-code-bg text-text-heading" : ""}`}
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${formatsOpen ? "rotate-180" : ""}`} />
+          </button>
+        )}
+      </div>
+      {formatsOpen &&
+        ARCHIVE_FORMATS.map(({ value, label }) => (
+          <button key={value} onClick={() => onDownload(value)} className={`${itemClass} pl-9`}>
+            {label}
+          </button>
+        ))}
+    </>
+  );
+
   // A share root isn't ours to rename, move, trash or re-share.
   if (item.parentId === SHARED_ROOT_ID) {
     return (
@@ -89,16 +125,7 @@ export function ItemContextMenu({
             <FolderOpen className="w-3.5 h-3.5" /> Open
           </button>
         )}
-        {allowDownload && (
-          <button
-            onClick={onDownload}
-            disabled={isItemProcessing(item) || isItemFailed(item)}
-            title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
-            className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
-          >
-            <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-          </button>
-        )}
+        {allowDownload && downloadControl}
       </div>
     );
   }
@@ -115,16 +142,7 @@ export function ItemContextMenu({
           <FolderOpen className="w-3.5 h-3.5" /> Open
         </button>
       )}
-      {allowDownload && (
-        <button
-          onClick={onDownload}
-          disabled={isItemProcessing(item) || isItemFailed(item)}
-          title={isItemFailed(item) ? "File failed to process" : isItemProcessing(item) ? "File is still processing" : undefined}
-          className={`${itemClass} ${isItemProcessing(item) || isItemFailed(item) ? "opacity-50 cursor-not-allowed" : ""}`}
-        >
-          <Download className="w-3.5 h-3.5" /> {item.isFolder ? "Download as .zip" : "Download"}
-        </button>
-      )}
+      {allowDownload && downloadControl}
       {allowEdit && !item.isDeleted && (
         <button
           onClick={onRename}

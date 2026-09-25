@@ -16,8 +16,20 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { getDefaultStore, useAtomValue } from "jotai";
 import { useRef } from "react";
-import { getFileBasicInfo, type DownloadSession, type FileDownloadRequest } from "@yfs/service";
+import {
+  getFileBasicInfo,
+  requestFolderArchive,
+  type ArchiveCompletedEvent,
+  type ArchiveExportType,
+  type ArchiveProgressEvent,
+  type DownloadSession,
+  type FileDownloadRequest,
+} from "@yfs/service";
+import { archiveJobsAtom, type ArchiveJob } from "../atoms/archiveJobs";
+import { isServerId } from "../services/fileSystemStore";
+import { showToast } from "../atoms/toast";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { downloadClient } from "../services/downloadClient";
@@ -150,3 +162,146 @@ export function useStreamUrl(item: FileItem | null) {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+export const ARCHIVE_FORMATS: { value: ArchiveExportType; label: string }[] = [
+  { value: "zip", label: ".zip" },
+  { value: "tar", label: ".tar" },
+];
+
+// Server folders are archived server-side (zip or tar); local-only ones can only be zipped in the browser.
+export const canArchiveOnServer = (item: FileItem) =>
+  item.isFolder && (item.origin === "server" || item.origin === "shared") && isServerId(item.id);
+
+const store = getDefaultStore();
+// Open SSE streams per archive job; module-level so any caller can close them.
+const archiveStreams = new Map<string, EventSource>();
+
+const patchJob = (id: string, patch: Partial<ArchiveJob>) =>
+  store.set(archiveJobsAtom, (prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
+
+const parseEvent = <T,>(e: Event): T | null => {
+  const data = (e as MessageEvent).data;
+  if (typeof data !== "string" || !data) return null;
+  try {
+    return JSON.parse(data) as T;
+  } catch {
+    return null;
+  }
+};
+
+const closeStream = (id: string) => {
+  archiveStreams.get(id)?.close();
+  archiveStreams.delete(id);
+};
+
+const withToken = (url: string, token: string) => {
+  const u = new URL(url);
+  u.searchParams.set("token", token);
+  return u.toString();
+};
+
+// Hidden iframe: saves an attachment without navigating the app away if the response isn't one.
+export const saveFromUrl = (url: string) => {
+  const frame = document.createElement("iframe");
+  frame.style.display = "none";
+  frame.src = url;
+  document.body.appendChild(frame);
+  setTimeout(() => frame.remove(), 60_000);
+};
+
+const failJob = (id: string, name: string, message: string) => {
+  closeStream(id);
+  patchJob(id, { status: "failed", error: message });
+  showToast(`Couldn't prepare "${name}": ${message}`, "error");
+};
+
+const watchArchive = (id: string, name: string, eventsUrl: string) => {
+  const es = new EventSource(eventsUrl);
+  archiveStreams.set(id, es);
+
+  const onProgress = (e: Event) => {
+    const d = parseEvent<ArchiveProgressEvent>(e);
+    patchJob(id, {
+      status: "processing",
+      ...(d && {
+        processedFiles: d.processed_files,
+        totalFiles: d.total_files,
+        processedBytes: d.processed_bytes,
+        totalBytes: d.total_bytes,
+      }),
+    });
+  };
+  const onCompleted = (e: Event) => {
+    const d = parseEvent<ArchiveCompletedEvent>(e);
+    closeStream(id);
+    if (!d?.download_url || !d.download_token) {
+      failJob(id, name, "The archive finished but no download link was returned");
+      return;
+    }
+    const downloadUrl = withToken(d.download_url, d.download_token);
+    patchJob(id, { status: "ready", downloadUrl, expiresAt: Date.now() + d.expires_in * 1000 });
+    saveFromUrl(downloadUrl);
+  };
+  const onFailed = (fallback: string) => (e: Event) => {
+    const d = parseEvent<{ error?: string; message?: string }>(e);
+    failJob(id, name, d?.error || d?.message || fallback);
+  };
+
+  es.addEventListener("queued", () => patchJob(id, { status: "queued" }));
+  es.addEventListener("processing", onProgress);
+  es.addEventListener("progress", onProgress);
+  es.addEventListener("completed", onCompleted);
+  es.addEventListener("failed", onFailed("The archive could not be created"));
+  es.addEventListener("expired", onFailed("The archive expired before it was downloaded"));
+  // Unnamed messages: dispatch on the payload's status, if any.
+  es.onmessage = (e) => {
+    const status = parseEvent<{ status?: string }>(e)?.status;
+    if (status === "completed") onCompleted(e);
+    else if (status === "failed" || status === "expired") onFailed("The archive could not be created")(e);
+    else if (status === "processing") onProgress(e);
+  };
+  es.onerror = (e) => {
+    // A server-sent "error" event carries data; a dropped connection doesn't and EventSource retries it.
+    if ((e as MessageEvent).data) onFailed("The archive could not be created")(e);
+    else if (es.readyState === EventSource.CLOSED) failJob(id, name, "Lost connection to the archive service");
+  };
+};
+
+// Folder downloads built server-side (zip/tar) with live progress; see DownloadTray.
+export function useFolderArchive() {
+  const { token, refreshAccessToken } = useAuth();
+  const { getSharedFolderId } = useFileSystem();
+  const jobs = useAtomValue(archiveJobsAtom);
+
+  const startFolderArchive = async (folder: FileItem, exportType: ArchiveExportType = "zip") => {
+    const id = `archive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const name = `${folder.name}.${exportType}`;
+    store.set(archiveJobsAtom, (prev) => [
+      ...prev,
+      { id, name, status: "starting", processedFiles: 0, totalFiles: 0, processedBytes: 0, totalBytes: 0 },
+    ]);
+    try {
+      const job = await withAuthRetry(token, refreshAccessToken, (tk) =>
+        requestFolderArchive(tk, {
+          folderId: folder.id,
+          sharedFolderId: getSharedFolderId(folder.id),
+          archiveName: name,
+          exportType,
+          folderInfo: folder.resourceInfo ?? {},
+        })
+      );
+      patchJob(id, { status: "queued" });
+      watchArchive(id, name, job.events_url);
+    } catch (err) {
+      failJob(id, name, err instanceof Error ? err.message : "Request failed");
+    }
+  };
+
+  const dismissArchive = (id: string) => {
+    closeStream(id);
+    store.set(archiveJobsAtom, (prev) => prev.filter((j) => j.id !== id));
+  };
+
+  return { jobs, startFolderArchive, dismissArchive };
+}
+
