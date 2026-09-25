@@ -58,6 +58,18 @@ export const isItemLocked = (
   return false;
 };
 
+// Shortens a long file/folder name for messages, keeping the extension: "quarterly_report_fin….xlsx".
+export const shortName = (name: string, max = 28): string => {
+  if (name.length <= max) return name;
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 && name.length - dot <= 8 ? name.slice(dot) : "";
+  return `${name.slice(0, Math.max(max - ext.length - 1, 8))}…${ext}`;
+};
+
+// Processing or failed files have no content to download yet; folders and locked files can be downloaded.
+export const canDownloadItem = (item: ProcessingCheckItem): boolean =>
+  !!item.isFolder || (!isItemProcessing(item) && !isItemFailed(item));
+
 // Locked or still-processing files can't be renamed, moved, shared, trashed or deleted.
 export const itemBusyReason = (
   item: (LockCheckItem & ProcessingCheckItem) | null | undefined,
@@ -71,7 +83,7 @@ export const itemBusyReason = (
 
 export const busyMessage = (item: { name: string } & Parameters<typeof itemBusyReason>[0], action: string): string | null => {
   const reason = itemBusyReason(item);
-  return reason ? `"${item.name}" is ${reason} and can't be ${action}` : null;
+  return reason ? `"${shortName(item.name)}" is ${reason} and can't be ${action}` : null;
 };
 
 export const formatBytes = (bytes: number): string => {

@@ -18,7 +18,7 @@
 import { useState } from "react";
 import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
-import { busyMessage } from "../utils/format";
+import { busyMessage, shortName } from "../utils/format";
 import type { MoveResult } from "../services/fileSystemStore";
 
 export function useDragAndDrop({
@@ -75,7 +75,7 @@ export function useDragAndDrop({
     if (!draggedId) return;
     const ids = checkedItemIds.includes(draggedId) ? checkedItemIds : [draggedId];
     const { moved, blocked } = await moveItems(ids, item.id);
-    if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""} into "${item.name}"`, "success");
+    if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""} into "${shortName(item.name)}"`, "success");
     if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — locked, still processing, or can't go into itself`, "error");
   };
 

@@ -33,6 +33,7 @@ import {
 import type { BackendResource, PublicSession } from "@yfs/service";
 import type { FileItem, GridSize, SortField, SortOrder, ViewMode } from "../../types/file";
 import { categorizeByName } from "../../utils/fileType";
+import { shortName } from "../../utils/format";
 import { useFileSelection } from "../../hooks/useFileSelection";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import {
@@ -423,7 +424,7 @@ function SharedFolderBrowser({
       {
         onSuccess: () => {
           setCreatingFolder(false);
-          showToast(`Created "${name.trim()}"`, "success");
+          showToast(`Created "${shortName(name.trim())}"`, "success");
         },
         onError: (err) => showToast(errorMessage(err, "Couldn't create the folder"), "error"),
       }
@@ -457,7 +458,7 @@ function SharedFolderBrowser({
       {
         onSuccess: () => {
           setMoveTarget(null);
-          showToast(`Moved "${name}" to "${destination}"`, "success");
+          showToast(`Moved "${shortName(name)}" to "${shortName(destination)}"`, "success");
         },
         onError: (err) => showToast(errorMessage(err, "Couldn't move the folder"), "error"),
       }

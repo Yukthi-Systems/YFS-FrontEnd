@@ -45,7 +45,7 @@ export function SelectionPill({ count, label, onClear, children }: { count?: num
       <button
         type="button"
         onClick={onClear}
-        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text-main hover:text-text-heading hover:bg-code-bg rounded-full transition cursor-pointer border-none bg-transparent"
+        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text-main hover:text-text-heading hover:bg-code-bg rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
         title="Clear selection"
         aria-label="Clear selection"
       >
@@ -117,6 +117,8 @@ export function FilterSortBar({
   onBatchRestore,
   onBatchPermanentDelete,
   onBatchDownload,
+  downloadBlockedReason,
+  changeBlockedReason,
 }: {
   breadcrumbSegments: BreadcrumbSegment[];
   onBreadcrumbNavigate: (index: number) => void;
@@ -133,6 +135,9 @@ export function FilterSortBar({
   onBatchRestore: () => void;
   onBatchPermanentDelete: () => void;
   onBatchDownload: () => void;
+  // Set when nothing in the selection can be downloaded / changed; shown as the button tooltip.
+  downloadBlockedReason?: string | null;
+  changeBlockedReason?: string | null;
 }) {
   return (
     <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
@@ -147,8 +152,9 @@ export function FilterSortBar({
               <button
                 type="button"
                 onClick={onBatchRestore}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent"
-                title="Restore selected items"
+                disabled={!!changeBlockedReason}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title={changeBlockedReason ?? "Restore selected items"}
               >
                 <RotateCcw className="w-3.5 h-3.5 text-accent" />
                 <span>Restore</span>
@@ -156,8 +162,9 @@ export function FilterSortBar({
               <button
                 type="button"
                 onClick={onBatchPermanentDelete}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent"
-                title="Permanently delete selected items"
+                disabled={!!changeBlockedReason}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title={changeBlockedReason ?? "Permanently delete selected items"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete</span>
@@ -168,8 +175,9 @@ export function FilterSortBar({
               <button
                 type="button"
                 onClick={onBatchDownload}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent"
-                title="Download selected"
+                disabled={!!downloadBlockedReason}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title={downloadBlockedReason ?? "Download selected"}
               >
                 <Download className="w-3.5 h-3.5 text-accent" />
                 <span>Download</span>
@@ -177,8 +185,9 @@ export function FilterSortBar({
               <button
                 type="button"
                 onClick={onBatchTrash}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent"
-                title="Move selected to trash"
+                disabled={!!changeBlockedReason}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title={changeBlockedReason ?? "Move selected to trash"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Move to Trash</span>
@@ -187,8 +196,9 @@ export function FilterSortBar({
               <button
                 type="button"
                 onClick={onBatchPermanentDelete}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent"
-                title="Permanently delete selected items"
+                disabled={!!changeBlockedReason}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title={changeBlockedReason ?? "Permanently delete selected items"}
               >
                 <XCircle className="w-3.5 h-3.5" />
                 <span>Delete</span>

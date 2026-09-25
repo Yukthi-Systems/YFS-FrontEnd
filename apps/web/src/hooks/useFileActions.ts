@@ -20,7 +20,7 @@ import type { FileItem } from "../types/file";
 import type { ToastVariant } from "../atoms/toast";
 import type { FileWithRelativePath } from "../atoms/uploadQueue";
 import { downloadAsZip } from "../utils/zipDownload";
-import { busyMessage, itemBusyReason } from "../utils/format";
+import { busyMessage, canDownloadItem, itemBusyReason, shortName } from "../utils/format";
 import { canArchiveOnServer, useDownload, useFolderArchive } from "./useDownload";
 import type { ArchiveExportType } from "@yfs/service";
 import type { MoveResult } from "../services/fileSystemStore";
@@ -86,7 +86,7 @@ export function useFileActions({
       showToast("Folder name can't be empty", "error");
       return;
     }
-    if (await created.synced) showToast(`Created folder "${created.folder.name}"`, "success");
+    if (await created.synced) showToast(`Created folder "${shortName(created.folder.name)}"`, "success");
   };
 
   const handleUploadFiles = (fileList: FileList, parentId: string | null) => {
@@ -203,8 +203,8 @@ export function useFileActions({
         setPendingConfirm(null);
         if (isOnlyVersion) {
           const { deleted, blocked } = await fileSystem.permanentDeleteItems([item.id]);
-          if (deleted > 0) showToast(`Permanently deleted "${item.name}"`, "success");
-          if (blocked > 0) showToast(`Couldn't permanently delete "${item.name}"`, "error");
+          if (deleted > 0) showToast(`Permanently deleted "${shortName(item.name)}"`, "success");
+          if (blocked > 0) showToast(`Couldn't permanently delete "${shortName(item.name)}"`, "error");
         } else {
           const ok = await fileSystem.deleteFileVersion(item, version);
           if (ok) showToast(`Deleted version ${version}`, "success");
@@ -272,14 +272,14 @@ export function useFileActions({
       return;
     }
     if (item.isFolder) {
-      showToast(`Zipping "${item.name}"…`, "info");
+      showToast(`Zipping "${shortName(item.name)}"…`, "info");
       const { skipped } = await downloadAsZip([item], files, item.name, fetchBlob);
       if (skipped > 0) showToast(`${skipped} item${skipped > 1 ? "s" : ""} had no content to include`, "error");
       return;
     }
 
     // Only announce real network downloads.
-    if (item.origin === "server" || item.origin === "shared") showToast(`Downloading "${item.name}"…`, "info");
+    if (item.origin === "server" || item.origin === "shared") showToast(`Downloading "${shortName(item.name)}"…`, "info");
     try {
       const ok = await downloadFile(item);
       if (!ok) showToast("This file has no content to download", "error");
@@ -289,7 +289,10 @@ export function useFileActions({
   };
 
   const handleBatchDownload = async (ids: string[]) => {
-    const items = files.filter((f) => ids.includes(f.id));
+    const selected = files.filter((f) => ids.includes(f.id));
+    const items = selected.filter(canDownloadItem);
+    const skipped = selected.length - items.length;
+    if (skipped > 0) showToast(`Skipping ${plural(skipped, "file")} that are still processing or failed`, "error");
     if (items.length === 0) return;
 
     if (items.length === 1) {

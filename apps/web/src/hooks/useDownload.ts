@@ -30,6 +30,7 @@ import {
 import { archiveJobsAtom, type ArchiveJob } from "../atoms/archiveJobs";
 import { isServerId } from "../services/fileSystemStore";
 import { showToast } from "../atoms/toast";
+import { shortName } from "../utils/format";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
 import { downloadClient } from "../services/downloadClient";
@@ -212,7 +213,7 @@ export const saveFromUrl = (url: string) => {
 const failJob = (id: string, name: string, message: string) => {
   closeStream(id);
   patchJob(id, { status: "failed", error: message });
-  showToast(`Couldn't prepare "${name}": ${message}`, "error");
+  showToast(`Couldn't prepare "${shortName(name)}": ${message}`, "error");
 };
 
 const watchArchive = (id: string, name: string, eventsUrl: string) => {

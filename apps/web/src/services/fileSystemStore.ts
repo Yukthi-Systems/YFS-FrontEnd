@@ -48,7 +48,7 @@ import {
   getUserById,
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
-import { isItemLocked, itemBusyReason } from "../utils/format";
+import { isItemLocked, itemBusyReason, shortName } from "../utils/format";
 import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
 import { queryClient, userQueryKey, USER_STALE_MS } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
@@ -1223,7 +1223,7 @@ export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: nu
           getDescendantIds(f.id).forEach((id) => removeIds.add(id));
         } catch (err) {
           blocked += 1;
-          notifySyncFailed(`Permanent delete of "${f.name}" did not sync to API`, `Couldn't permanently delete "${f.name}"`)(err);
+          notifySyncFailed(`Permanent delete of "${f.name}" did not sync to API`, `Couldn't permanently delete "${shortName(f.name)}"`)(err);
         }
       }),
       ...serverFiles.map(async (f) => {
@@ -1242,7 +1242,7 @@ export const permanentDeleteItems = async (ids: string[]): Promise<{ deleted: nu
           removeIds.add(f.id);
         } catch (err) {
           blocked += 1;
-          notifySyncFailed(`Permanent delete of "${f.name}" did not sync to API`, `Couldn't permanently delete "${f.name}"`)(err);
+          notifySyncFailed(`Permanent delete of "${f.name}" did not sync to API`, `Couldn't permanently delete "${shortName(f.name)}"`)(err);
         }
       }),
     ]);

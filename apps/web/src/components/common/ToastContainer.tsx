@@ -44,10 +44,12 @@ export function ToastContainer() {
           className={`pointer-events-auto flex items-center gap-2.5 bg-bg-main border rounded-2xl shadow-md px-4 py-3 text-sm font-medium animate-scale-in ${VARIANT_STYLES[toast.variant]}`}
         >
           <VariantIcon variant={toast.variant} />
-          <span className="flex-1 text-text-heading">{toast.message}</span>
+          <span className="flex-1 min-w-0 text-text-heading line-clamp-3 [overflow-wrap:anywhere]" title={toast.message}>
+            {toast.message}
+          </span>
           <button
             onClick={() => dismissToast(toast.id)}
-            className="border-none bg-transparent p-1 rounded-full text-text-main hover:bg-code-bg cursor-pointer transition"
+            className="shrink-0 border-none bg-transparent p-1 rounded-full text-text-main hover:bg-code-bg cursor-pointer transition"
           >
             <X className="w-3.5 h-3.5" />
           </button>

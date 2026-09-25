@@ -29,7 +29,7 @@ import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
 import { buildAppRoute } from "./utils/appRoute";
-import { getStorageQuota, GB } from "./utils/format";
+import { canDownloadItem, getStorageQuota, GB, itemBusyReason } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
 import { useContextMenuState } from "./hooks/useContextMenuState";
@@ -282,6 +282,7 @@ function App() {
   const viewerSiblings = search.isSearching ? search.results.map((r) => r.item) : listItems;
 
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
+  const checkedItems = files.filter((f) => selection.checkedItemIds.includes(f.id));
 
   useEffect(() => {
     selection.resetSelection();
@@ -550,6 +551,16 @@ function App() {
                     onBatchRestore={() => fileActions.handleRestore(selection.checkedItemIds)}
                     onBatchPermanentDelete={() => fileActions.requestPermanentDelete(selection.checkedItemIds)}
                     onBatchDownload={() => fileActions.handleBatchDownload(selection.checkedItemIds)}
+                    downloadBlockedReason={
+                      checkedItems.length > 0 && !checkedItems.some(canDownloadItem)
+                        ? "Selected files are still processing or failed"
+                        : null
+                    }
+                    changeBlockedReason={
+                      checkedItems.length > 0 && checkedItems.every((f) => itemBusyReason(f))
+                        ? "Selected files are locked or still processing"
+                        : null
+                    }
                   />
 
                   {isFolderLoading ? (
