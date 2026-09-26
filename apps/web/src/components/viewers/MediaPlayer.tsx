@@ -32,6 +32,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useStreamUrl } from "../../hooks/useDownload";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import type { FileItem } from "../../types/file";
 
 function formatTime(seconds: number): string {
@@ -148,6 +149,7 @@ function FullVideoPlayer({
   const [isBuffering, setIsBuffering] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const isMobile = useIsMobile();
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number>(0);
   const [flashFeedback, setFlashFeedback] = useState<string | null>(null);
@@ -184,6 +186,14 @@ function FullVideoPlayer({
     setFlashFeedback(text);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     flashTimeoutRef.current = setTimeout(() => setFlashFeedback(null), 800);
+  };
+
+  // Touch: a tap on the video toggles the controls (like native players) instead of pausing.
+  const handleVideoTap = () => {
+    if (showControls && isPlaying) {
+      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+      setShowControls(false);
+    } else handleMouseMove();
   };
 
   const handleMouseMove = () => {
@@ -371,7 +381,7 @@ function FullVideoPlayer({
       tabIndex={0}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
-      className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl overflow-hidden select-none outline-none group"
+      className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl max-[768px]:rounded-none overflow-hidden select-none outline-none group"
       aria-label={`Video player for ${item.name}`}
     >
       <video
@@ -387,9 +397,9 @@ function FullVideoPlayer({
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
         onError={() => setPlaybackError("Failed to stream video. Media server unavailable or format not supported.")}
-        onClick={togglePlay}
+        onClick={isMobile ? handleVideoTap : togglePlay}
         onDoubleClick={toggleFullscreen}
-        className="w-full h-full max-h-[75vh] object-contain cursor-pointer"
+        className="w-full h-full max-h-[75vh] max-[768px]:max-h-full object-contain cursor-pointer"
       />
 
       {playbackError && (
@@ -466,7 +476,7 @@ function FullVideoPlayer({
 
       {!isMinimized && (
         <div
-          className={`absolute bottom-3 left-3 right-3 bg-neutral-950/80 backdrop-blur-md border border-white/10 rounded-xl p-3 flex flex-col gap-2 text-white shadow-2xl transition-all duration-300 z-20 ${
+          className={`absolute bottom-3 left-3 right-3 bg-neutral-950/80 backdrop-blur-md border border-white/10 rounded-xl p-3 flex flex-col gap-2 text-white shadow-2xl transition-all duration-300 z-20 max-[768px]:inset-x-0 max-[768px]:bottom-0 max-[768px]:rounded-none max-[768px]:border-x-0 max-[768px]:border-b-0 max-[768px]:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
             showControls || !isPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
           }`}
           onClick={(e) => e.stopPropagation()}
@@ -556,7 +566,7 @@ function FullVideoPlayer({
                 step={0.05}
                 value={isMuted ? 0 : volume}
                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-accent transition-all"
+                className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-accent transition-all max-[768px]:hidden"
                 aria-label="Volume slider"
               />
             </div>

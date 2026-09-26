@@ -18,6 +18,7 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -37,6 +38,7 @@ import { isTextEditable, isCollaboraSupported } from "../../utils/fileType";
 import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
 import type { CollaboraViewerHandle } from "./CollaboraViewer";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 // Heavy viewers are loaded on demand.
 const PdfViewer = lazy(() => import("./PdfViewer").then((m) => ({ default: m.PdfViewer })));
@@ -53,6 +55,10 @@ const WORD_EXTENSIONS = new Set(["doc", "docx"]);
 const COLLABORA_EXIT_SAVE_GRACE_MS = 500;
 
 const ViewerLoading = () => <div className="text-sm text-text-main text-center py-16">Loading viewer…</div>;
+
+const SWIPE_MIN_PX = 60;
+const mobileIconButton =
+  "border-none bg-transparent p-2.5 rounded-full text-white active:bg-white/15 disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0";
 
 export function ViewerModal({
   item,
@@ -78,6 +84,8 @@ export function ViewerModal({
   const [isExpanded, setIsExpanded] = useState(false);
   const collaboraRef = useRef<CollaboraViewerHandle>(null);
   const [collaboraReady, setCollaboraReady] = useState(false);
+  const isMobile = useIsMobile();
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const viewable = siblings.filter((f) => !f.isFolder);
   const index = viewable.findIndex((f) => f.id === item.id);
@@ -322,6 +330,60 @@ export function ViewerModal({
   );
 
   const collaboraLayout = !isMinimized && isCollabora;
+
+  if (isMobile && !isMinimized && !isCollabora) {
+    // Full-screen, edge-to-edge on phones: back arrow + title bar, swipe between files.
+    const onDark = item.type === "image" || item.type === "video";
+    const swipeable = onDark || item.type === "audio" || (!isOfficeDoc && !isTextEditable(item));
+    const unavailable = isItemProcessing(item) || isItemFailed(item);
+    return (
+      <div className="fixed inset-0 z-[1500] flex flex-col bg-black text-white animate-fade-in">
+        <div className="flex items-center gap-1 px-1 pb-1 pt-[max(0.25rem,env(safe-area-inset-top))] shrink-0 bg-black">
+          <button onClick={handleClose} aria-label="Back" title="Back" className={mobileIconButton}>
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1 min-w-0 px-1">
+            <div className="text-sm font-semibold truncate">{item.name}</div>
+            {viewable.length > 1 && index >= 0 && (
+              <div className="text-[11px] text-white/60">
+                {index + 1} of {viewable.length}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => onDownload(item)}
+            disabled={unavailable}
+            aria-label="Download"
+            title="Download"
+            className={mobileIconButton}
+          >
+            <Download className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div
+          className={`flex-1 min-h-0 overflow-y-auto ${onDark ? "flex items-center justify-center" : "bg-bg-main text-text-main"}`}
+          onTouchStart={(e) => {
+            const t = e.touches[0];
+            touchStartRef.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+          }}
+          onTouchEnd={(e) => {
+            const start = touchStartRef.current;
+            touchStartRef.current = null;
+            if (!start || !swipeable) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - start.x;
+            const dy = t.clientY - start.y;
+            if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+            if (dx < 0 && nextItem) navigateTo(nextItem);
+            else if (dx > 0 && prevItem) navigateTo(prevItem);
+          }}
+        >
+          <div className={onDark ? "w-full h-full flex items-center justify-center" : "p-3 min-h-full"}>{renderContent()}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
