@@ -60,7 +60,15 @@ export function ContextMenuPortal({
   }, [anchor.top, anchor.left, anchor.right, anchor.bottom, align]);
 
   return createPortal(
-    <div ref={ref} className="fixed z-[2000]" style={{ top: style.top, left: style.left, visibility: style.visibility }}>
+    // React bubbles portal events to the owning row; stop them so menu clicks don't select/open the item.
+    <div
+      ref={ref}
+      className="fixed z-[2000]"
+      style={{ top: style.top, left: style.left, visibility: style.visibility }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+    >
       {children}
     </div>,
     document.body

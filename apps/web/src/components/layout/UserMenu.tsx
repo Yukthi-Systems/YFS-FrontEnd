@@ -68,12 +68,12 @@ export function UserMenu({
 
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
+    const onClick = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node))
         setOpen(false);
     };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
+    document.addEventListener("pointerdown", onClick, true);
+    return () => document.removeEventListener("pointerdown", onClick, true);
   }, [open]);
 
   useEffect(() => {

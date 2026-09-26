@@ -26,12 +26,16 @@ import {
   savingProfileAtom,
   type PublicProfile,
 } from "../atoms/userSettings";
+import { useIsMobile } from "./useIsMobile";
 
 export { AVATAR_COLORS } from "../atoms/userSettings";
 
 // Server-backed preferences (see UserSettingsBridge); defaults until loaded.
 export const useUserSettings = () => {
-  const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const [storedViewMode, setViewMode] = useAtom(viewModeAtom);
+  // No table on phones: list falls back to tiles without changing the saved preference.
+  const isMobile = useIsMobile();
+  const viewMode = isMobile && storedViewMode === "list" ? "tiles" : storedViewMode;
   const [gridSize, setGridSize] = useAtom(gridSizeAtom);
   const [sortField, setSortField] = useAtom(sortFieldAtom);
   const [sortOrder, setSortOrder] = useAtom(sortOrderAtom);

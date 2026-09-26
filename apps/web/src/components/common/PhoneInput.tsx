@@ -98,7 +98,7 @@ export function PhoneInput({
 
   useEffect(() => {
     if (!open) return;
-    const onOutsideClick = (e: MouseEvent) => {
+    const onOutsideClick = (e: PointerEvent) => {
       const target = e.target as Node;
       if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
       setAnchor(null);
@@ -110,11 +110,11 @@ export function PhoneInput({
         setSearch("");
       }
     };
-    document.addEventListener("click", onOutsideClick);
+    document.addEventListener("pointerdown", onOutsideClick, true);
     document.addEventListener("keydown", onEscape);
     const focusTimer = window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => {
-      document.removeEventListener("click", onOutsideClick);
+      document.removeEventListener("pointerdown", onOutsideClick, true);
       document.removeEventListener("keydown", onEscape);
       window.clearTimeout(focusTimer);
     };

@@ -18,6 +18,7 @@
 import { LayoutGrid, LayoutList, List } from "lucide-react";
 import type { GridSize, ViewMode } from "../../types/file";
 import { Dropdown } from "../common/Dropdown";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 const GRID_SIZE_OPTIONS: { value: GridSize; label: string }[] = [
   { value: "small", label: "Small icons" },
@@ -42,10 +43,11 @@ export function ViewModeToggle({
   gridSize: GridSize;
   onGridSizeChange: (size: GridSize) => void;
 }) {
+  const isMobile = useIsMobile();
   return (
     <div className="flex items-center gap-3 shrink-0">
       <div className="flex items-center gap-1 bg-code-bg border border-border-main rounded-full p-0.5">
-        {MODES.map(({ mode, label, Icon }) => (
+        {MODES.filter(({ mode }) => !(isMobile && mode === "list")).map(({ mode, label, Icon }) => (
           <button
             key={mode}
             onClick={() => onViewModeChange(mode)}
