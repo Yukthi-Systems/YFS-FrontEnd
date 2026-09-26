@@ -16,6 +16,7 @@
  */
 
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function ModalShell({
   children,
@@ -29,14 +30,22 @@ export function ModalShell({
   // false hands padding to the caller, for modals with their own sticky header/footer.
   padded?: boolean;
 }) {
-  return (
-    <div className="modal-overlay" onClick={onClose}>
+  // Portaled to <body>: a transformed ancestor (e.g. the mobile sidebar drawer) would otherwise trap `position: fixed`.
+  return createPortal(
+    <div
+      className="modal-overlay"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
       <div
         className={`modal-content${size === "default" ? "" : ` modal-${size}`}${padded ? "" : " modal-flush"}`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
