@@ -18,8 +18,18 @@
 import { useRef, useState } from "react";
 import type { FileItem } from "../types/file";
 import { getRangeSelection } from "../utils/selection";
+import { useIsMobile } from "./useIsMobile";
 
 const DOUBLE_CLICK_WINDOW_MS = 400;
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
+
+export interface ItemPressHandlers {
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: () => void;
+  onPointerCancel: () => void;
+}
 
 export function useFileSelection({
   listItems,
@@ -31,6 +41,13 @@ export function useFileSelection({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [checkedItemIds, setCheckedItemIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const isMobile = useIsMobile();
+  const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; x: number; y: number; fired: boolean }>({
+    timer: null,
+    x: 0,
+    y: 0,
+    fired: false,
+  });
 
   // Single-click select is deferred so the drawer's reflow can't move the row before a double-click's second click.
   const lastClickRef = useRef<{ id: string; time: number } | null>(null);
@@ -51,8 +68,53 @@ export function useFileSelection({
     setSelectionAnchorId(null);
   };
 
+  const toggleChecked = (id: string) => {
+    setCheckedItemIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectionAnchorId(id);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressRef.current.timer) clearTimeout(longPressRef.current.timer);
+    longPressRef.current.timer = null;
+  };
+
+  // Touch: long-press starts selection (like native file apps); taps then toggle.
+  const getItemPressHandlers = (item: FileItem): ItemPressHandlers => ({
+    onPointerDown: (e) => {
+      if (e.pointerType === "mouse") return;
+      cancelLongPress();
+      longPressRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        fired: false,
+        timer: setTimeout(() => {
+          longPressRef.current.fired = true;
+          longPressRef.current.timer = null;
+          toggleChecked(item.id);
+          navigator.vibrate?.(15);
+        }, LONG_PRESS_MS),
+      };
+    },
+    onPointerMove: (e) => {
+      const lp = longPressRef.current;
+      if (lp.timer && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > LONG_PRESS_MOVE_TOLERANCE) cancelLongPress();
+    },
+    onPointerUp: cancelLongPress,
+    onPointerCancel: cancelLongPress,
+  });
+
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
+    // The click that ends a long-press has already been handled.
+    if (longPressRef.current.fired) {
+      longPressRef.current.fired = false;
+      return;
+    }
+    if (isMobile) {
+      if (checkedItemIds.length > 0) toggleChecked(item.id);
+      else onOpenItem(item);
+      return;
+    }
     if (e.shiftKey) {
       if (pendingSelectRef.current) {
         clearTimeout(pendingSelectRef.current);
@@ -116,5 +178,7 @@ export function useFileSelection({
     handleItemClick,
     handleCheckboxToggle,
     handleSelectAllToggle,
+    getItemPressHandlers,
+    isMobile,
   };
 }

@@ -50,7 +50,7 @@ export function SelectionPill({ count, label, onClear, children }: { count?: num
         aria-label="Clear selection"
       >
         <X className="w-3.5 h-3.5" />
-        <span>Clear</span>
+        <span className="max-[640px]:hidden">Clear</span>
       </button>
     </div>
   );
@@ -141,7 +141,7 @@ export function FilterSortBar({
 }) {
   return (
     <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex items-center gap-2 flex-1 min-w-0 max-[768px]:basis-full">
         <Breadcrumbs segments={breadcrumbSegments} onNavigate={onBreadcrumbNavigate} />
       </div>
 
@@ -157,7 +157,7 @@ export function FilterSortBar({
                 title={changeBlockedReason ?? "Restore selected items"}
               >
                 <RotateCcw className="w-3.5 h-3.5 text-accent" />
-                <span>Restore</span>
+                <span className="max-[640px]:hidden">Restore</span>
               </button>
               <button
                 type="button"
@@ -167,7 +167,7 @@ export function FilterSortBar({
                 title={changeBlockedReason ?? "Permanently delete selected items"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
+                <span className="max-[640px]:hidden">Delete</span>
               </button>
             </div>
           ) : (
@@ -180,7 +180,7 @@ export function FilterSortBar({
                 title={downloadBlockedReason ?? "Download selected"}
               >
                 <Download className="w-3.5 h-3.5 text-accent" />
-                <span>Download</span>
+                <span className="max-[640px]:hidden">Download</span>
               </button>
               <button
                 type="button"
@@ -190,7 +190,7 @@ export function FilterSortBar({
                 title={changeBlockedReason ?? "Move selected to trash"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Move to Trash</span>
+                <span className="max-[640px]:hidden">Move to Trash</span>
               </button>
               {/* Skips Trash entirely, same as ItemContextMenu's single-item version. */}
               <button
@@ -201,7 +201,7 @@ export function FilterSortBar({
                 title={changeBlockedReason ?? "Permanently delete selected items"}
               >
                 <XCircle className="w-3.5 h-3.5" />
-                <span>Delete</span>
+                <span className="max-[640px]:hidden">Delete</span>
               </button>
             </div>
           )}

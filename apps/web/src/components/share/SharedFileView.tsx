@@ -40,6 +40,7 @@ import { categorizeByName } from "../../utils/fileType";
 import { shortName } from "../../utils/format";
 import { useFileSelection } from "../../hooks/useFileSelection";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import {
   useCreatePublicFolder,
   useCreatePublicSession,
@@ -540,7 +541,9 @@ function SharedFolderBrowser({
 }) {
   const { showToast } = useToast();
 
-  const [viewMode, setViewModeState] = useState<ViewMode>(() => readStored(VIEW_KEY, ["list", "tiles", "grid"], "list"));
+  const [storedViewMode, setViewModeState] = useState<ViewMode>(() => readStored(VIEW_KEY, ["list", "tiles", "grid"], "list"));
+  const isMobile = useIsMobile();
+  const viewMode: ViewMode = isMobile && storedViewMode === "list" ? "tiles" : storedViewMode;
   const [gridSize, setGridSizeState] = useState<GridSize>(() => readStored(GRID_SIZE_KEY, ["small", "medium", "large"], "medium"));
   const setViewMode = (m: ViewMode) => {
     setViewModeState(m);
@@ -703,7 +706,8 @@ function SharedFolderBrowser({
   const openItemContextMenu = (item: FileItem, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenuId(item.id);
+    // On touch, long-press selects instead (useFileSelection).
+    if (!isMobile) setContextMenuId(item.id);
   };
 
   const listProps = {
@@ -721,6 +725,7 @@ function SharedFolderBrowser({
     onDragOverFolder: noop,
     onDragLeaveFolder: noop,
     onDropOnFolder: noop,
+    getItemPressHandlers: selection.getItemPressHandlers,
   };
 
   const refreshing = folderQuery.isRefetching && !folderQuery.isFetchingNextPage;
@@ -756,7 +761,7 @@ function SharedFolderBrowser({
           {note && <ShareNoteBanner note={note} />}
 
           <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-1 min-w-0 max-[768px]:basis-full">
               <Breadcrumbs segments={segments} onNavigate={goToBreadcrumb} />
             </div>
 

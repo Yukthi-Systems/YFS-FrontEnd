@@ -18,6 +18,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
+import type { ItemPressHandlers } from "../../hooks/useFileSelection";
 import type { FileItem } from "../../types/file";
 import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
@@ -40,6 +41,7 @@ export function FileTiles({
   onDragOverFolder,
   onDragLeaveFolder,
   onDropOnFolder,
+  getItemPressHandlers,
 }: {
   items: FileItem[];
   selectedItemId: string | null;
@@ -55,12 +57,14 @@ export function FileTiles({
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
+  getItemPressHandlers?: (item: FileItem) => ItemPressHandlers;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
 
   const renderTile = (item: FileItem) => {
     const isSel = selectedItemId === item.id;
     const isChecked = checkedItemIds.includes(item.id);
+    const selecting = checkedItemIds.length > 0;
     const isDragOver = item.isFolder && dragOverFolderId === item.id;
     const locked = isItemLocked(item);
     return (
@@ -73,11 +77,12 @@ export function FileTiles({
         onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
         onDrop={(e) => item.isFolder && onDropOnFolder(item, e)}
         onClick={(e) => onItemClick(item, e)}
+        {...getItemPressHandlers?.(item)}
         onContextMenu={(e) => {
           setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
           onItemContextMenu(item, e);
         }}
-        className={`group relative bg-bg-main border border-border-main rounded-xl p-3 cursor-pointer flex items-center gap-3 transition-all duration-200 hover:border-accent-border hover:shadow-sm ${
+        className={`group relative select-none [-webkit-touch-callout:none] bg-bg-main border border-border-main rounded-xl p-3 cursor-pointer flex items-center gap-3 transition-all duration-200 hover:border-accent-border hover:shadow-sm ${
           isSel ? "bg-accent-bg/70! border-accent!" : isChecked ? "bg-accent-bg/70! border-accent-border!" : ""
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
@@ -86,7 +91,7 @@ export function FileTiles({
           onClick={(e) => e.stopPropagation()}
           onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
           ariaLabel={`Select ${item.name}`}
-          className={`shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
+          className={`shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 max-[768px]:hidden ${isChecked || selecting ? "opacity-100!" : ""}`}
         />
 
         <div className="shrink-0 w-10 h-10 rounded-lg bg-code-bg flex items-center justify-center overflow-hidden">
@@ -130,7 +135,9 @@ export function FileTiles({
 
         <div className="relative shrink-0">
           <button
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
+              e.stopPropagation();
               const opening = contextMenuId !== item.id;
               setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
               onContextMenuToggle(opening ? item.id : null);

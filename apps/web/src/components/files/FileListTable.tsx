@@ -18,6 +18,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, ChevronDown, ChevronUp, Loader2, MoreVertical, Lock, UserPlus, Link2 } from "lucide-react";
+import type { ItemPressHandlers } from "../../hooks/useFileSelection";
 import type { FileItem, SortField, SortOrder } from "../../types/file";
 import { formatBytes, formatDate, getOwnerDisplay, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { useAuth } from "../../hooks/useAuth";
@@ -84,6 +85,7 @@ export function FileListTable({
   onDragOverFolder,
   onDragLeaveFolder,
   onDropOnFolder,
+  getItemPressHandlers,
   showOwner = true,
 }: {
   items: FileItem[];
@@ -107,6 +109,7 @@ export function FileListTable({
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
+  getItemPressHandlers?: (item: FileItem) => ItemPressHandlers;
   showOwner?: boolean;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
@@ -162,10 +165,11 @@ export function FileListTable({
                 onDragOver={(e) => item.isFolder && onDragOverFolder(item, e)}
                 onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
                 onDrop={(e) => item.isFolder && onDropOnFolder(item, e)}
-                className={`cursor-pointer group transition duration-150 ${
+                className={`cursor-pointer group select-none [-webkit-touch-callout:none] transition duration-150 ${
                   isSel ? "bg-accent-bg/70!" : isChecked ? "bg-accent-bg/70!" : "hover:bg-code-bg"
                 } ${isDragOver ? "bg-accent-bg! outline-2 outline-accent -outline-offset-2" : ""}`}
                 onClick={(e) => onItemClick(item, e)}
+        {...getItemPressHandlers?.(item)}
                 onContextMenu={(e) => {
                   setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
                   onItemContextMenu(item, e);
@@ -247,7 +251,9 @@ export function FileListTable({
                       </button>
                     )}
                     <button
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
+                        e.stopPropagation();
                         const opening = contextMenuId !== item.id;
                         setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
                         onContextMenuToggle(opening ? item.id : null);

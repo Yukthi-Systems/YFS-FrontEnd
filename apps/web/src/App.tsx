@@ -283,6 +283,11 @@ function App() {
 
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
   const checkedItems = files.filter((f) => selection.checkedItemIds.includes(f.id));
+  // On touch, long-press means "select" (useFileSelection); ignore the browser's long-press context menu.
+  const openItemMenu = (item: FileItem, e: React.MouseEvent) => {
+    if (selection.isMobile) e.preventDefault();
+    else menus.openItemContextMenu(item, e);
+  };
 
   useEffect(() => {
     selection.resetSelection();
@@ -430,13 +435,23 @@ function App() {
     <ItemContextMenu
       item={item}
       permissions={getSharedPermissions(item.id)}
-      onOpen={() => handleItemDoubleClick(item)}
+      onOpen={() => {
+        menus.closeContextMenu();
+        handleItemDoubleClick(item);
+      }}
       onDownload={(format) => fileActions.handleDownload(item, format)}
       onRename={() => fileActions.openRenameModal(item)}
       onMove={() => fileActions.openMoveModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
       onShare={() => shareSettings.openShareModal(item)}
-      onCopyLink={isSharedOutTab ? () => handleCopyShareLink(item) : undefined}
+      onCopyLink={
+        isSharedOutTab
+          ? () => {
+              menus.closeContextMenu();
+              handleCopyShareLink(item);
+            }
+          : undefined
+      }
       onSetColor={(color) => setFolderStyle(item.id, { color })}
       onSetIcon={(icon) => setFolderStyle(item.id, { icon })}
       onTrash={() => fileActions.requestTrash([item.id])}
@@ -523,7 +538,7 @@ function App() {
                   query={search.searchQuery}
                   contextMenuId={menus.contextMenuId}
                   onContextMenuToggle={menus.setContextMenuId}
-                  onItemContextMenu={menus.openItemContextMenu}
+                  onItemContextMenu={openItemMenu}
                   renderContextMenu={renderItemContextMenu}
                   onOpenItem={(item) => {
                     if (item.isFolder) {
@@ -590,7 +605,7 @@ function App() {
                       onCheckboxToggle={selection.handleCheckboxToggle}
                       onSelectAllToggle={selection.handleSelectAllToggle}
                       onContextMenuToggle={menus.setContextMenuId}
-                      onItemContextMenu={menus.openItemContextMenu}
+                      onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
                       onShare={shareSettings.openShareModal}
                       onCopyLink={isSharedOutTab ? handleCopyShareLink : undefined}
@@ -598,6 +613,7 @@ function App() {
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
                       onDropOnFolder={dnd.handleDropOnFolder}
+                      getItemPressHandlers={selection.getItemPressHandlers}
                     />
                   ) : viewMode === "tiles" ? (
                     <FileTiles
@@ -609,12 +625,13 @@ function App() {
                       onItemClick={selection.handleItemClick}
                       onCheckboxToggle={selection.handleCheckboxToggle}
                       onContextMenuToggle={menus.setContextMenuId}
-                      onItemContextMenu={menus.openItemContextMenu}
+                      onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
                       onDropOnFolder={dnd.handleDropOnFolder}
+                      getItemPressHandlers={selection.getItemPressHandlers}
                     />
                   ) : (
                     <FileGrid
@@ -627,12 +644,13 @@ function App() {
                       onItemClick={selection.handleItemClick}
                       onCheckboxToggle={selection.handleCheckboxToggle}
                       onContextMenuToggle={menus.setContextMenuId}
-                      onItemContextMenu={menus.openItemContextMenu}
+                      onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
                       onDropOnFolder={dnd.handleDropOnFolder}
+                      getItemPressHandlers={selection.getItemPressHandlers}
                     />
                   )}
 

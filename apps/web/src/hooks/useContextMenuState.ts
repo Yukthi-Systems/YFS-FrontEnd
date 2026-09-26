@@ -24,7 +24,7 @@ export function useContextMenuState() {
 
   useEffect(() => {
     if (!(contextMenuId || canvasContextMenu)) return;
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
       if (contextMenuId && !target.closest(".row-actions-trigger") && !target.closest(".context-dropdown")) {
         setContextMenuId(null);
@@ -33,8 +33,9 @@ export function useContextMenuState() {
         setCanvasContextMenu(null);
       }
     };
-    document.addEventListener("click", handleOutsideClick);
-    return () => document.removeEventListener("click", handleOutsideClick);
+    // Capture phase so toolbars that stopPropagation (and right-clicks) still close it.
+    document.addEventListener("pointerdown", handleOutsideClick, true);
+    return () => document.removeEventListener("pointerdown", handleOutsideClick, true);
   }, [contextMenuId, canvasContextMenu]);
 
   const openItemContextMenu = (item: FileItem, e: React.MouseEvent) => {

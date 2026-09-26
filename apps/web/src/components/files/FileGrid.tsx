@@ -18,6 +18,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
+import type { ItemPressHandlers } from "../../hooks/useFileSelection";
 import type { FileItem, GridSize } from "../../types/file";
 import { formatBytes, formatDate, getOwnerDisplay, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import type { UserInfo } from "../../atoms/auth";
@@ -110,6 +111,7 @@ export function FileGrid({
   onDragOverFolder,
   onDragLeaveFolder,
   onDropOnFolder,
+  getItemPressHandlers,
 }: {
   items: FileItem[];
   gridSize?: GridSize;
@@ -126,6 +128,7 @@ export function FileGrid({
   onDragOverFolder: (item: FileItem, e: React.DragEvent) => void;
   onDragLeaveFolder: (item: FileItem) => void;
   onDropOnFolder: (item: FileItem, e: React.DragEvent) => void;
+  getItemPressHandlers?: (item: FileItem) => ItemPressHandlers;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
   const { user } = useAuth();
@@ -134,6 +137,7 @@ export function FileGrid({
   const renderCard = (item: FileItem) => {
     const isSel = selectedItemId === item.id;
     const isChecked = checkedItemIds.includes(item.id);
+    const selecting = checkedItemIds.length > 0;
     const isDragOver = item.isFolder && dragOverFolderId === item.id;
     const locked = isItemLocked(item);
     return (
@@ -146,12 +150,13 @@ export function FileGrid({
         onDragLeave={() => item.isFolder && onDragLeaveFolder(item)}
         onDrop={(e) => item.isFolder && onDropOnFolder(item, e)}
         onClick={(e) => onItemClick(item, e)}
+        {...getItemPressHandlers?.(item)}
         onContextMenu={(e) => {
           setMenuAnchor({ rect: { top: e.clientY, left: e.clientX, right: e.clientX, bottom: e.clientY }, align: "start" });
           onItemContextMenu(item, e);
         }}
         title={hoverDetails(item, user)}
-        className={`group relative rounded-lg ${config.padding} cursor-pointer flex flex-col items-center gap-1.5 transition-colors duration-150 ${
+        className={`group relative select-none [-webkit-touch-callout:none] rounded-lg ${config.padding} cursor-pointer flex flex-col items-center gap-1.5 transition-colors duration-150 ${
           isSel ? "bg-accent-bg/70!" : isChecked ? "bg-accent-bg/70!" : "hover:bg-code-bg"
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
@@ -161,16 +166,18 @@ export function FileGrid({
             onClick={(e) => e.stopPropagation()}
             onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
             ariaLabel={`Select ${item.name}`}
-            className={`opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 ${isChecked ? "opacity-100!" : ""}`}
+            className={`opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 max-[768px]:invisible ${isChecked || selecting ? "opacity-100!" : ""}`}
           />
           <div className="relative">
             <button
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
+                e.stopPropagation();
                 const opening = contextMenuId !== item.id;
                 setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
                 onContextMenuToggle(opening ? item.id : null);
               }}
-              className="row-actions-trigger opacity-0 group-hover:opacity-100 focus:opacity-100 border-none bg-transparent p-1 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
+              className="row-actions-trigger opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 border-none bg-transparent p-1 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition"
             >
               <MoreVertical className="w-3.5 h-3.5" />
             </button>

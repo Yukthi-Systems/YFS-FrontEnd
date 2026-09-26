@@ -53,7 +53,7 @@ export function Dropdown<T extends string>({
 
   useEffect(() => {
     if (!open) return;
-    const onOutsideClick = (e: MouseEvent) => {
+    const onOutsideClick = (e: PointerEvent) => {
       const target = e.target as Node;
       if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
       setAnchor(null);
@@ -61,10 +61,11 @@ export function Dropdown<T extends string>({
     const onEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") setAnchor(null);
     };
-    document.addEventListener("click", onOutsideClick);
+    // Capture phase so rows that stopPropagation (and right-clicks) still close it.
+    document.addEventListener("pointerdown", onOutsideClick, true);
     document.addEventListener("keydown", onEscape);
     return () => {
-      document.removeEventListener("click", onOutsideClick);
+      document.removeEventListener("pointerdown", onOutsideClick, true);
       document.removeEventListener("keydown", onEscape);
     };
   }, [open]);

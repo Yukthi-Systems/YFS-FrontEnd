@@ -123,7 +123,7 @@ export function SearchResultsList({
                 setMenuAnchor(opening ? { rect: e.currentTarget.getBoundingClientRect(), align: "end" } : null);
                 onContextMenuToggle(opening ? item.id : null);
               }}
-              className="row-actions-trigger border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition opacity-0 group-hover:opacity-100"
+              className="row-actions-trigger border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-text-heading cursor-pointer inline-flex items-center justify-center transition opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
