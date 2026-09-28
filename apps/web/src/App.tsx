@@ -770,13 +770,14 @@ function App() {
         />
       )}
 
-      {versionHistory.item && (
+      {versionHistory.item && !versionHistory.viewingItem && (
         <VersionHistoryModal
           item={versionHistory.item}
           latestVersion={versionHistory.latestVersion}
           olderVersions={versionHistory.olderVersions}
           loading={versionHistory.isLoadingVersions}
           onClose={versionHistory.closeVersionHistory}
+          onViewVersion={versionHistory.handleViewVersion}
           onDownloadVersion={versionHistory.handleDownloadVersion}
           onDeleteVersion={(v) =>
             fileActions.requestDeleteVersion(
@@ -822,6 +823,19 @@ function App() {
           onDownload={fileActions.handleDownload}
           onSaveContent={fileActions.handleSaveContent}
           permissions={getSharedPermissions(viewerItem.id)}
+        />
+      )}
+
+      {versionHistory.viewingItem && versionHistory.viewingVersion !== null && (
+        <ViewerModal
+          item={versionHistory.viewingItem}
+          siblings={[]}
+          onClose={versionHistory.closeVersionViewer}
+          onNavigate={() => {}}
+          onDownload={() => versionHistory.handleDownloadVersion(versionHistory.viewingVersion!)}
+          onSaveContent={() => {}}
+          permissions={getSharedPermissions(versionHistory.viewingItem.id)}
+          viewingVersion={versionHistory.viewingVersion}
         />
       )}
 

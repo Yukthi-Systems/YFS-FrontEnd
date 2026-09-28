@@ -15,7 +15,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-import { Download, History, Loader2, Trash2 } from "lucide-react";
+import { Download, Eye, History, Loader2, Trash2 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import { formatBytes, formatDate } from "../../utils/format";
 import { ModalShell } from "./ModalShell";
@@ -26,6 +26,7 @@ export function VersionHistoryModal({
   olderVersions,
   loading,
   onClose,
+  onViewVersion,
   onDownloadVersion,
   onDeleteVersion,
   permissions = null,
@@ -35,6 +36,7 @@ export function VersionHistoryModal({
   olderVersions: number[];
   loading: boolean;
   onClose: () => void;
+  onViewVersion: (version: number) => void;
   onDownloadVersion: (version: number) => void;
   onDeleteVersion: (version: number) => void;
   permissions?: InternalSharePermissions | null;
@@ -57,14 +59,25 @@ export function VersionHistoryModal({
               {formatDate(item.modifiedAt)} · {formatBytes(item.size)}
             </div>
           </div>
-          {!loading && canDelete && (
-            <button
-              onClick={() => onDeleteVersion(latestVersion)}
-              className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 cursor-pointer transition"
-              title={isOnlyVersion ? "Delete this file (it's the only version)" : "Delete this version"}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+          {!loading && (
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => onViewVersion(latestVersion)}
+                className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-code-bg cursor-pointer transition"
+                title="View this version"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              {canDelete && (
+                <button
+                  onClick={() => onDeleteVersion(latestVersion)}
+                  className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 cursor-pointer transition"
+                  title={isOnlyVersion ? "Delete this file (it's the only version)" : "Delete this version"}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -83,26 +96,34 @@ export function VersionHistoryModal({
                 <div className="text-xs font-semibold text-text-heading">Version {v}</div>
                 <div className="flex items-center gap-0.5">
                   <button
+                    onClick={() => onViewVersion(v)}
+                    className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-code-bg cursor-pointer transition"
+                    title="View this version"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  <button
                     onClick={() => onDownloadVersion(v)}
                     className="border-none bg-transparent p-1.5 rounded-full text-text-main hover:bg-code-bg cursor-pointer transition"
                     title="Download this version"
                   >
                     <Download className="w-3.5 h-3.5" />
                   </button>
-                  {canDelete && (
-                    <button
-                      onClick={() => !isFirstVersion && onDeleteVersion(v)}
-                      disabled={isFirstVersion}
-                      className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition"
-                      title={
-                        isFirstVersion
-                          ? "The first version can't be deleted on its own — delete the whole file instead if you want it gone"
-                          : "Delete this version"
-                      }
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  {canDelete &&
+                    (isFirstVersion ? (
+                      // Keeps the download icon aligned with the rows above.
+                      <span aria-hidden className="p-1.5">
+                        <span className="block w-3.5 h-3.5" />
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => onDeleteVersion(v)}
+                        className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 cursor-pointer transition"
+                        title="Delete this version"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    ))}
                 </div>
               </div>
             );

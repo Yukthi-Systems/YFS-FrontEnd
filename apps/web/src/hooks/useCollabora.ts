@@ -66,7 +66,12 @@ export function useCollabora() {
   const requestWopi = (request: FileWopiRequest, toWrite: boolean) =>
     withAuthRetry(tokenRef.current, refreshAccessToken, (tk) => collaboraClient.requestSession(tk, request, toWrite));
 
-  const getEditorSession = async (item: FileItem, wantEdit: boolean): Promise<CollaboraEditorSession> => {
+  // pinnedVersion opens that exact version (version history) instead of the latest.
+  const getEditorSession = async (
+    item: FileItem,
+    wantEdit: boolean,
+    pinnedVersion?: number
+  ): Promise<CollaboraEditorSession> => {
     if (!item.extension) throw new Error("This file has no extension for Collabora to match.");
     if (!item.fileId || (item.origin !== "server" && item.origin !== "shared")) {
       throw new Error("This file has no server copy to open in Collabora.");
@@ -74,7 +79,9 @@ export function useCollabora() {
 
     const [action, session] = await Promise.all([
       resolveCollaboraAction(item.extension, wantEdit),
-      resolveLatestVersion(item).then((version) => requestWopi(buildRequest(item, version), wantEdit)),
+      (pinnedVersion !== undefined ? Promise.resolve(pinnedVersion) : resolveLatestVersion(item)).then((version) =>
+        requestWopi(buildRequest(item, version), wantEdit)
+      ),
     ]);
     if (!action) throw new Error(`Collabora doesn't support .${item.extension} files.`);
 
