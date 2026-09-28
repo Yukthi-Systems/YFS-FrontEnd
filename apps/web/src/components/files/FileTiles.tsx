@@ -20,11 +20,12 @@ import type { ReactNode } from "react";
 import { AlertCircle, Loader2, MoreVertical, Lock } from "lucide-react";
 import type { ItemPressHandlers } from "../../hooks/useFileSelection";
 import type { FileItem } from "../../types/file";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
+import { formatBytes, formatDate, getOwnerDisplay, isItemFailed, isItemProcessing, isItemLocked } from "../../utils/format";
 import { getItemIcon } from "./FileIcon";
 import { Checkbox } from "../common/Checkbox";
 import { ContextMenuPortal } from "../common/ContextMenuPortal";
 import type { AnchorRect } from "../common/ContextMenuPortal";
+import { useAuth } from "../../hooks/useAuth";
 
 export function FileTiles({
   items,
@@ -60,6 +61,7 @@ export function FileTiles({
   getItemPressHandlers?: (item: FileItem) => ItemPressHandlers;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<{ rect: AnchorRect; align: "start" | "end" } | null>(null);
+  const { user } = useAuth();
 
   const renderTile = (item: FileItem) => {
     const isSel = selectedItemId === item.id;
@@ -67,6 +69,7 @@ export function FileTiles({
     const selecting = checkedItemIds.length > 0;
     const isDragOver = item.isFolder && dragOverFolderId === item.id;
     const locked = isItemLocked(item);
+    const owner = getOwnerDisplay(item, user);
     return (
       <div
         key={item.id}
@@ -132,6 +135,15 @@ export function FileTiles({
             )}
           </div>
         </div>
+
+        {owner.label && (
+          <div
+            className="shrink-0 max-w-28 text-[11px] text-text-main truncate max-[640px]:hidden"
+            title={owner.email || owner.label}
+          >
+            {owner.label}
+          </div>
+        )}
 
         <div className="relative shrink-0">
           <button

@@ -32,6 +32,8 @@ export function useVersionHistory({
 }) {
   const [versionHistoryItemId, setVersionHistoryItemId] = useState<string | null>(null);
   const item = files.find((f) => f.id === versionHistoryItemId) ?? null;
+  // Version open in the read-only viewer; the history modal hides meanwhile and returns on close.
+  const [viewingVersion, setViewingVersion] = useState<number | null>(null);
 
   // Server versions; the local FileItem.version can be stale.
   const { data: fileInfo, isLoading: isLoadingVersions } = useFileInfo(item, !!versionHistoryItemId);
@@ -44,12 +46,25 @@ export function useVersionHistory({
     return { latestVersion: latest, olderVersions: older };
   }, [fileInfo, item]);
 
+  // Viewers load whatever `version` says, so pinning it opens that version.
+  const viewingItem = useMemo(
+    () => (item && viewingVersion !== null ? { ...item, version: viewingVersion } : null),
+    [item, viewingVersion]
+  );
+
   const openVersionHistory = (target: FileItem) => {
     setVersionHistoryItemId(target.id);
+    setViewingVersion(null);
     closeContextMenu();
   };
 
-  const closeVersionHistory = () => setVersionHistoryItemId(null);
+  const closeVersionHistory = () => {
+    setVersionHistoryItemId(null);
+    setViewingVersion(null);
+  };
+
+  const handleViewVersion = (version: number) => setViewingVersion(version);
+  const closeVersionViewer = () => setViewingVersion(null);
 
   const handleDownloadVersion = async (version: number) => {
     if (!item) return;
@@ -67,8 +82,12 @@ export function useVersionHistory({
     latestVersion,
     olderVersions,
     isLoadingVersions,
+    viewingItem,
+    viewingVersion,
     openVersionHistory,
     closeVersionHistory,
     handleDownloadVersion,
+    handleViewVersion,
+    closeVersionViewer,
   };
 }

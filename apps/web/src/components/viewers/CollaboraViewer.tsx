@@ -45,13 +45,15 @@ export const CollaboraViewer = forwardRef<
   {
     item: FileItem;
     canEdit: boolean;
+    // Opens this exact version instead of the latest.
+    pinnedVersion?: number;
     onReadyChange?: (ready: boolean) => void;
     // Fires once Collabora's UI has rendered, later than onReadyChange.
     onFrameReadyChange?: (ready: boolean) => void;
     // Collabora's own close button; callers should treat it like their close button.
     onNativeClose?: () => void;
   }
->(function CollaboraViewer({ item, canEdit, onReadyChange, onFrameReadyChange, onNativeClose }, ref) {
+>(function CollaboraViewer({ item, canEdit, pinnedVersion, onReadyChange, onFrameReadyChange, onNativeClose }, ref) {
   const { getEditorSession } = useCollabora();
   const [session, setSession] = useState<CollaboraEditorSession | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ export const CollaboraViewer = forwardRef<
     let active = true;
     setSession(null);
     setError(null);
-    getEditorSession(item, canEdit)
+    getEditorSession(item, canEdit, pinnedVersion)
       .then((s) => {
         if (active) setSession(s);
       })
@@ -112,7 +114,7 @@ export const CollaboraViewer = forwardRef<
       sendCloseSession();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id, item.fileId, item.version, canEdit]);
+  }, [item.id, item.fileId, item.version, canEdit, pinnedVersion]);
 
   useEffect(() => {
     setFrameReady(false);

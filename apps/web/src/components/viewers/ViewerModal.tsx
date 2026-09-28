@@ -68,6 +68,7 @@ export function ViewerModal({
   onDownload,
   onSaveContent,
   permissions = null,
+  viewingVersion,
 }: {
   item: FileItem;
   siblings: FileItem[];
@@ -77,8 +78,11 @@ export function ViewerModal({
   onSaveContent: (id: string, blob: Blob) => void;
   // Share permissions for items inside "Shared with me"; null for own items.
   permissions?: InternalSharePermissions | null;
+  // Set when opened from Version History: `item.version` is pinned to this, and the viewer is read-only.
+  viewingVersion?: number;
 }) {
-  const canEdit = !permissions || permissions.can_update;
+  const canEdit = viewingVersion === undefined && (!permissions || permissions.can_update);
+  const title = viewingVersion === undefined ? item.name : `${item.name} · Version ${viewingVersion}`;
   const [isPiPActive, setIsPiPActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -87,7 +91,8 @@ export function ViewerModal({
   const isMobile = useIsMobile();
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  const viewable = siblings.filter((f) => !f.isFolder);
+  // A pinned version has no siblings to step through.
+  const viewable = viewingVersion === undefined ? siblings.filter((f) => !f.isFolder) : [item];
   const index = viewable.findIndex((f) => f.id === item.id);
   const prevItem = index > 0 ? viewable[index - 1] : null;
   const nextItem = index >= 0 && index < viewable.length - 1 ? viewable[index + 1] : null;
@@ -200,6 +205,7 @@ export function ViewerModal({
             ref={collaboraRef}
             item={item}
             canEdit={canEdit}
+            pinnedVersion={viewingVersion}
             onReadyChange={setCollaboraReady}
             onNativeClose={handleClose}
           />
@@ -261,7 +267,7 @@ export function ViewerModal({
     >
       <div className="flex items-center gap-2 truncate max-w-[65%]">
         {isMinimized && <Video className="w-4 h-4 text-rose-400 shrink-0" />}
-        <span className="text-sm font-semibold truncate">{item.name}</span>
+        <span className="text-sm font-semibold truncate">{title}</span>
       </div>
       <div className="flex items-center gap-1.5">
         {isMinimized ? (
@@ -343,7 +349,7 @@ export function ViewerModal({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1 min-w-0 px-1">
-            <div className="text-sm font-semibold truncate">{item.name}</div>
+            <div className="text-sm font-semibold truncate">{title}</div>
             {viewable.length > 1 && index >= 0 && (
               <div className="text-[11px] text-white/60">
                 {index + 1} of {viewable.length}
