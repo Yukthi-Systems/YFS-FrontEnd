@@ -22,7 +22,10 @@ import type { BackendResource, PageQuery } from "./types";
 // Stored verbatim in folder_info/file_info; unknown keys are preserved on edit.
 export interface FolderCreationInfo {
   user_id?: string;
-  // Creator name is resolved live from user_id so it doesn't go stale.
+  // Point-in-time display name, stamped at creation for an immediate "Created by" label.
+  // user_id is still the source of truth: resolveCreatedByNames re-resolves the live name from
+  // it, so a later display-name change doesn't leave old items stuck showing the stale one here.
+  user_name?: string;
 }
 
 export interface ResourceUiInfo {

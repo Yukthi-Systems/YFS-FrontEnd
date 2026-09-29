@@ -146,11 +146,25 @@ export const formatDate = (isoString: string): string => {
 export const userDisplayName = (u: UserInfo | null | undefined) =>
   u?.username || [u?.first_name, u?.last_name].filter(Boolean).join(" ") || u?.email || undefined;
 
-// Own-drive items carry owner.name "me" until the creator lookup resolves a real name.
+// The Owner is whoever the item's drive/share belongs to — never the creator (see
+// getCreatedByDisplay below for that). They can differ: a folder User A shares with User B stays
+// owned by User A no matter who — A or B — creates things inside it. Own-drive items carry
+// owner.name "me" as a placeholder, resolved here to your real display name.
 export const getOwnerDisplay = (item: FileItem, me: UserInfo | null | undefined) => {
   const ownDrive = item.owner.name === "me";
-  const email = item.createdByEmail || (item.createdBy ? "" : item.owner.email);
-  const name = item.createdBy || (ownDrive ? userDisplayName(me) || "me" : item.owner.name);
+  const name = ownDrive ? userDisplayName(me) || "me" : item.owner.name;
+  const email = item.owner.email;
   const isMe = !!me?.email && (email ? email === me.email : ownDrive);
   return { label: isMe && name !== "me" ? `${name} (me)` : name, email };
+};
+
+// Who actually created this item — distinct from Owner, which for a shared item is whoever the
+// share root belongs to, not necessarily who created this specific file/folder inside it.
+// item.createdBy is the live-resolved name (resolveCreatedByNames); the JSON's creation_info.user_name
+// is the point-in-time snapshot from creation, used as a fallback until/unless that resolves.
+// `name` is undefined when neither is known yet — callers decide how to render that themselves.
+export const getCreatedByDisplay = (item: FileItem): { name?: string; email?: string } => {
+  const snapshotName = (item.resourceInfo as { creation_info?: { user_name?: string } } | undefined)?.creation_info
+    ?.user_name;
+  return { name: item.createdBy || snapshotName, email: item.createdByEmail };
 };

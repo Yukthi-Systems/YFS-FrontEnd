@@ -28,7 +28,6 @@ import "./App.css";
 import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
-import { buildAppRoute } from "./utils/appRoute";
 import { canDownloadItem, getStorageQuota, GB, itemBusyReason } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
@@ -351,17 +350,6 @@ function App() {
     search.setSearchQuery("");
   }
 
-  // Recipient-facing link; grants no access by itself.
-  async function handleCopyShareLink(item: FileItem) {
-    const url = `${window.location.origin}${buildAppRoute("shared", [item.id])}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast("Link copied — only people you've shared this with can open it", "success");
-    } catch {
-      showToast("Couldn't copy the link to your clipboard", "error");
-    }
-  }
-
   function handleItemDoubleClick(item: FileItem) {
     if (nav.activeSidebarTab === "shared-out") {
       if (item.isFolder) {
@@ -435,6 +423,7 @@ function App() {
     <ItemContextMenu
       item={item}
       permissions={getSharedPermissions(item.id)}
+      sharedOutRoot={isSharedOutTab}
       onOpen={() => {
         menus.closeContextMenu();
         handleItemDoubleClick(item);
@@ -444,14 +433,6 @@ function App() {
       onMove={() => fileActions.openMoveModal(selection.checkedItemIds.includes(item.id) ? selection.checkedItemIds : [item.id])}
       onVersionHistory={() => versionHistory.openVersionHistory(item)}
       onShare={() => shareSettings.openShareModal(item)}
-      onCopyLink={
-        isSharedOutTab
-          ? () => {
-              menus.closeContextMenu();
-              handleCopyShareLink(item);
-            }
-          : undefined
-      }
       onSetColor={(color) => setFolderStyle(item.id, { color })}
       onSetIcon={(icon) => setFolderStyle(item.id, { icon })}
       onTrash={() => fileActions.requestTrash([item.id])}
@@ -506,6 +487,7 @@ function App() {
 
         <div className="flex-1 flex overflow-hidden relative">
         <UploadDropzone
+          foldersOnly={nav.currentFolderId === null}
           onDropFiles={(items) => {
             if (!canCreateHere) {
               showToast("You don't have permission to add files to this folder", "error");
@@ -608,7 +590,6 @@ function App() {
                       onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
                       onShare={shareSettings.openShareModal}
-                      onCopyLink={isSharedOutTab ? handleCopyShareLink : undefined}
                       onDragStartItem={dnd.handleDragStartItem}
                       onDragOverFolder={dnd.handleDragOverFolder}
                       onDragLeaveFolder={dnd.handleDragLeaveFolder}
@@ -702,16 +683,12 @@ function App() {
           x={menus.canvasContextMenu.x}
           y={menus.canvasContextMenu.y}
           canCreateHere={canCreateHere}
+          canUploadFiles={nav.currentFolderId !== null}
           onCreateFolder={() => {
             fileActions.openCreateFolderModal();
             menus.setCanvasContextMenu(null);
           }}
           onUploadFile={() => {
-            if (nav.currentFolderId === null) {
-              showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
-              menus.setCanvasContextMenu(null);
-              return;
-            }
             canvasFileInputRef.current?.click();
             menus.setCanvasContextMenu(null);
           }}

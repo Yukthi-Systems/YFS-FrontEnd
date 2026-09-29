@@ -143,7 +143,16 @@ export function useDownload() {
     return true;
   };
 
-  return { fetchBlob, downloadFile, downloadFileVersion, getStreamUrl };
+  // Peeks the first `length` bytes of a server/shared file's current version, for a signature
+  // check before opening it in a viewer that otherwise trusts the extension. null for anything
+  // without server content to peek at (folders, local-only items).
+  const peekFileHeader = async (item: FileItem, length: number): Promise<Uint8Array | null> => {
+    if (item.isFolder || !item.fileId || (item.origin !== "server" && item.origin !== "shared")) return null;
+    const session = await requestSession(buildRequest(item));
+    return downloadClient.fetchHeader(session, length);
+  };
+
+  return { fetchBlob, downloadFile, downloadFileVersion, getStreamUrl, peekFileHeader };
 }
 
 // Media streams straight from the session URL (inline, ?token=), no CORS needed.

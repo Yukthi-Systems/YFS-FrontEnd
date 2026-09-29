@@ -156,8 +156,10 @@ export function useFileActions({
         setCheckedItemIds([]);
         clearSelection();
         closeContextMenu();
-        const { moved } = await fileSystem.trashItems(unlockedIds);
+        const { moved, noPermission } = await fileSystem.trashItems(unlockedIds);
         if (moved > 0) showToast(`Moved ${plural(moved, "item")} to Trash`, "success");
+        if (noPermission > 0)
+          showToast(`Couldn't move ${plural(noPermission, "item")} to Trash — you don't have permission in this shared folder`, "error");
       },
     });
   };
@@ -254,7 +256,7 @@ export function useFileActions({
     setMoveCopyState(null);
     setCheckedItemIds([]);
     const restoring = mode === "restore";
-    const { moved, blocked, unsupported } = restoring
+    const { moved, blocked, unsupported, noPermission } = restoring
       ? await fileSystem.restoreItems(ids, destinationId)
       : await fileSystem.moveItems(ids, destinationId);
     if (moved > 0) showToast(`${restoring ? "Restored" : "Moved"} ${plural(moved, "item")}`, "success");
@@ -262,6 +264,8 @@ export function useFileActions({
       showToast(`Skipped ${plural(blocked, "item")} — locked, still processing, or can't go into itself`, "error");
     if (unsupported > 0)
       showToast(`Skipped ${plural(unsupported, "file")} — ${restoring ? "restoring" : "moving"} a file to My Drive root isn't supported yet`, "error");
+    if (noPermission > 0)
+      showToast(`Skipped ${plural(noPermission, "item")} — you don't have permission to move them in this shared folder`, "error");
   };
 
   const handleDownload = async (item: FileItem, format: ArchiveExportType = "zip") => {

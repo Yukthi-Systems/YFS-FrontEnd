@@ -24,10 +24,13 @@ import type { FileWithRelativePath } from "../../atoms/uploadQueue";
 export function UploadDropzone({
   onDropFiles,
   disabled = false,
+  foldersOnly = false,
   children,
 }: {
   onDropFiles: (items: FileWithRelativePath[]) => void;
   disabled?: boolean;
+  // Drops keep only files inside dropped folders; loose files are ignored (My Drive root).
+  foldersOnly?: boolean;
   children: ReactNode;
 }) {
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -64,7 +67,8 @@ export function UploadDropzone({
         setDragDepth(0);
         // Capture before the async folder walk, which preserves structure the plain file list loses.
         const dataTransfer = e.dataTransfer;
-        resolveDroppedItems(dataTransfer).then((items) => {
+        resolveDroppedItems(dataTransfer).then((all) => {
+          const items = foldersOnly ? all.filter((it) => it.relativePath.includes("/")) : all;
           if (items.length > 0) onDropFiles(items);
         });
       }}
@@ -74,7 +78,8 @@ export function UploadDropzone({
         <div className="absolute inset-0 z-[900] bg-accent/10 backdrop-blur-[1px] border-4 border-dashed border-accent rounded-xl flex items-center justify-center pointer-events-none animate-fade-in">
           <div className="flex flex-col items-center gap-3 text-accent bg-bg-main px-8 py-6 rounded-2xl shadow-lg">
             <UploadCloud className="w-10 h-10" />
-            <span className="font-semibold">Drop files to upload here</span>
+            <span className="font-semibold">{foldersOnly ? "Drop folders to upload here" : "Drop files to upload here"}</span>
+            {foldersOnly && <span className="text-xs text-text-main">Files need to go inside a folder</span>}
           </div>
         </div>
       )}

@@ -74,9 +74,11 @@ export function useDragAndDrop({
     const draggedId = e.dataTransfer.getData("application/x-yfs-item");
     if (!draggedId) return;
     const ids = checkedItemIds.includes(draggedId) ? checkedItemIds : [draggedId];
-    const { moved, blocked } = await moveItems(ids, item.id);
+    const { moved, blocked, noPermission } = await moveItems(ids, item.id);
     if (moved > 0) showToast(`Moved ${moved} item${moved > 1 ? "s" : ""} into "${shortName(item.name)}"`, "success");
     if (blocked > 0) showToast(`Skipped ${blocked} item${blocked > 1 ? "s" : ""} — locked, still processing, or can't go into itself`, "error");
+    if (noPermission > 0)
+      showToast(`Skipped ${noPermission} item${noPermission > 1 ? "s" : ""} — you don't have permission to move them in this shared folder`, "error");
   };
 
   return { dragOverFolderId, handleDragStartItem, handleDragOverFolder, handleDragLeaveFolder, handleDropOnFolder };

@@ -39,6 +39,7 @@ import { ImageLightbox } from "./ImageLightbox";
 import { MediaPlayer } from "./MediaPlayer";
 import type { CollaboraViewerHandle } from "./CollaboraViewer";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useFileSignatureCheck } from "../../hooks/useFileSignatureCheck";
 
 // Heavy viewers are loaded on demand.
 const PdfViewer = lazy(() => import("./PdfViewer").then((m) => ({ default: m.PdfViewer })));
@@ -99,11 +100,30 @@ export function ViewerModal({
 
   const isCollabora = isCollaboraSupported(item);
 
+  // A viewer that trusts the extension (Collabora, or the local PDF/Office/spreadsheet viewers)
+  // shouldn't be handed bytes that don't actually match it — Collabora in particular will import
+  // a mismatched file as plain text and render binary data as garbled characters.
+  const signatureStatus = useFileSignatureCheck(item, !item.isFolder);
+
+  // True while renderContent is showing a blocking notice (failed/processing/signature check)
+  // instead of the real viewer.
+  const blockingNotice =
+    isItemFailed(item) || isItemProcessing(item) || signatureStatus === "checking" || signatureStatus === "mismatch";
+  // Whether Collabora is actually going to be mounted right now. Collabora's own layout has no
+  // close button — it relies on Collabora's native one once the iframe is actually up — so a
+  // blocking notice needs the normal modal chrome instead.
+  const collaboraMounted = isCollabora && !blockingNotice;
+
   const isOfficeDoc =
     item.type === "pdf" ||
     item.type === "spreadsheet" ||
     (item.type === "document" && !!item.extension && WORD_EXTENSIONS.has(item.extension)) ||
     isCollabora;
+
+  // Office/PDF/Collabora files already get a full-bleed frame once they're loaded (isFullView) —
+  // a blocking notice for one of them should fill the same space edge-to-edge, not shrink into
+  // the smaller centered card other file types use.
+  const fullScreenNotice = !isMinimized && !collaboraMounted && blockingNotice && isOfficeDoc;
 
   useEffect(() => {
     setCollaboraReady(false);
@@ -114,7 +134,7 @@ export function ViewerModal({
 
   // Ask Collabora to save, wait the grace period, then run `action`.
   const withCollaboraExitSave = (action: () => void) => {
-    if (!isCollabora) {
+    if (!collaboraMounted) {
       action();
       return;
     }
@@ -155,16 +175,16 @@ export function ViewerModal({
         } else {
           handleClose();
         }
-      } else if (!isMinimized && !isCollabora && e.key === "ArrowLeft" && prevItem) {
+      } else if (!isMinimized && !collaboraMounted && e.key === "ArrowLeft" && prevItem) {
         navigateTo(prevItem);
-      } else if (!isMinimized && !isCollabora && e.key === "ArrowRight" && nextItem) {
+      } else if (!isMinimized && !collaboraMounted && e.key === "ArrowRight" && nextItem) {
         navigateTo(nextItem);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, onNavigate, prevItem, nextItem, isPiPActive, isMinimized]);
+  }, [onClose, onNavigate, prevItem, nextItem, isPiPActive, isMinimized, collaboraMounted]);
 
   const renderContent = () => {
     if (isItemFailed(item)) {
@@ -193,6 +213,26 @@ export function ViewerModal({
           <div className="text-sm font-semibold text-text-heading">File is currently processing</div>
           <div className="text-xs text-text-main max-w-sm">
             This file is being processed on the server. Preview will be available once processing completes.
+          </div>
+        </div>
+      );
+    }
+    if (signatureStatus === "checking") {
+      return <div className="text-sm text-text-main text-center py-16">Checking file…</div>;
+    }
+    if (signatureStatus === "mismatch") {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 text-center text-text-main py-16">
+          <div className="relative flex items-center justify-center">
+            <FileIcon className="w-12 h-12 text-neutral-400" />
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-bg-main">
+              <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+            </span>
+          </div>
+          <div className="text-sm font-semibold text-text-heading">This file can't be previewed</div>
+          <div className="text-xs text-text-main max-w-sm">
+            {item.extension ? `${item.name}'s content doesn't match a valid .${item.extension} file` : "This file's content is unreadable"}
+            {" "}— it may be corrupted or have the wrong extension. Download it to inspect.
           </div>
         </div>
       );
@@ -335,9 +375,9 @@ export function ViewerModal({
     </div>
   );
 
-  const collaboraLayout = !isMinimized && isCollabora;
+  const collaboraLayout = !isMinimized && collaboraMounted;
 
-  if (isMobile && !isMinimized && !isCollabora) {
+  if (isMobile && !isMinimized && !collaboraMounted) {
     // Full-screen, edge-to-edge on phones: back arrow + title bar, swipe between files.
     const onDark = item.type === "image" || item.type === "video";
     const swipeable = onDark || item.type === "audio" || (!isOfficeDoc && !isTextEditable(item));
@@ -418,6 +458,13 @@ export function ViewerModal({
             </div>
           </div>
         </>
+      ) : fullScreenNotice ? (
+        <div className="absolute inset-0 flex flex-col overflow-hidden bg-bg-main">
+          {headerBar("px-6 py-4")}
+          <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            {renderContent()}
+          </div>
+        </div>
       ) : (
         <>
           {headerBar(isMinimized ? "px-3.5 py-2.5 bg-neutral-950/90 border-b border-white/10" : "px-6 py-4")}

@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import type { FileItem, InternalSharePermissions } from "../../types/file";
 import type { ArchiveExportType, ResourceInfo } from "@yfs/service";
-import { formatBytes, formatDate, isItemFailed, isItemProcessing, isItemLocked, itemBusyReason } from "../../utils/format";
+import { formatBytes, formatDate, getCreatedByDisplay, isItemFailed, isItemProcessing, isItemLocked, itemBusyReason } from "../../utils/format";
 import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 import { ARCHIVE_FORMATS, canArchiveOnServer, useStreamUrl } from "../../hooks/useDownload";
@@ -302,7 +302,7 @@ export function DetailsDrawer({
     setTimeout(() => setCopiedId(false), 1500);
   };
 
-  const creatorName = item.createdBy || (item.resourceInfo as { creation_info?: { user_name?: string } } | undefined)?.creation_info?.user_name;
+  const creatorName = getCreatedByDisplay(item).name;
 
   return (
     <aside

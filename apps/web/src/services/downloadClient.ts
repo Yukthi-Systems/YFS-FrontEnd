@@ -34,6 +34,22 @@ export const downloadClient = {
     if (!res.ok) throw new Error(`Download failed with status ${res.status}`);
     return res.blob();
   },
+
+  // Fetches just the first `length` bytes, for a signature check before committing to a full
+  // download. Falls back to slicing a full response if the storage backend ignores Range.
+  async fetchHeader(session: DownloadSession, length: number, signal?: AbortSignal): Promise<Uint8Array> {
+    const hasUrlToken = new URL(session.url, window.location.href).searchParams.has("token");
+    const res = await fetch(session.url, {
+      headers: {
+        ...(hasUrlToken || !session.token ? {} : { Authorization: `Bearer ${session.token}` }),
+        Range: `bytes=0-${length - 1}`,
+      },
+      signal,
+    });
+    if (!res.ok && res.status !== 206) throw new Error(`Download failed with status ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return new Uint8Array(buf).slice(0, length);
+  },
 };
 
 export type DownloadClient = typeof downloadClient;
