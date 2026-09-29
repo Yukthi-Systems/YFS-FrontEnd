@@ -154,6 +154,8 @@ export function getItemPath(files: FileItem[], item: FileItem): string {
       current = parent;
     } else break;
   }
-  path.unshift("My Drive");
+  // Items in `files` with origin "shared" are always ones shared WITH the current user (shared-out
+  // rows live in a separate atom, never here) — its root isn't "My Drive".
+  path.unshift(item.isDeleted ? "Trash" : item.origin === "shared" ? "Shared with you" : "My Drive");
   return path.join(" > ");
 }
