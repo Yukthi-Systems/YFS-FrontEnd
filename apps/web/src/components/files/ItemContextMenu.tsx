@@ -135,8 +135,10 @@ export function ItemContextMenu({
           </button>
         )}
         {downloadControl}
+        {/* Everything here is already shared, so "Update the Share Settings" (not just "Share")
+            is the accurate verb — same action (opens the share dialog) either way. */}
         <button onClick={onShare} className={itemClass}>
-          <Share2 className="w-3.5 h-3.5" /> Share
+          <Share2 className="w-3.5 h-3.5" /> Update the Share Settings
         </button>
       </div>
     );

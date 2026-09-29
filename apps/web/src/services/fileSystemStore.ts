@@ -578,8 +578,13 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
     await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
       const kept = mode === "force" ? prev.filter((f) => f.origin !== "shared") : prev;
-      const seen = new Set(kept.map((f) => f.id));
-      const next = [...kept, ...mapped.filter((m) => !seen.has(m.id))];
+      const mappedIds = new Set(mapped.map((m) => m.id));
+      // Upsert: a row already in `kept` (e.g. from the cache snapshot loaded at startup) gets
+      // replaced by this page's fresh copy instead of silently keeping stale data — permissions,
+      // name, etc. can all have changed server-side since it was cached. Previously this only
+      // added rows not already present, so a permission upgrade (or any other change) on an
+      // already-cached shared item never showed up until something else forced a full reload.
+      const next = [...kept.filter((f) => !mappedIds.has(f.id)), ...mapped];
       saveCache(next);
       return next;
     });
