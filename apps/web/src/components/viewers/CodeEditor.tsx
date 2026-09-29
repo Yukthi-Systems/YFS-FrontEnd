@@ -58,6 +58,20 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   patch: "diff",
 };
 
+// Decodes with a BOM sniff, and `fatal: true` so invalid byte sequences throw instead of being
+// silently replaced with U+FFFD — the browser default, which is how binary data ends up rendered
+// as garbled "unsupported character" text instead of failing.
+function decodeStrict(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le", { fatal: true }).decode(buf);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder("utf-16be", { fatal: true }).decode(buf);
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+}
+
 const Notice = ({ message }: { message: string }) => (
   <div className="flex flex-col items-center gap-2 text-center text-text-main py-16">
     <FileCode className="w-12 h-12 text-purple-400" />
@@ -93,10 +107,13 @@ export function CodeEditor({
 
     let active = true;
     blob
-      .text()
-      .then((text) => {
-        if (active) setContent(text);
+      .arrayBuffer()
+      .then((buf) => {
+        if (!active) return;
+        setContent(decodeStrict(buf));
       })
+      // Non-UTF-8/16 bytes (a binary file with a text-like extension, e.g. a corrupted upload) —
+      // fail visibly instead of silently rendering them as replacement-character garbage.
       .catch(() => active && setDecodeFailed(true));
     return () => {
       active = false;
@@ -129,7 +146,7 @@ export function CodeEditor({
   if (loading) return <div className="text-sm text-text-main text-center py-16">Loading…</div>;
   if (error) return <Notice message={error} />;
   if (tooLarge) return <Notice message="This file is too large to preview as text — download it to open." />;
-  if (decodeFailed) return <Notice message="Could not read this file as text." />;
+  if (decodeFailed) return <Notice message="This file contains characters that can't be displayed as text." />;
   if (content === null) return <div className="text-sm text-text-main text-center py-16">Loading…</div>;
 
   return (

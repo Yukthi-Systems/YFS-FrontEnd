@@ -26,6 +26,7 @@ export const SHARED_ROOT_ID = "__shared_with_me__";
 export interface SharedInInfo {
   ownerUserId: string;
   ownerEmail?: string;
+  ownerName?: string;
   permissions: InternalSharePermissions;
 }
 

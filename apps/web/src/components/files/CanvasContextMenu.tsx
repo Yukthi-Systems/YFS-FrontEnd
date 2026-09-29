@@ -23,6 +23,7 @@ export function CanvasContextMenu({
   x,
   y,
   canCreateHere = true,
+  canUploadFiles = true,
   onCreateFolder,
   onUploadFile,
   onUploadFolder,
@@ -32,6 +33,8 @@ export function CanvasContextMenu({
   y: number;
   // False inside a "Shared with me" folder the caller can't create in.
   canCreateHere?: boolean;
+  // False at the My Drive root, which can't hold files directly.
+  canUploadFiles?: boolean;
   onCreateFolder: () => void;
   onUploadFile: () => void;
   onUploadFolder: () => void;
@@ -88,9 +91,11 @@ export function CanvasContextMenu({
           <button onClick={onCreateFolder} className={itemClass}>
             <FolderPlus className="w-4 h-4" /> Create Folder
           </button>
-          <button onClick={onUploadFile} className={itemClass}>
-            <FileUp className="w-4 h-4" /> Upload File
-          </button>
+          {canUploadFiles && (
+            <button onClick={onUploadFile} className={itemClass}>
+              <FileUp className="w-4 h-4" /> Upload File
+            </button>
+          )}
           <button onClick={onUploadFolder} className={itemClass}>
             <FolderUp className="w-4 h-4" /> Upload Folder
           </button>

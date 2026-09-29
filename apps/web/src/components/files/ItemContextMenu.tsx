@@ -27,6 +27,7 @@ import { ARCHIVE_FORMATS, canArchiveOnServer } from "../../hooks/useDownload";
 export function ItemContextMenu({
   item,
   permissions = null,
+  sharedOutRoot = false,
   onOpen,
   onDownload,
   onRename,
@@ -44,6 +45,10 @@ export function ItemContextMenu({
   item: FileItem;
   // Share permissions for items inside "Shared with me"; null for own items.
   permissions?: InternalSharePermissions | null;
+  // True for a folder's row in the "Shared by you" overview — a curated action set (view,
+  // download, manage sharing) instead of full owner controls, since this page is for managing
+  // who has access, not for reorganizing the folder itself.
+  sharedOutRoot?: boolean;
   // Folders only — opens the folder (same as double-click).
   onOpen?: () => void;
   onDownload: (format?: ArchiveExportType) => void;
@@ -117,6 +122,25 @@ export function ItemContextMenu({
         ))}
     </>
   );
+
+  // The "Shared by you" overview manages access, not the folder itself — view, download and
+  // (re)share only. Owner permissions on the actual folder are unrestricted, so this is a
+  // curated list, not a permission check.
+  if (sharedOutRoot) {
+    return (
+      <div className={`context-dropdown z-50 w-52 bg-bg-main border border-border-main rounded-xl p-1 shadow-md flex flex-col gap-0.5 animate-scale-in ${className}`}>
+        {item.isFolder && onOpen && (
+          <button onClick={onOpen} className={itemClass}>
+            <FolderOpen className="w-3.5 h-3.5" /> Open
+          </button>
+        )}
+        {downloadControl}
+        <button onClick={onShare} className={itemClass}>
+          <Share2 className="w-3.5 h-3.5" /> Share
+        </button>
+      </div>
+    );
+  }
 
   // A share root isn't ours to rename, move, trash or re-share.
   if (item.parentId === SHARED_ROOT_ID) {

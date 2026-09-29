@@ -36,7 +36,6 @@ import {
 } from "lucide-react";
 import type { SidebarTab } from "../../types/file";
 import type { UserInfo } from "../../atoms/auth";
-import { useToast } from "../../atoms/toast";
 import { UserMenu } from "./UserMenu";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };
@@ -133,7 +132,6 @@ export function Sidebar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { showToast } = useToast();
 
   useEffect(() => {
     if (!newMenuOpen) return;
@@ -147,11 +145,6 @@ export function Sidebar({
   }, [newMenuOpen]);
 
   const triggerFileUpload = () => {
-    if (isRootFolder) {
-      showToast("Open or create a folder to upload files — My Drive can't hold files directly", "error");
-      setNewMenuOpen(false);
-      return;
-    }
     fileInputRef.current?.click();
     setNewMenuOpen(false);
   };
@@ -235,7 +228,7 @@ export function Sidebar({
                   <FolderPlus className="w-4 h-4" /> Create Folder
                 </button>
               )}
-              {canCreateHere && (
+              {canCreateHere && !isRootFolder && (
                 <button
                   onClick={triggerFileUpload}
                   className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"

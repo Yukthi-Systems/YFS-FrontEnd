@@ -123,6 +123,7 @@ interface SharedSubtree {
   rootId: string;
   ownerUserId: string;
   ownerEmail?: string;
+  ownerName?: string;
   permissions: InternalSharePermissions;
 }
 
@@ -139,6 +140,7 @@ const sharedSubtreeContext = (files: FileItem[], folderId: string): SharedSubtre
             rootId: cur.id,
             ownerUserId: cur.sharedIn.ownerUserId,
             ownerEmail: cur.sharedIn.ownerEmail,
+            ownerName: cur.sharedIn.ownerName,
             permissions: cur.sharedIn.permissions,
           }
         : null;
@@ -364,10 +366,13 @@ const persist = (updated: FileItem[]) => {
 // Best-guess MIME type; we only track a coarse category.
 export const fileTypeGuess = (item: FileItem): string => (item.type === "other" ? "application/octet-stream" : item.type);
 
-// Stamped into folder_info/file_info; drives the "Created by" column.
+// Stamped into folder_info/file_info; drives the "Created by" column. user_name is a point-in-time
+// label so the column has something to show immediately, without waiting on resolveCreatedByNames'
+// lookup; user_id stays the source of truth and is what that lookup re-resolves the live name from.
 export const buildCreationInfo = (): ResourceInfo => ({
   creation_info: {
     user_id: authSnapshot.userId ?? undefined,
+    user_name: userName,
   },
 });
 
@@ -469,10 +474,14 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
       if (inTrash) item.isDeleted = true;
       if (shared) {
         item.origin = "shared";
-        item.owner = { name: shared.ownerEmail?.split("@")[0] || "Shared", email: shared.ownerEmail || "" };
+        item.owner = {
+          name: shared.ownerName || shared.ownerEmail?.split("@")[0] || "Shared",
+          email: shared.ownerEmail || "",
+        };
         item.sharedIn = {
           ownerUserId: shared.ownerUserId,
           ownerEmail: shared.ownerEmail,
+          ownerName: shared.ownerName,
           permissions: shared.permissions,
         };
       }
@@ -559,7 +568,10 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
       const owner = owners.get(s.user_id);
       if (owner) {
         item.owner = { name: owner.name, email: owner.email };
-        if (item.sharedIn) item.sharedIn.ownerEmail = owner.email;
+        if (item.sharedIn) {
+          item.sharedIn.ownerEmail = owner.email;
+          item.sharedIn.ownerName = owner.name;
+        }
       }
       return item;
     });
@@ -821,13 +833,18 @@ export const createFolder = (
   if (!safeName) return null;
 
   const creationInfo = buildCreationInfo();
+  // Creating inside someone else's shared folder doesn't make it yours — keep the share's owner
+  // showing here too, so the optimistic row doesn't flash "me" before the server confirms it.
+  const shared = parentId !== null ? sharedSubtreeContext(store.get(filesAtom), parentId) : null;
   const newFolder: FileItem = {
     id: "folder-" + Date.now() + "-" + randomSuffix(),
     name: safeName,
     isFolder: true,
     parentId,
     size: 0,
-    owner: { name: "me", email: ownerEmail },
+    owner: shared
+      ? { name: shared.ownerName || shared.ownerEmail?.split("@")[0] || "Shared", email: shared.ownerEmail || "" }
+      : { name: "me", email: ownerEmail },
     modifiedAt: nowIso(),
     createdAt: nowIso(),
     isDeleted: false,
@@ -835,7 +852,12 @@ export const createFolder = (
     resourceInfo: creationInfo,
     createdBy: userName,
     createdByEmail: ownerEmail,
+    // Stays "local" (not "shared") until the create syncs and swaps in the real item — origin
+    // gates whether other operations attempt an API call against this still-temporary id.
     origin: "local",
+    sharedIn: shared
+      ? { ownerUserId: shared.ownerUserId, ownerEmail: shared.ownerEmail, ownerName: shared.ownerName, permissions: shared.permissions }
+      : undefined,
   };
 
   store.set(filesAtom, (prev) => {
@@ -1015,13 +1037,18 @@ export const renameItem = async (id: string, newName: string): Promise<boolean> 
   const files = store.get(filesAtom);
   const target = files.find((f) => f.id === id);
   if (!target || target.isDeleted || itemBusyReason(target)) return false;
+
+  const shared = sharedWrite(id);
+  if (shared && !shared.perms.can_update) {
+    showToast("You don't have permission to rename items in this shared folder", "error");
+    return false;
+  }
+
   const oldName = target.name;
   persist(files.map((f) => (f.id === id ? { ...f, name: safeName, modifiedAt: nowIso() } : f)));
 
   const tk = authSnapshot.token;
   if (!tk) return true;
-  const shared = sharedWrite(id);
-  if (shared && !shared.perms.can_update) return true; // no edit permission — optimistic only
 
   let ok = true;
   // Edit replaces *_info wholesale, so carry the existing info through.
@@ -1068,6 +1095,12 @@ export const setItemDescription = (id: string, description: string) => {
   const target = files.find((f) => f.id === id);
   if (!target || isItemLocked(target)) return;
 
+  const shared = sharedWrite(id);
+  if (shared && !shared.perms.can_update) {
+    showToast("You don't have permission to edit items in this shared folder", "error");
+    return;
+  }
+
   const trimmed = description.trim();
   const info = { ...((target.resourceInfo ?? {}) as ResourceInfo) };
   if (trimmed) info.description = trimmed;
@@ -1077,8 +1110,6 @@ export const setItemDescription = (id: string, description: string) => {
 
   const tk = authSnapshot.token;
   if (!tk) return;
-  const shared = sharedWrite(id);
-  if (shared && !shared.perms.can_update) return; // no edit permission — optimistic only
 
   if (target.isFolder && (target.origin === "server" || target.origin === "shared")) {
     runMutation(
@@ -1126,7 +1157,10 @@ const patchFolderUi = (id: string, patch: Partial<ResourceUiInfo>) => {
   if (!target?.isFolder || !authSnapshot.token) return;
   if (target.origin !== "server" && target.origin !== "shared") return;
   const shared = sharedWrite(id);
-  if (shared && !shared.perms.can_update) return;
+  if (shared && !shared.perms.can_update) {
+    showToast("You don't have permission to change the appearance of items in this shared folder", "error");
+    return;
+  }
   const folderInfo = mergeUi(target, patch);
   runMutation(
     () =>
@@ -1167,7 +1201,7 @@ export const setFolderStyle = (id: string, style: { color?: string | null; icon?
 // Trash is a folder: trashing and restoring are moves.
 export const trashItems = async (ids: string[]): Promise<MoveResult> => {
   const trashId = store.get(trashFolderIdAtom);
-  if (!trashId) return { moved: 0, blocked: ids.length, unsupported: 0, failed: 0 };
+  if (!trashId) return { moved: 0, blocked: ids.length, unsupported: 0, failed: 0, noPermission: 0 };
   return moveItems(ids, trashId);
 };
 
@@ -1298,6 +1332,10 @@ export interface MoveResult {
   blocked: number;
   unsupported: number;
   failed: number;
+  // Skipped because the caller lacks permission for this move within a shared folder (or the
+  // move would cross from one share into another) — counted separately from `blocked` so the
+  // UI can tell the user why, instead of the generic locked/busy/loop reason.
+  noPermission: number;
 }
 
 // Optimistic, but resolves only after the server answers; items it rejects are moved back.
@@ -1305,6 +1343,7 @@ export const moveItems = async (ids: string[], newParentId: string | null): Prom
   let moved = 0;
   let blocked = 0;
   let unsupported = 0;
+  let noPermission = 0;
   const folderMoves: { id: string; sharedFolderId: string | null }[] = [];
   const fileMoves: {
     id: string;
@@ -1319,6 +1358,9 @@ export const moveItems = async (ids: string[], newParentId: string | null): Prom
   }[] = [];
   const files = store.get(filesAtom);
   const dstShared = newParentId ? sharedSubtreeContext(files, newParentId) : null;
+  // Covers dropping/moving an own item straight into someone else's shared folder — the per-item
+  // check below only looks at the *source* share, which is null for an own item.
+  const dstNoCreate = !!dstShared && !dstShared.permissions.can_create;
   const next = files.map((f) => f);
   const trashId = store.get(trashFolderIdAtom);
   const intoTrash =
@@ -1352,27 +1394,37 @@ export const moveItems = async (ids: string[], newParentId: string | null): Prom
       continue;
     }
 
+    if (dstNoCreate) {
+      noPermission++;
+      continue;
+    }
+
     if (item.origin === "server" || item.origin === "shared") {
       const srcShared = sharedSubtreeContext(files, id);
       const isCrossShare = srcShared?.rootId !== dstShared?.rootId;
       const hasPerms = srcShared ? srcShared.permissions.can_update && srcShared.permissions.can_create : true;
 
-      if (!isCrossShare && hasPerms) {
-        if (item.isFolder) {
-          folderMoves.push({ id, sharedFolderId: srcShared?.rootId ?? null });
-        } else if (item.fileId && item.parentId) {
-          fileMoves.push({
-            id,
-            fileId: item.fileId,
-            sharedFolderId: srcShared?.rootId ?? null,
-            sourceFolderId: item.parentId,
-            fileName: item.name,
-            fileInfo: item.resourceInfo ?? {},
-            fileType: fileTypeGuess(item),
-            fileVersion: item.version ?? 1,
-            expectedFileSize: item.size,
-          });
-        }
+      // A share only grants moves within itself, and only with edit+create rights. Outside that,
+      // there's nothing to sync — don't re-parent it locally and report it as moved anyway.
+      if (srcShared && (isCrossShare || !hasPerms)) {
+        noPermission++;
+        continue;
+      }
+
+      if (item.isFolder) {
+        folderMoves.push({ id, sharedFolderId: srcShared?.rootId ?? null });
+      } else if (item.fileId && item.parentId) {
+        fileMoves.push({
+          id,
+          fileId: item.fileId,
+          sharedFolderId: srcShared?.rootId ?? null,
+          sourceFolderId: item.parentId,
+          fileName: item.name,
+          fileInfo: item.resourceInfo ?? {},
+          fileType: fileTypeGuess(item),
+          fileVersion: item.version ?? 1,
+          expectedFileSize: item.size,
+        });
       }
     }
 
@@ -1436,7 +1488,7 @@ export const moveItems = async (ids: string[], newParentId: string | null): Prom
   }
 
   await Promise.all(calls);
-  return { moved: moved - failed, blocked, unsupported, failed };
+  return { moved: moved - failed, blocked, unsupported, failed, noPermission };
 };
 
 export const updateFileContent = async (id: string, blob: Blob): Promise<void> => {
