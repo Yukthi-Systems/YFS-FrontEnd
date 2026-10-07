@@ -174,6 +174,16 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     const tab = nav.activeSidebarTab;
+    // Covers a stale URL/history entry from before the org turned sharing off, or it being
+    // turned off mid-session — the sidebar already can't navigate here, so this tab shouldn't
+    // either.
+    if (
+      user?.is_sharing_enabled === false &&
+      (tab === "shared" || tab === "shared-out" || tab === "shared-links")
+    ) {
+      nav.switchTab("drive");
+      return;
+    }
     if (tab === "shared" && !nav.currentFolderId) loadSharedFolders();
     else if (tab === "shared-out") loadSharedOut({ force: true });
     else if (tab === "shared-links") loadSharedLinks({ force: true });
@@ -193,6 +203,7 @@ function App() {
     loadSharedFolders,
     loadSharedOut,
     loadSharedLinks,
+    user?.is_sharing_enabled,
   ]);
 
   const handleRefresh = async () => {

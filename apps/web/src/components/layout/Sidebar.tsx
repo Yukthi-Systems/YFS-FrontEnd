@@ -129,6 +129,8 @@ export function Sidebar({
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const shareTabActive = activeTab === "shared" || activeTab === "shared-out" || activeTab === "shared-links";
   const [sharesOpen, setSharesOpen] = useState(shareTabActive);
+  const sharingDisabled = user?.is_sharing_enabled === false;
+  const collapsedGroups = sharingDisabled ? [NAV_ITEMS_TOP, NAV_ITEMS_BOTTOM] : [NAV_ITEMS_TOP, SHARE_ITEMS, NAV_ITEMS_BOTTOM];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -281,7 +283,7 @@ export function Sidebar({
         <nav aria-label="Sidebar">
           <ul className="flex flex-col gap-1 p-0 m-0 list-none">
             {collapsed ? (
-              [NAV_ITEMS_TOP, SHARE_ITEMS, NAV_ITEMS_BOTTOM].map((group, groupIndex) => (
+              collapsedGroups.map((group, groupIndex) => (
                 <li key={groupIndex} className={groupIndex > 0 ? "mt-2 pt-2 border-t border-border-main" : undefined}>
                   <ul className="flex flex-col items-center gap-1 p-0 m-0 list-none">
                     {group.map(({ tab, label, icon: Icon }) => (
@@ -311,38 +313,42 @@ export function Sidebar({
                   <NavRow key={tab} label={label} Icon={Icon} active={activeTab === tab} onClick={() => selectTab(tab)} />
                 ))}
 
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => setSharesOpen((v) => !v)}
-                    aria-expanded={sharesOpen}
-                    className={`w-full flex items-center justify-between rounded-lg font-medium text-[0.9rem] text-left cursor-pointer transition px-3 py-2 border-none bg-transparent hover:bg-code-bg hover:text-text-heading ${focusRing} ${
-                      shareTabActive ? "text-accent font-semibold" : "text-text-main"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Share2 className="w-4 h-4" />
-                      <span>Shares</span>
-                    </span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${sharesOpen ? "rotate-180" : ""}`} />
-                  </button>
-                </li>
-                {sharesOpen &&
-                  SHARE_ITEMS.map(({ tab, label, icon: Icon }) => (
-                    <li key={tab}>
+                {!sharingDisabled && (
+                  <>
+                    <li>
                       <button
                         type="button"
-                        onClick={() => selectTab(tab)}
-                        aria-current={activeTab === tab ? "page" : undefined}
-                        className={`w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-lg text-[0.85rem] text-left cursor-pointer transition border-none bg-transparent hover:bg-code-bg hover:text-text-heading ${focusRing} ${
-                          activeTab === tab ? "bg-accent-bg text-accent font-semibold" : "text-text-main font-medium"
+                        onClick={() => setSharesOpen((v) => !v)}
+                        aria-expanded={sharesOpen}
+                        className={`w-full flex items-center justify-between rounded-lg font-medium text-[0.9rem] text-left cursor-pointer transition px-3 py-2 border-none bg-transparent hover:bg-code-bg hover:text-text-heading ${focusRing} ${
+                          shareTabActive ? "text-accent font-semibold" : "text-text-main"
                         }`}
                       >
-                        <Icon className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{label}</span>
+                        <span className="flex items-center gap-3">
+                          <Share2 className="w-4 h-4" />
+                          <span>Shares</span>
+                        </span>
+                        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${sharesOpen ? "rotate-180" : ""}`} />
                       </button>
                     </li>
-                  ))}
+                    {sharesOpen &&
+                      SHARE_ITEMS.map(({ tab, label, icon: Icon }) => (
+                        <li key={tab}>
+                          <button
+                            type="button"
+                            onClick={() => selectTab(tab)}
+                            aria-current={activeTab === tab ? "page" : undefined}
+                            className={`w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-lg text-[0.85rem] text-left cursor-pointer transition border-none bg-transparent hover:bg-code-bg hover:text-text-heading ${focusRing} ${
+                              activeTab === tab ? "bg-accent-bg text-accent font-semibold" : "text-text-main font-medium"
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{label}</span>
+                          </button>
+                        </li>
+                      ))}
+                  </>
+                )}
 
                 {NAV_ITEMS_BOTTOM.map(({ tab, label, icon: Icon }) => (
                   <NavRow key={tab} label={label} Icon={Icon} active={activeTab === tab} onClick={() => selectTab(tab)} />
