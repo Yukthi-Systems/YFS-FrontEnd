@@ -38,6 +38,7 @@ import { getFileIcon, getItemIcon } from "./FileIcon";
 import { MediaPlayer } from "../viewers/MediaPlayer";
 import { ARCHIVE_FORMATS, canArchiveOnServer, useStreamUrl } from "../../hooks/useDownload";
 import { useFileInfo } from "../../hooks/useFileInfo";
+import { useAuth } from "../../hooks/useAuth";
 
 const PLACEHOLDER_SVG =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='1'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><polyline points='21 15 16 10 5 21'/></svg>";
@@ -287,12 +288,15 @@ export function DetailsDrawer({
   const locked = isItemLocked(item, fileInfo);
   const busy = itemBusyReason(item, fileInfo);
   const busyTitle = busy ? `File is ${busy}` : undefined;
+  const { user } = useAuth();
+  const versioningDisabled = user?.is_file_versioning_enabled === false;
+  const sharingDisabled = user?.is_sharing_enabled === false;
 
   const allowDownload = !shared || effectivePermissions.can_download;
   const allowEdit = (!shared || effectivePermissions.can_update) && !busy;
   const allowMove = !shared || (effectivePermissions.can_update && effectivePermissions.can_create);
   const allowDelete = !shared && !item.isDeleted;
-  const allowShare = !shared;
+  const allowShare = !shared && !sharingDisabled;
 
   const [copiedId, setCopiedId] = useState(false);
   const [formatsOpen, setFormatsOpen] = useState(false);
@@ -539,7 +543,7 @@ export function DetailsDrawer({
               </button>
             </div>
           )}
-          {!item.isFolder && (
+          {!item.isFolder && !versioningDisabled && (
             <button
               onClick={onVersionHistory}
               disabled={locked}

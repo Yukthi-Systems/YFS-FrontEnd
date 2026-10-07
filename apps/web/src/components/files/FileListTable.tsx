@@ -238,7 +238,7 @@ export function FileListTable({
                 </td>
                 <td className="px-3 py-2 border-b border-border-main text-right relative whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
-                    {onShare && !item.isDeleted && item.origin !== "shared" && !item.sharedIn && (
+                    {onShare && !item.isDeleted && item.origin !== "shared" && !item.sharedIn && user?.is_sharing_enabled !== false && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
