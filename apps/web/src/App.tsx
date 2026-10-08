@@ -40,7 +40,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
-import { useMyQuota } from "./hooks/useUserQuota";
+import { useMyQuota, useRefreshUserQuota } from "./hooks/useUserQuota";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -407,11 +407,13 @@ function App() {
   });
 
   // Falls back to the SSO login snapshot until GET /user/quota lands.
-  const { quota, refetchQuota, refetching: refetchingQuota } = useMyQuota();
+  const { quota } = useMyQuota();
   const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
-  const handleRefetchQuota = () => {
-    refetchQuota().catch(() => {});
-  };
+  // The sidebar's refresh icon re-scans every file the user owns (same mutation as the Profile
+  // modal's "Recalculate"), so it's behind a confirm — a plain refetch of GET /user/quota just
+  // re-reads the same stored number and looked like it did nothing.
+  const { refreshQuota, refreshing: refreshingQuota } = useRefreshUserQuota();
+  const [confirmRecalcQuota, setConfirmRecalcQuota] = useState(false);
 
   if (authLoading) {
     return (
@@ -477,8 +479,8 @@ function App() {
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
         storageFileCount={quota?.used_file_count}
-        onRefreshQuota={handleRefetchQuota}
-        refreshingQuota={refetchingQuota}
+        onRefreshQuota={() => setConfirmRecalcQuota(true)}
+        refreshingQuota={refreshingQuota}
         user={user}
         onRequestLogout={fileActions.requestLogout}
         mobileOpen={mobileNavOpen}
@@ -799,6 +801,20 @@ function App() {
           destructive={fileActions.pendingConfirm.destructive}
           onCancel={fileActions.closeConfirm}
           onConfirm={fileActions.pendingConfirm.onConfirm}
+        />
+      )}
+
+      {confirmRecalcQuota && (
+        <ConfirmModal
+          title="Recalculate storage usage"
+          description="This re-scans every file you own, so it may take a moment. Recalculate now?"
+          confirmLabel="Recalculate"
+          destructive={false}
+          onCancel={() => setConfirmRecalcQuota(false)}
+          onConfirm={() => {
+            setConfirmRecalcQuota(false);
+            refreshQuota().catch(() => {});
+          }}
         />
       )}
 

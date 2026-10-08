@@ -118,11 +118,17 @@ export function useDownload() {
       item.fileId &&
       (item.origin === "server" || item.origin === "shared")
     ) {
+      // Open the blank tab synchronously, inside the click, then redirect it once the URL is
+      // known — Safari (unlike Chrome) revokes "user activation" across an await, so calling
+      // window.open() after the network calls below gets silently blocked there.
+      const inlineTab = INLINE_FORCED_TYPES.has(item.type) ? window.open("", "_blank") : null;
       const latestVersion = await resolveLatestVersion(item);
       const session = await requestSession(buildRequest(item, latestVersion));
-      if (INLINE_FORCED_TYPES.has(item.type)) {
-        window.open(session.url, "_blank");
+      if (inlineTab) {
+        inlineTab.location.href = session.url;
       } else {
+        // Either not an inline-forced type, or the popup was blocked outright (e.g. the user has
+        // popups disabled) — same-tab navigation isn't subject to the popup blocker either way.
         window.location.href = session.url;
       }
       return true;
