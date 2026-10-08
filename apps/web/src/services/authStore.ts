@@ -43,6 +43,21 @@ import { showToast } from "../atoms/toast";
 
 const store = getDefaultStore();
 
+// Turns a raw SSO/session error (often a backend internal error string, e.g. a Rust "Reqwest:
+// error decoding response body for url (https://...)" message) into something a signed-out user
+// can actually act on. The raw error is still logged to the console by each caller — this is only
+// what gets shown on screen.
+const friendlySsoError = (err: unknown): string => {
+  if (err instanceof HttpError) {
+    if (err.status === 401 || err.status === 403) return "Your sign-in could not be verified. Please try again.";
+    if (err.status === 404) return "We couldn't find your account details. Please contact your administrator.";
+    if (err.status >= 500) return "The sign-in service is temporarily unavailable. Please try again in a few minutes.";
+    return "Something went wrong signing you in. Please try again.";
+  }
+  if (err instanceof TypeError) return "Couldn't reach the sign-in service. Check your connection and try again.";
+  return "Something went wrong signing you in. Please try again.";
+};
+
 // Stops a failing auto-SSO from looping across redirects; cleared on successful sign-in or explicit logout.
 export const AUTO_SSO_ATTEMPTED_KEY = "yfs_sso_auto_attempted";
 
@@ -188,7 +203,7 @@ export const bootAuth = async (signal: { cancelled: boolean }) => {
         console.warn("SSO redirect-return login failed:", err);
         if (!signal.cancelled) {
           clearSession();
-          store.set(authErrorMsgAtom, err instanceof Error ? err.message : "SSO sign-in could not be completed");
+          store.set(authErrorMsgAtom, friendlySsoError(err));
         }
       }
     } else if (hasCachedSession) {
@@ -224,8 +239,7 @@ export const loginWithSso = async () => {
     }
   } catch (err: unknown) {
     console.error("SSO authentication failed:", err);
-    const message = err instanceof Error ? err.message : "SSO Authentication failed";
-    store.set(authErrorMsgAtom, message);
+    store.set(authErrorMsgAtom, friendlySsoError(err));
     throw err;
   } finally {
     store.set(isAuthLoadingAtom, false);

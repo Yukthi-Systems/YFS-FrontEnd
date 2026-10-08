@@ -122,7 +122,10 @@ export function FileListTable({
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full border-collapse text-left">
+      {/* `border-separate` (not `collapse`) — WebKit/Safari won't stick a <th> when the table
+          collapses borders, so the header row silently stops sticking while scrolling. Every
+          cell already draws its own bottom border, so this doesn't change how it looks. */}
+      <table className="w-full border-separate border-spacing-0 text-left">
         <thead>
           <tr onMouseDown={(e) => e.stopPropagation()}>
             <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
