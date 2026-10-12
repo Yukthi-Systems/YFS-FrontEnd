@@ -136,7 +136,8 @@ export const useUploadQueue = () => {
     return resolved;
   };
 
-  const runUpload = async (items: FileWithRelativePath[], parentId: string | null, taskIds: string[]) => {
+  // Resolves with the server file ids of the uploads that finished.
+  const runUpload = async (items: FileWithRelativePath[], parentId: string | null, taskIds: string[]): Promise<string[]> => {
     // 1. Resolve every file's target folder, creating folders as needed.
     const folderCache = new Map<string, string | null>();
     const planned: (PlannedUpload | null)[] = [];
@@ -160,8 +161,9 @@ export const useUploadQueue = () => {
     const live = planned
       .map((p, i) => (p ? { plan: p, taskId: taskIds[i] } : null))
       .filter((x): x is { plan: PlannedUpload; taskId: string } => x !== null);
-    if (live.length === 0) return;
+    if (live.length === 0) return [];
 
+    const uploadedFileIds: string[] = [];
     // 2. One upload session per file, with capped concurrency.
     await runPool(live, UPLOAD_CONCURRENCY, async ({ plan, taskId }) => {
       if (cancelledPending.delete(taskId)) return;
@@ -218,6 +220,7 @@ export const useUploadQueue = () => {
           fileId: session.file_id,
           version: session.file_version,
         });
+        uploadedFileIds.push(session.file_id);
         updateTask(taskId, { status: "done", progress: 100 });
         setTimeout(() => dismissTask(taskId), 4000);
       } catch (err) {
@@ -242,12 +245,13 @@ export const useUploadQueue = () => {
     const relist = () => touched.forEach((folderId) => loadFolder(toParentId(folderId), { force: true }));
     relist();
     setTimeout(relist, 2500);
+    return uploadedFileIds;
   };
 
   const hasSubfolder = (it: FileWithRelativePath) => it.relativePath.split("/").filter(Boolean).length > 1;
 
-  const enqueueFiles = (items: FileWithRelativePath[], parentId: string | null) => {
-    if (items.length === 0) return;
+  const enqueueFiles = async (items: FileWithRelativePath[], parentId: string | null): Promise<string[]> => {
+    if (items.length === 0) return [];
 
     // Files can't live at the My Drive root; the backend requires a folder_id.
     let accepted = items;
@@ -271,7 +275,7 @@ export const useUploadQueue = () => {
         ]);
       }
     }
-    if (accepted.length === 0) return;
+    if (accepted.length === 0) return [];
 
     const taskIds = accepted.map(() => {
       taskCounter += 1;
@@ -287,7 +291,7 @@ export const useUploadQueue = () => {
       })),
     ]);
 
-    runUpload(accepted, parentId, taskIds).catch((err) => {
+    return runUpload(accepted, parentId, taskIds).catch((err) => {
       console.error("Upload run failed", err);
       const stuck = new Set(taskIds);
       setTasks((prev) =>
@@ -297,6 +301,7 @@ export const useUploadQueue = () => {
             : t
         )
       );
+      return [];
     });
   };
 

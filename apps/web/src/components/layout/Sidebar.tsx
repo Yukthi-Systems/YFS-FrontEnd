@@ -37,6 +37,8 @@ import {
 import type { SidebarTab } from "../../types/file";
 import type { UserInfo } from "../../atoms/auth";
 import { UserMenu } from "./UserMenu";
+import { OfficeFileMenuItems } from "../files/OfficeFileMenuItems";
+import type { OfficeKind } from "../../utils/officeTemplates";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };
 
@@ -89,6 +91,7 @@ export function Sidebar({
   activeTab,
   onTabChange,
   onCreateFolder,
+  onCreateOfficeFile,
   onUploadFiles,
   canCreateHere = true,
   isRootFolder = false,
@@ -108,6 +111,8 @@ export function Sidebar({
   activeTab: SidebarTab;
   onTabChange: (tab: SidebarTab) => void;
   onCreateFolder: () => void;
+  // Omitted when Collabora isn't configured.
+  onCreateOfficeFile?: (kind: OfficeKind) => void;
   onUploadFiles: (files: FileList) => void;
   // False inside a "Shared with me" folder the caller can't create in.
   canCreateHere?: boolean;
@@ -229,6 +234,15 @@ export function Sidebar({
                 >
                   <FolderPlus className="w-4 h-4" /> Create Folder
                 </button>
+              )}
+              {canCreateHere && !isRootFolder && onCreateOfficeFile && (
+                <OfficeFileMenuItems
+                  className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
+                  onSelect={(kind) => {
+                    onCreateOfficeFile(kind);
+                    setNewMenuOpen(false);
+                  }}
+                />
               )}
               {canCreateHere && !isRootFolder && (
                 <button

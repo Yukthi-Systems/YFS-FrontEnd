@@ -24,6 +24,8 @@ import { busyMessage, canDownloadItem, itemBusyReason, shortName } from "../util
 import { canArchiveOnServer, useDownload, useFolderArchive } from "./useDownload";
 import type { ArchiveExportType } from "@yfs/service";
 import type { MoveResult } from "../services/fileSystemStore";
+import { createBlankOfficeFile, withOfficeExtension, OFFICE_KINDS, type OfficeKind } from "../utils/officeTemplates";
+import { sanitizeName } from "../utils/fileType";
 
 interface PendingConfirm {
   title: string;
@@ -49,6 +51,7 @@ export function useFileActions({
   closeContextMenu,
   clearSelection,
   setCheckedItemIds,
+  openFile,
 }: {
   files: FileItem[];
   currentFolderId: string | null;
@@ -61,15 +64,18 @@ export function useFileActions({
     deleteFileVersion: (item: FileItem, version: number) => Promise<boolean>;
     moveItems: (ids: string[], newParentId: string | null) => Promise<MoveResult>;
     updateFileContent: (id: string, blob: Blob) => Promise<void>;
+    waitForServerFile: (parentId: string | null, fileId: string) => Promise<FileItem | null>;
   };
-  enqueueFiles: (items: FileWithRelativePath[], parentId: string | null) => void;
+  enqueueFiles: (items: FileWithRelativePath[], parentId: string | null) => Promise<string[]>;
   showToast: (message: string, variant?: ToastVariant) => void;
   logout: () => Promise<void>;
   closeContextMenu: () => void;
   clearSelection: () => void;
   setCheckedItemIds: React.Dispatch<React.SetStateAction<string[]>>;
+  openFile: (item: FileItem) => void;
 }) {
   const [activeModal, setActiveModal] = useState<"createFolder" | null>(null);
+  const [createFileKind, setCreateFileKind] = useState<OfficeKind | null>(null);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveCopyState, setMoveCopyState] = useState<MoveCopyState | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -87,6 +93,45 @@ export function useFileActions({
       return;
     }
     if (await created.synced) showToast(`Created folder "${shortName(created.folder.name)}"`, "success");
+  };
+
+  const openCreateFileModal = (kind: OfficeKind) => setCreateFileKind(kind);
+  const closeCreateFileModal = () => setCreateFileKind(null);
+
+  // Uploads a blank file, then opens it in Collabora once the server lists it.
+  const handleCreateFileConfirm = async (rawName: string) => {
+    const kind = createFileKind;
+    setCreateFileKind(null);
+    if (!kind) return;
+    const parentId = currentFolderId;
+    if (parentId === null) {
+      showToast("Open or create a folder first — My Drive can't hold files directly", "error");
+      return;
+    }
+    const name = sanitizeName(withOfficeExtension(rawName, kind));
+    if (name === `.${OFFICE_KINDS[kind].extension}`) {
+      showToast("File name can't be empty", "error");
+      return;
+    }
+    if (files.some((f) => !f.isFolder && f.parentId === parentId && f.name === name)) {
+      showToast(`"${shortName(name)}" already exists in this folder`, "error");
+      return;
+    }
+
+    let file: File;
+    try {
+      file = await createBlankOfficeFile(kind, name);
+    } catch {
+      showToast(`Couldn't create "${shortName(name)}"`, "error");
+      return;
+    }
+    const [fileId] = await enqueueFiles([{ file, relativePath: name }], parentId);
+    // A failed upload already shows its error in the upload tray.
+    if (!fileId) return;
+
+    const created = await fileSystem.waitForServerFile(parentId, fileId);
+    if (created) openFile(created);
+    else showToast(`Created "${shortName(name)}" — open it once it finishes processing`, "info");
   };
 
   const handleUploadFiles = (fileList: FileList, parentId: string | null) => {
@@ -323,6 +368,10 @@ export function useFileActions({
     openCreateFolderModal,
     closeCreateFolderModal,
     handleCreateFolderConfirm,
+    createFileKind,
+    openCreateFileModal,
+    closeCreateFileModal,
+    handleCreateFileConfirm,
     handleUploadFiles,
     renameTarget,
     openRenameModal,

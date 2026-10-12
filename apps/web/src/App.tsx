@@ -58,6 +58,8 @@ import { EmptyState } from "./components/common/EmptyState";
 import { ListSkeleton, GridSkeleton, TilesSkeleton } from "./components/common/Skeletons";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { CreateFolderModal } from "./components/modals/CreateFolderModal";
+import { CreateOfficeFileModal } from "./components/modals/CreateOfficeFileModal";
+import { COLLABORA_BASE_URL } from "./services/collaboraConstants";
 import { RenameModal } from "./components/modals/RenameModal";
 import { ConfirmModal } from "./components/modals/ConfirmModal";
 import { MoveCopyModal } from "./components/modals/MoveCopyModal";
@@ -102,6 +104,7 @@ function App() {
     deleteFileVersion,
     moveItems,
     updateFileContent,
+    waitForServerFile,
   } = useFileSystem();
   const { showToast } = useToast();
   const { enqueueFiles } = useUploadQueue();
@@ -322,6 +325,7 @@ function App() {
       deleteFileVersion,
       moveItems,
       updateFileContent,
+      waitForServerFile,
     },
     enqueueFiles,
     showToast,
@@ -329,7 +333,10 @@ function App() {
     closeContextMenu: menus.closeContextMenu,
     clearSelection: selection.clearSelection,
     setCheckedItemIds: selection.setCheckedItemIds,
+    openFile: setViewerItem,
   });
+  // New office files are only useful if they can be opened in Collabora.
+  const onCreateOfficeFile = COLLABORA_BASE_URL ? fileActions.openCreateFileModal : undefined;
 
   const versionHistory = useVersionHistory({ files, showToast, closeContextMenu: menus.closeContextMenu });
   const shareSettings = useShareSettings({ closeContextMenu: menus.closeContextMenu });
@@ -382,6 +389,7 @@ function App() {
       isAuthenticated &&
       !viewerItem &&
       !fileActions.activeModal &&
+      !fileActions.createFileKind &&
       !fileActions.renameTarget &&
       !fileActions.moveCopyState &&
       !fileActions.pendingConfirm &&
@@ -472,6 +480,7 @@ function App() {
           selection.clearSelection();
         }}
         onCreateFolder={fileActions.openCreateFolderModal}
+        onCreateOfficeFile={onCreateOfficeFile}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
         canCreateHere={canCreateHere}
         isRootFolder={nav.currentFolderId === null}
@@ -701,6 +710,13 @@ function App() {
             fileActions.openCreateFolderModal();
             menus.setCanvasContextMenu(null);
           }}
+          onCreateOfficeFile={
+            onCreateOfficeFile &&
+            ((kind) => {
+              onCreateOfficeFile(kind);
+              menus.setCanvasContextMenu(null);
+            })
+          }
           onUploadFile={() => {
             canvasFileInputRef.current?.click();
             menus.setCanvasContextMenu(null);
@@ -742,6 +758,14 @@ function App() {
 
       {fileActions.activeModal === "createFolder" && (
         <CreateFolderModal onCancel={fileActions.closeCreateFolderModal} onCreate={fileActions.handleCreateFolderConfirm} />
+      )}
+
+      {fileActions.createFileKind && (
+        <CreateOfficeFileModal
+          kind={fileActions.createFileKind}
+          onCancel={fileActions.closeCreateFileModal}
+          onCreate={fileActions.handleCreateFileConfirm}
+        />
       )}
 
       {fileActions.renameTarget && (

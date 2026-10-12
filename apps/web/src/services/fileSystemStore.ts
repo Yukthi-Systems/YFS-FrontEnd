@@ -699,6 +699,24 @@ export const updateSharedLink = async (shareId: string, input: UpdateExternalSha
   );
 };
 
+// A fresh upload is only listed once the storage server's callback lands, so re-list until it shows up.
+export const waitForServerFile = async (
+  parentId: string | null,
+  fileId: string,
+  attempts = 8,
+  delayMs = 1500
+): Promise<FileItem | null> => {
+  for (let i = 0; i < attempts; i++) {
+    await loadFolder(parentId, { force: true });
+    const item = store
+      .get(filesAtom)
+      .find((f) => !f.isFolder && f.fileId === fileId && (f.origin === "server" || f.origin === "shared"));
+    if (item) return item;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return null;
+};
+
 export const getSharedFolderId = (folderId: string | null): string | null =>
   folderId !== null ? (sharedSubtreeContext(store.get(filesAtom), folderId)?.rootId ?? null) : null;
 

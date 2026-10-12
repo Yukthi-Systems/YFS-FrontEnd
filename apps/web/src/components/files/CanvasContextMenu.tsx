@@ -18,6 +18,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FolderPlus, FileUp, FolderUp, RefreshCw } from "lucide-react";
+import { OfficeFileMenuItems } from "./OfficeFileMenuItems";
+import type { OfficeKind } from "../../utils/officeTemplates";
 
 export function CanvasContextMenu({
   x,
@@ -25,6 +27,7 @@ export function CanvasContextMenu({
   canCreateHere = true,
   canUploadFiles = true,
   onCreateFolder,
+  onCreateOfficeFile,
   onUploadFile,
   onUploadFolder,
   onRefresh,
@@ -36,6 +39,8 @@ export function CanvasContextMenu({
   // False at the My Drive root, which can't hold files directly.
   canUploadFiles?: boolean;
   onCreateFolder: () => void;
+  // Omitted when Collabora isn't configured.
+  onCreateOfficeFile?: (kind: OfficeKind) => void;
   onUploadFile: () => void;
   onUploadFolder: () => void;
   onRefresh: () => void;
@@ -91,6 +96,9 @@ export function CanvasContextMenu({
           <button onClick={onCreateFolder} className={itemClass}>
             <FolderPlus className="w-4 h-4" /> Create Folder
           </button>
+          {canUploadFiles && onCreateOfficeFile && (
+            <OfficeFileMenuItems className={itemClass} onSelect={onCreateOfficeFile} />
+          )}
           {canUploadFiles && (
             <button onClick={onUploadFile} className={itemClass}>
               <FileUp className="w-4 h-4" /> Upload File
