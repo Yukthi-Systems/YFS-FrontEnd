@@ -122,6 +122,8 @@ export const useUploadQueue = () => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const clearFinished = () => setTasks((prev) => prev.filter((t) => t.status !== "done" && t.status !== "error"));
+
   // Cached per path so sibling files share the work.
   const resolvePathFolderId = async (
     folderSegments: string[],
@@ -305,5 +307,5 @@ export const useUploadQueue = () => {
     });
   };
 
-  return { tasks, enqueueFiles, dismissTask, pauseTask, resumeTask, cancelTask };
+  return { tasks, enqueueFiles, dismissTask, clearFinished, pauseTask, resumeTask, cancelTask };
 };

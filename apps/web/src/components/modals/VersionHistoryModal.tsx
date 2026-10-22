@@ -109,21 +109,15 @@ export function VersionHistoryModal({
                   >
                     <Download className="w-3.5 h-3.5" />
                   </button>
-                  {canDelete &&
-                    (isFirstVersion ? (
-                      // Keeps the download icon aligned with the rows above.
-                      <span aria-hidden className="p-1.5">
-                        <span className="block w-3.5 h-3.5" />
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => onDeleteVersion(v)}
-                        className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 cursor-pointer transition"
-                        title="Delete this version"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    ))}
+                  {canDelete && !isFirstVersion && (
+                    <button
+                      onClick={() => onDeleteVersion(v)}
+                      className="border-none bg-transparent p-1.5 rounded-full text-red-500 hover:bg-red-500/10 cursor-pointer transition"
+                      title="Delete this version"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

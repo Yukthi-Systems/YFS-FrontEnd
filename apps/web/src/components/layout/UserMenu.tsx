@@ -22,6 +22,7 @@ import {
   Monitor,
   Moon,
   Palette,
+  RefreshCw,
   RotateCcw,
   Sun,
   UserRound,
@@ -30,6 +31,7 @@ import { capitalize } from "@yfs/utils";
 import type { UserInfo } from "../../atoms/auth";
 import { useTheme, useAccentColor } from "../../atoms/theme";
 import { useUserSettings, AVATAR_COLORS } from "../../hooks/useUserSettings";
+import { useRefreshSession } from "../../hooks/useAuth";
 import type { Theme } from "../../utils/theme";
 import { Avatar } from "../common/Avatar";
 import { ProfileModal } from "../modals/ProfileModal";
@@ -60,6 +62,7 @@ export function UserMenu({
   const { theme, setTheme } = useTheme();
   const { accentColor, setAccentColor } = useAccentColor();
   const { publicProfile } = useUserSettings();
+  const { refreshSession, refreshingSession } = useRefreshSession();
   const [open, setOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
@@ -131,6 +134,16 @@ export function UserMenu({
           >
             <UserRound className="w-4 h-4" />
             <span className="flex-1">Profile</span>
+          </button>
+
+          <button
+            onClick={() => refreshSession()}
+            disabled={refreshingSession}
+            title="Reload your account details, such as storage quota, from the admin panel"
+            className={`${rowClass} disabled:opacity-60 disabled:cursor-not-allowed`}
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshingSession ? "animate-spin" : ""}`} />
+            <span className="flex-1">Refresh session</span>
           </button>
 
           <button onClick={() => setThemeOpen((v) => !v)} className={rowClass}>

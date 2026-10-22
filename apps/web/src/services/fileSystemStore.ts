@@ -338,6 +338,23 @@ const mergeServerListing = (
   });
 };
 
+// Rows listed inside a share belong to its owner; carry the share's context onto them.
+const applySharedContext = (item: FileItem, shared: SharedSubtree | null): FileItem => {
+  if (!shared) return item;
+  item.origin = "shared";
+  item.owner = {
+    name: shared.ownerName || shared.ownerEmail?.split("@")[0] || "Shared",
+    email: shared.ownerEmail || "",
+  };
+  item.sharedIn = {
+    ownerUserId: shared.ownerUserId,
+    ownerEmail: shared.ownerEmail,
+    ownerName: shared.ownerName,
+    permissions: shared.permissions,
+  };
+  return item;
+};
+
 export const pageKeyFor = (parentId: string | null, shared?: boolean) => (shared ? SHARED_ROOT_ID : (parentId ?? ROOT_KEY));
 
 const setPageLoading = (key: string, loading: boolean, hasMore?: boolean, loaded?: boolean) =>
@@ -472,20 +489,7 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
     const mapped = resources.map((r) => {
       const item = mapResource(r, ownerEmail);
       if (inTrash) item.isDeleted = true;
-      if (shared) {
-        item.origin = "shared";
-        item.owner = {
-          name: shared.ownerName || shared.ownerEmail?.split("@")[0] || "Shared",
-          email: shared.ownerEmail || "",
-        };
-        item.sharedIn = {
-          ownerUserId: shared.ownerUserId,
-          ownerEmail: shared.ownerEmail,
-          ownerName: shared.ownerName,
-          permissions: shared.permissions,
-        };
-      }
-      return item;
+      return applySharedContext(item, shared);
     });
     await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
@@ -938,10 +942,9 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
     const segment = sanitizeName(rawSegment);
     if (!segment) continue;
 
-    const known = store
-      .get(filesAtom)
-      .find((f) => f.isFolder && !f.isDeleted && f.parentId === parentId && f.name === segment);
-    if (known?.origin === "server") {
+    const currentFiles = store.get(filesAtom);
+    const known = currentFiles.find((f) => f.isFolder && !f.isDeleted && f.parentId === parentId && f.name === segment);
+    if (known?.origin === "server" || known?.origin === "shared") {
       parentId = known.id;
       continue;
     }
@@ -954,35 +957,47 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
       continue;
     }
 
+    const listParentId = parentId;
+    const shared = listParentId !== null ? sharedSubtreeContext(currentFiles, listParentId) : null;
+
     // A name conflict means it already exists; re-list to learn its id.
     try {
       await withFreshToken((t) =>
         apiCreateFolder(t, {
-          parentFolderId: parentId,
+          parentFolderId: listParentId,
           folderName: segment,
           folderInfo: buildCreationInfo(),
+          sharedFolderId: shared?.rootId ?? null,
         })
       );
     } catch (err) {
       if (!(err instanceof HttpError)) console.warn("ensureFolderPath: create failed", err);
     }
 
-    const listParentId = parentId;
-    let listing: Awaited<ReturnType<typeof listRootFolders>> | undefined;
+    // An existing folder can be on any page of the listing, not just the first.
+    let listing: Awaited<ReturnType<typeof listRootFolders>> = [];
+    let match: (typeof listing)[number] | undefined;
     try {
-      listing = await withFreshToken((t) =>
-        listParentId === null
-          ? listRootFolders(t, { limit: PAGE_SIZE, offset: 0 })
-          : listFolderChildren(t, listParentId, { limit: PAGE_SIZE, offset: 0 })
-      );
+      for (let offset = 0; !match; offset += PAGE_SIZE) {
+        const page = await withFreshToken((t) =>
+          listParentId === null
+            ? listRootFolders(t, { limit: PAGE_SIZE, offset })
+            : shared
+              ? listSharedFolderChildren(t, shared.rootId, listParentId, { limit: PAGE_SIZE, offset })
+              : listFolderChildren(t, listParentId, { limit: PAGE_SIZE, offset })
+        );
+        if (!page) break;
+        listing = page;
+        match = page.find((r) => r.is_resource_folder && r.resource_name === segment);
+        if (page.length < PAGE_SIZE) break;
+      }
     } catch (err) {
       console.warn("ensureFolderPath: could not read folder listing", err);
       return null;
     }
-    const match = listing?.find((r) => r.is_resource_folder && r.resource_name === segment);
     if (!match) return null;
 
-    const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmail));
+    const mapped = listing.map((r) => applySharedContext(mapResource(r, ownerEmail), shared));
     await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
       const next = mergeServerListing(prev, listParentId, mapped, "initial");

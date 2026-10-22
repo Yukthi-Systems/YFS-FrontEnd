@@ -16,8 +16,10 @@
  */
 
 import { useAtomValue } from "jotai";
+import { useMutation } from "@tanstack/react-query";
 import { userAtom, tokenAtom, userIdAtom, sessionExpiresAtAtom, isAuthLoadingAtom, authErrorMsgAtom } from "../atoms/auth";
 import { loginWithSso, logout, clearError, refreshAccessToken } from "../services/authStore";
+import { useToast } from "../atoms/toast";
 
 export type { UserInfo } from "../atoms/auth";
 
@@ -43,3 +45,19 @@ export const useAuth = () => {
     sessionExpiresAt,
   };
 };
+
+// POST /auth/refresh re-reads the user from SSO, picking up admin-panel changes like the total quota.
+export function useRefreshSession() {
+  const { showToast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: refreshAccessToken,
+    // A failed refresh already signs out with its own toast.
+    onSuccess: (token) => token && showToast("Session refreshed", "success"),
+  });
+
+  return {
+    refreshSession: mutation.mutate,
+    refreshingSession: mutation.isPending,
+  };
+}

@@ -20,7 +20,7 @@ import { useState } from "react";
 import { useUploadQueue } from "../../hooks/useUploadQueue";
 
 export function UploadTray() {
-  const { tasks, dismissTask, pauseTask, resumeTask, cancelTask } = useUploadQueue();
+  const { tasks, dismissTask, clearFinished, pauseTask, resumeTask, cancelTask } = useUploadQueue();
   const [collapsed, setCollapsed] = useState(false);
 
   if (tasks.length === 0) return null;
@@ -28,6 +28,8 @@ export function UploadTray() {
   const isActive = (status: string) => status === "uploading" || status === "pending" || status === "paused" || status === "reconnecting";
   const activeCount = tasks.filter((t) => isActive(t.status)).length;
   const allActivePaused = activeCount > 0 && tasks.filter((t) => isActive(t.status)).every((t) => t.status === "paused");
+  const failedCount = tasks.filter((t) => t.status === "error").length;
+  const finishedCount = tasks.length - activeCount;
 
   return (
     <div className="w-full bg-bg-main border border-border-main rounded-2xl shadow-lg overflow-hidden animate-scale-in">
@@ -39,8 +41,22 @@ export function UploadTray() {
           <FileUp className="w-4 h-4 text-accent" />
           {activeCount > 0
             ? `${allActivePaused ? "Paused" : "Uploading"} ${activeCount} item${activeCount > 1 ? "s" : ""}…`
-            : "Uploads complete"}
+            : failedCount > 0
+              ? `${failedCount} upload${failedCount > 1 ? "s" : ""} failed`
+              : "Uploads complete"}
         </span>
+        {finishedCount > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              clearFinished();
+            }}
+            title="Remove finished and failed uploads from this list"
+            className="ml-auto mr-1 border-none bg-transparent px-2 py-1 rounded-lg text-xs font-semibold text-text-main hover:bg-code-bg hover:text-accent cursor-pointer transition"
+          >
+            Clear
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();

@@ -70,6 +70,7 @@ export function useFileSearch({
   const [contentResults, setContentResults] = useState<SearchResult[]>([]);
   const [isSearchingContent, setIsSearchingContent] = useState(false);
   const generationRef = useRef(0);
+  const searchedQueryRef = useRef("");
 
   const trimmedQuery = searchQuery.trim();
   const isSearching = trimmedQuery !== "";
@@ -85,25 +86,28 @@ export function useFileSearch({
     [scope, trimmedQuery, isSearching]
   );
 
+  const candidates = useMemo(() => {
+    const nameMatchedIds = new Set(nameResults.map((r) => r.item.id));
+    return scope.filter((f) => !f.isFolder && !nameMatchedIds.has(f.id));
+  }, [scope, nameResults]);
+  // Uploads/re-lists rebuild `files` constantly; only re-search when the candidates' content changes.
+  const candidatesKey = candidates.map((f) => `${f.id}:${f.name}:${f.storageKey ?? ""}`).join("|");
+  const candidatesRef = useRef(candidates);
+  candidatesRef.current = candidates;
+
   useEffect(() => {
     const generation = ++generationRef.current;
+    const candidates = candidatesRef.current;
 
-    if (!isSearching || trimmedQuery.length < MIN_CONTENT_QUERY_LENGTH) {
+    if (!isSearching || trimmedQuery.length < MIN_CONTENT_QUERY_LENGTH || candidates.length === 0) {
+      searchedQueryRef.current = "";
       setContentResults([]);
       setIsSearchingContent(false);
       return;
     }
 
-    const nameMatchedIds = new Set(nameResults.map((r) => r.item.id));
-    const candidates = scope.filter((f) => !f.isFolder && !nameMatchedIds.has(f.id));
-
-    if (candidates.length === 0) {
-      setContentResults([]);
-      setIsSearchingContent(false);
-      return;
-    }
-
-    setIsSearchingContent(true);
+    // Background refreshes keep showing the previous results instead of flashing the indicator.
+    if (searchedQueryRef.current !== trimmedQuery) setIsSearchingContent(true);
     const timer = setTimeout(() => {
       (async () => {
         const matches: SearchResult[] = [];
@@ -117,13 +121,14 @@ export function useFileSearch({
         );
         // A newer search superseded this one while extraction was in flight — drop it.
         if (generationRef.current !== generation) return;
+        searchedQueryRef.current = trimmedQuery;
         setContentResults(matches);
         setIsSearchingContent(false);
       })();
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [scope, trimmedQuery, isSearching, nameResults]);
+  }, [candidatesKey, trimmedQuery, isSearching]);
 
   const results = isSearching ? [...nameResults, ...contentResults] : [];
 

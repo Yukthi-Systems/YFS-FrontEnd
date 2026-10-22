@@ -24,6 +24,7 @@ import { capitalize } from "@yfs/utils";
 import { Avatar } from "../common/Avatar";
 import { ConfirmModal } from "./ConfirmModal";
 import { ModalShell } from "./ModalShell";
+import { storageUsageColors } from "../../utils/format";
 
 const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-text-main";
 
@@ -74,7 +75,7 @@ export function ProfileModal({
   const displayName = publicProfile.display_name?.trim() || capitalize(user?.username || "Guest User");
   const twoFa = user?.two_factor_methods?.length ? user.two_factor_methods.join(", ") : null;
   const pct = Math.min(100, Math.max(0, storagePercentage));
-  const nearFull = pct >= 90;
+  const usageColors = storageUsageColors(pct);
 
   return (
     <ModalShell onClose={onClose} size="lg" padded={false}>
@@ -146,13 +147,13 @@ export function ProfileModal({
               <span className="text-xs text-text-heading font-semibold">
                 {storageUsedLabel} <span className="text-text-main font-normal">of {storageTotalLabel}</span>
               </span>
-              <span className={`text-xs font-semibold ${nearFull ? "text-red-500" : "text-text-main"}`}>
+              <span className={`text-xs font-semibold ${usageColors.text}`}>
                 {Math.round(pct)}%
               </span>
             </div>
             <div className="w-full h-1.5 bg-border-main rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-300 ${nearFull ? "bg-red-500" : "bg-accent"}`}
+                className={`h-full rounded-full transition-all duration-300 ${usageColors.bar}`}
                 style={{ width: `${pct}%` }}
               />
             </div>

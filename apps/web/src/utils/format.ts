@@ -168,3 +168,10 @@ export const getCreatedByDisplay = (item: FileItem): { name?: string; email?: st
     ?.user_name;
   return { name: item.createdBy || snapshotName, email: item.createdByEmail };
 };
+
+// Blue → yellow at 75% → red at 90%; text uses a darker yellow so it stays readable on light backgrounds.
+export const storageUsageColors = (percent: number): { bar: string; text: string } => {
+  if (percent >= 90) return { bar: "bg-red-500", text: "text-red-500" };
+  if (percent >= 75) return { bar: "bg-yellow-400", text: "text-yellow-600 dark:text-yellow-400" };
+  return { bar: "bg-blue-500", text: "text-text-main" };
+};

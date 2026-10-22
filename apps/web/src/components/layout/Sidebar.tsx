@@ -39,6 +39,7 @@ import type { UserInfo } from "../../atoms/auth";
 import { UserMenu } from "./UserMenu";
 import { OfficeFileMenuItems } from "../files/OfficeFileMenuItems";
 import type { OfficeKind } from "../../utils/officeTemplates";
+import { storageUsageColors } from "../../utils/format";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };
 
@@ -391,11 +392,11 @@ export function Sidebar({
                   </button>
                 )}
               </span>
-              <span>{Math.round(storagePercentage)}% Used</span>
+              <span className={storageUsageColors(storagePercentage).text}>{Math.round(storagePercentage)}% Used</span>
             </div>
             <div className="w-full h-1.5 bg-border-main rounded-full overflow-hidden mb-2.5">
               <div
-                className="h-full bg-accent rounded-full transition-all duration-300"
+                className={`h-full rounded-full transition-all duration-300 ${storageUsageColors(storagePercentage).bar}`}
                 style={{ width: `${storagePercentage}%` }}
               ></div>
             </div>
