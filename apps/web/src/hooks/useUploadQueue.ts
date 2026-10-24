@@ -20,6 +20,7 @@ import { useAtom } from "jotai";
 import { type FileUploadRequest, type UploadSession } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { useFileSystem } from "./useFileSystem";
+import { useStorageQuota } from "./useUserQuota";
 import { categorizeFile, sanitizeName } from "../utils/fileType";
 import { uploadClient, type UploadHandle } from "../services/uploadClient";
 import { withAuthRetry } from "../utils/authRetry";
@@ -52,8 +53,9 @@ export const useUploadQueue = () => {
   const [tasks, setTasks] = useAtom(uploadTasksAtom);
 
   // Uploads span renders, so read live context from a ref.
-  const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken });
-  ctxRef.current = { token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken };
+  const { isFull: storageFull } = useStorageQuota();
+  const ctxRef = useRef({ token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken, storageFull });
+  ctxRef.current = { token, versioningEnabled: !!user?.is_file_versioning_enabled, files, refreshAccessToken, storageFull };
 
   useEffect(() => {
     const handleOffline = () => {
@@ -254,6 +256,13 @@ export const useUploadQueue = () => {
 
   const enqueueFiles = async (items: FileWithRelativePath[], parentId: string | null): Promise<string[]> => {
     if (items.length === 0) return [];
+
+    // Every upload path ends here, so this is the one check that guarantees no upload API call.
+    // Shared folders use their owner's quota, so they're not blocked.
+    if (ctxRef.current.storageFull && getSharedFolderId(parentId) === null) {
+      showToast("Your storage is full — free up space before uploading", "error");
+      return [];
+    }
 
     // Files can't live at the My Drive root; the backend requires a folder_id.
     let accepted = items;

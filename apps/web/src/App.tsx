@@ -28,7 +28,7 @@ import "./App.css";
 import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
 import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
-import { canDownloadItem, getStorageQuota, GB, itemBusyReason } from "./utils/format";
+import { canDownloadItem, itemBusyReason } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
 import { useContextMenuState } from "./hooks/useContextMenuState";
@@ -40,7 +40,7 @@ import { useVersionHistory } from "./hooks/useVersionHistory";
 import { useShareSettings } from "./hooks/useShareSettings";
 import { useDragAndDrop } from "./hooks/useDragAndDrop";
 import { useFileSearch } from "./hooks/useFileSearch";
-import { useMyQuota, useRefreshUserQuota } from "./hooks/useUserQuota";
+import { useMyQuota, useRefreshUserQuota, useStorageQuota } from "./hooks/useUserQuota";
 
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -419,7 +419,7 @@ function App() {
 
   // Falls back to the SSO login snapshot until GET /user/quota lands.
   const { quota } = useMyQuota();
-  const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
+  const storage = useStorageQuota();
   // Shared folders use their owner's quota, so only block creating in the user's own drive.
   const storageBlocked = storage.isFull && !currentFolderPerms && nav.activeSidebarTab !== "shared";
   // Same re-scan as the Profile modal's "Recalculate"; a plain refetch of GET /user/quota re-reads the stored number.

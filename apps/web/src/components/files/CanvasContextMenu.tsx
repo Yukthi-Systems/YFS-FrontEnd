@@ -102,14 +102,14 @@ export function CanvasContextMenu({
             <FolderPlus className="w-4 h-4" /> Create Folder
           </button>
           {canUploadFiles && onCreateOfficeFile && (
-            <OfficeFileMenuItems className={itemClass} onSelect={onCreateOfficeFile} />
+            <OfficeFileMenuItems className={`${itemClass} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main`} disabled={storageFull} onSelect={onCreateOfficeFile} />
           )}
           {canUploadFiles && (
-            <button onClick={onUploadFile} className={itemClass}>
+            <button onClick={onUploadFile} disabled={storageFull} className={`${itemClass} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main`}>
               <FileUp className="w-4 h-4" /> Upload File
             </button>
           )}
-          <button onClick={onUploadFolder} className={itemClass}>
+          <button onClick={onUploadFolder} disabled={storageFull} className={`${itemClass} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main`}>
             <FolderUp className="w-4 h-4" /> Upload Folder
           </button>
         </>

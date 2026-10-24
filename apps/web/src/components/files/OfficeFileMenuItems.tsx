@@ -24,11 +24,19 @@ const ITEMS: { kind: OfficeKind; icon: typeof FileText; color: string }[] = [
   { kind: "presentation", icon: Presentation, color: "text-orange-500" },
 ];
 
-export function OfficeFileMenuItems({ className, onSelect }: { className: string; onSelect: (kind: OfficeKind) => void }) {
+export function OfficeFileMenuItems({
+  className,
+  disabled = false,
+  onSelect,
+}: {
+  className: string;
+  disabled?: boolean;
+  onSelect: (kind: OfficeKind) => void;
+}) {
   return (
     <>
       {ITEMS.map(({ kind, icon: Icon, color }) => (
-        <button key={kind} onClick={() => onSelect(kind)} className={className}>
+        <button key={kind} onClick={() => onSelect(kind)} disabled={disabled} className={className}>
           <Icon className={`w-4 h-4 ${color}`} /> New {OFFICE_KINDS[kind].label}
         </button>
       ))}

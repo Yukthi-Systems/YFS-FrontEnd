@@ -20,6 +20,7 @@ import { getMyQuota, refreshMyQuota } from "@yfs/service";
 import { useAuth } from "./useAuth";
 import { withAuthRetry } from "../utils/authRetry";
 import { useToast } from "../atoms/toast";
+import { getStorageQuota, GB, type StorageQuota } from "../utils/format";
 
 const QUOTA_QUERY_KEY = ["myQuota"] as const;
 
@@ -58,4 +59,11 @@ export function useRefreshUserQuota() {
     refreshQuota: mutation.mutateAsync,
     refreshing: mutation.isPending,
   };
+}
+
+// Total from the SSO session, used bytes from GET /user/quota (falls back to the login snapshot).
+export function useStorageQuota(): StorageQuota {
+  const { user } = useAuth();
+  const { quota } = useMyQuota();
+  return getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
 }
