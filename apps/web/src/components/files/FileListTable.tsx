@@ -98,8 +98,9 @@ export function FileListTable({
   onSortFieldChange: (field: SortField) => void;
   onToggleSortOrder: () => void;
   onItemClick: (item: FileItem, e: React.MouseEvent) => void;
-  onCheckboxToggle: (id: string, e: React.MouseEvent) => void;
-  onSelectAllToggle: () => void;
+  // Omitted to turn off multi-select (no checkboxes).
+  onCheckboxToggle?: (id: string, e: React.MouseEvent) => void;
+  onSelectAllToggle?: () => void;
   onContextMenuToggle: (id: string | null) => void;
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
@@ -128,14 +129,16 @@ export function FileListTable({
       <table className="w-full border-separate border-spacing-0 text-left">
         <thead>
           <tr onMouseDown={(e) => e.stopPropagation()}>
-            <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
-              <Checkbox
-                checked={items.length > 0 && items.every((item) => checkedItemIds.includes(item.id))}
-                indeterminate={items.some((item) => checkedItemIds.includes(item.id))}
-                onChange={onSelectAllToggle}
-                ariaLabel="Select all"
-              />
-            </th>
+            {onCheckboxToggle && (
+              <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={items.length > 0 && items.every((item) => checkedItemIds.includes(item.id))}
+                  indeterminate={items.some((item) => checkedItemIds.includes(item.id))}
+                  onChange={() => onSelectAllToggle?.()}
+                  ariaLabel="Select all"
+                />
+              </th>
+            )}
             <SortableHeader label="Name" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
             {showOwner && (
               <th className="sticky top-0 z-10 bg-bg-main px-3 py-2 border-b border-border-main text-text-main text-[11px] font-semibold uppercase tracking-wider max-[640px]:hidden">Owner</th>
@@ -182,13 +185,15 @@ export function FileListTable({
                   onItemContextMenu(item, e);
                 }}
               >
-                <td className="px-3 py-2 border-b border-border-main text-center" onClick={(e) => e.stopPropagation()}>
-                  <Checkbox
-                    checked={isChecked}
-                    onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
-                    ariaLabel={`Select ${item.name}`}
-                  />
-                </td>
+                {onCheckboxToggle && (
+                  <td className="px-3 py-2 border-b border-border-main text-center" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={isChecked}
+                      onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+                      ariaLabel={`Select ${item.name}`}
+                    />
+                  </td>
+                )}
                 <td className="px-3 py-2 border-b border-border-main">
                   <div className="flex items-center gap-2.5 text-[0.85rem] font-medium text-text-heading overflow-hidden whitespace-nowrap">
                     {getItemIcon(item, "w-4 h-4")}

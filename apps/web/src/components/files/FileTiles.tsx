@@ -50,7 +50,8 @@ export function FileTiles({
   contextMenuId: string | null;
   dragOverFolderId: string | null;
   onItemClick: (item: FileItem, e: React.MouseEvent) => void;
-  onCheckboxToggle: (id: string, e: React.MouseEvent) => void;
+  // Omitted to turn off multi-select (no checkboxes).
+  onCheckboxToggle?: (id: string, e: React.MouseEvent) => void;
   onContextMenuToggle: (id: string | null) => void;
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
@@ -89,13 +90,15 @@ export function FileTiles({
           isSel ? "bg-accent-bg/70! border-accent!" : isChecked ? "bg-accent-bg/70! border-accent-border!" : ""
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
-        <Checkbox
-          checked={isChecked}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
-          ariaLabel={`Select ${item.name}`}
-          className={`shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 max-[768px]:hidden ${isChecked || selecting ? "opacity-100!" : ""}`}
-        />
+        {onCheckboxToggle && (
+          <Checkbox
+            checked={isChecked}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+            ariaLabel={`Select ${item.name}`}
+            className={`shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 max-[768px]:hidden ${isChecked || selecting ? "opacity-100!" : ""}`}
+          />
+        )}
 
         <div className="shrink-0 w-10 h-10 rounded-lg bg-code-bg flex items-center justify-center overflow-hidden">
           {item.type === "image" && item.blobUrl ? (

@@ -34,9 +34,12 @@ export interface ItemPressHandlers {
 export function useFileSelection({
   listItems,
   onOpenItem,
+  multiSelect = true,
 }: {
   listItems: FileItem[];
   onOpenItem: (item: FileItem) => void;
+  // False: Shift/Ctrl-click, long-press and checkboxes do nothing beyond a plain click.
+  multiSelect?: boolean;
 }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [checkedItemIds, setCheckedItemIds] = useState<string[]>([]);
@@ -81,7 +84,7 @@ export function useFileSelection({
   // Touch: long-press starts selection (like native file apps); taps then toggle.
   const getItemPressHandlers = (item: FileItem): ItemPressHandlers => ({
     onPointerDown: (e) => {
-      if (e.pointerType === "mouse") return;
+      if (e.pointerType === "mouse" || !multiSelect) return;
       cancelLongPress();
       longPressRef.current = {
         x: e.clientX,
@@ -115,7 +118,7 @@ export function useFileSelection({
       else onOpenItem(item);
       return;
     }
-    if (e.shiftKey) {
+    if (multiSelect && e.shiftKey) {
       if (pendingSelectRef.current) {
         clearTimeout(pendingSelectRef.current);
         pendingSelectRef.current = null;
@@ -124,7 +127,7 @@ export function useFileSelection({
       setCheckedItemIds((prev) => Array.from(new Set([...prev, ...range])));
       return;
     }
-    if (e.ctrlKey || e.metaKey) {
+    if (multiSelect && (e.ctrlKey || e.metaKey)) {
       if (pendingSelectRef.current) {
         clearTimeout(pendingSelectRef.current);
         pendingSelectRef.current = null;
@@ -157,11 +160,13 @@ export function useFileSelection({
 
   const handleCheckboxToggle = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!multiSelect) return;
     setCheckedItemIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
     setSelectionAnchorId(id);
   };
 
   const handleSelectAllToggle = () => {
+    if (!multiSelect) return;
     const listIds = listItems.map((item) => item.id);
     const allChecked = listIds.every((id) => checkedItemIds.includes(id));
     if (allChecked) setCheckedItemIds((prev) => prev.filter((id) => !listIds.includes(id)));

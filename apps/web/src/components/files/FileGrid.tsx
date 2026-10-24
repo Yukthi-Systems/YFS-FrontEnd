@@ -120,7 +120,8 @@ export function FileGrid({
   contextMenuId: string | null;
   dragOverFolderId: string | null;
   onItemClick: (item: FileItem, e: React.MouseEvent) => void;
-  onCheckboxToggle: (id: string, e: React.MouseEvent) => void;
+  // Omitted to turn off multi-select (no checkboxes).
+  onCheckboxToggle?: (id: string, e: React.MouseEvent) => void;
   onContextMenuToggle: (id: string | null) => void;
   onItemContextMenu: (item: FileItem, e: React.MouseEvent) => void;
   renderContextMenu: (item: FileItem) => ReactNode;
@@ -161,13 +162,17 @@ export function FileGrid({
         } ${isDragOver ? "outline-2 outline-accent -outline-offset-2" : ""}`}
       >
         <div className="absolute top-1 left-1 right-1 flex items-center justify-between z-10">
-          <Checkbox
-            checked={isChecked}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
-            ariaLabel={`Select ${item.name}`}
-            className={`opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 max-[768px]:invisible ${isChecked || selecting ? "opacity-100!" : ""}`}
-          />
+          {onCheckboxToggle ? (
+            <Checkbox
+              checked={isChecked}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(_, e) => onCheckboxToggle(item.id, e as unknown as React.MouseEvent)}
+              ariaLabel={`Select ${item.name}`}
+              className={`opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 max-[768px]:invisible ${isChecked || selecting ? "opacity-100!" : ""}`}
+            />
+          ) : (
+            <span />
+          )}
           <div className="relative">
             <button
               onPointerDown={(e) => e.stopPropagation()}

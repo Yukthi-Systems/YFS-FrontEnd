@@ -294,7 +294,9 @@ function App() {
 
   const viewerSiblings = search.isSearching ? search.results.map((r) => r.item) : listItems;
 
-  const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item) });
+  // "Shared with me" is single-select only.
+  const multiSelect = nav.activeSidebarTab !== "shared";
+  const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item), multiSelect });
   const checkedItems = files.filter((f) => selection.checkedItemIds.includes(f.id));
   // On touch, long-press means "select" (useFileSelection); ignore the browser's long-press context menu.
   const openItemMenu = (item: FileItem, e: React.MouseEvent) => {
@@ -528,7 +530,7 @@ function App() {
                 menus.closeContextMenu();
               }}
               onContextMenu={menus.openCanvasContextMenu}
-              onMouseDown={marquee.onMouseDown}
+              onMouseDown={multiSelect ? marquee.onMouseDown : undefined}
             >
               {nav.activeSidebarTab === "shared-links" ? (
                 (!sharedLinksLoaded || sharedLinksLoading) && sharedLinks.length === 0 ? (
@@ -608,8 +610,8 @@ function App() {
                       onSortFieldChange={setSortField}
                       onToggleSortOrder={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
                       onItemClick={selection.handleItemClick}
-                      onCheckboxToggle={selection.handleCheckboxToggle}
-                      onSelectAllToggle={selection.handleSelectAllToggle}
+                      onCheckboxToggle={multiSelect ? selection.handleCheckboxToggle : undefined}
+                      onSelectAllToggle={multiSelect ? selection.handleSelectAllToggle : undefined}
                       onContextMenuToggle={menus.setContextMenuId}
                       onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
@@ -628,7 +630,7 @@ function App() {
                       contextMenuId={menus.contextMenuId}
                       dragOverFolderId={dnd.dragOverFolderId}
                       onItemClick={selection.handleItemClick}
-                      onCheckboxToggle={selection.handleCheckboxToggle}
+                      onCheckboxToggle={multiSelect ? selection.handleCheckboxToggle : undefined}
                       onContextMenuToggle={menus.setContextMenuId}
                       onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
@@ -647,7 +649,7 @@ function App() {
                       contextMenuId={menus.contextMenuId}
                       dragOverFolderId={dnd.dragOverFolderId}
                       onItemClick={selection.handleItemClick}
-                      onCheckboxToggle={selection.handleCheckboxToggle}
+                      onCheckboxToggle={multiSelect ? selection.handleCheckboxToggle : undefined}
                       onContextMenuToggle={menus.setContextMenuId}
                       onItemContextMenu={openItemMenu}
                       renderContextMenu={renderItemContextMenu}
