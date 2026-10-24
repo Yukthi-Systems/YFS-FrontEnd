@@ -28,8 +28,9 @@ export function TopBar({
   onGridSizeChange,
   onMenuClick,
 }: {
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
+  searchQuery?: string;
+  // Omitted to hide the search box.
+  onSearchChange?: (query: string) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   gridSize: GridSize;
@@ -47,14 +48,18 @@ export function TopBar({
       </button>
 
       <div className="relative flex-1 min-w-0 max-w-xl">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-main pointer-events-none" />
-        <input
-          type="text"
-          placeholder="Search files and folders..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full py-2.5 pl-11 pr-4 rounded-full border border-border-main bg-code-bg text-text-heading text-sm transition focus:outline-none focus:border-accent focus:bg-bg-main focus:ring-4 focus:ring-accent-bg"
-        />
+        {onSearchChange && (
+          <>
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-main pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search files and folders..."
+              value={searchQuery ?? ""}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full py-2.5 pl-11 pr-4 rounded-full border border-border-main bg-code-bg text-text-heading text-sm transition focus:outline-none focus:border-accent focus:bg-bg-main focus:ring-4 focus:ring-accent-bg"
+            />
+          </>
+        )}
       </div>
 
       <ViewModeToggle

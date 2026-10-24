@@ -19,6 +19,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FolderPlus, FileUp, FolderUp, RefreshCw } from "lucide-react";
 import { OfficeFileMenuItems } from "./OfficeFileMenuItems";
+import { StorageFullHint } from "../common/StorageFullHint";
 import type { OfficeKind } from "../../utils/officeTemplates";
 
 export function CanvasContextMenu({
@@ -26,6 +27,7 @@ export function CanvasContextMenu({
   y,
   canCreateHere = true,
   canUploadFiles = true,
+  storageFull = false,
   onCreateFolder,
   onCreateOfficeFile,
   onUploadFile,
@@ -38,6 +40,8 @@ export function CanvasContextMenu({
   canCreateHere?: boolean;
   // False at the My Drive root, which can't hold files directly.
   canUploadFiles?: boolean;
+  // Own storage is full; false inside shared folders.
+  storageFull?: boolean;
   onCreateFolder: () => void;
   // Omitted when Collabora isn't configured.
   onCreateOfficeFile?: (kind: OfficeKind) => void;
@@ -83,7 +87,7 @@ export function CanvasContextMenu({
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[2000] w-48 bg-bg-main border border-border-main rounded-xl p-1.5 shadow-md flex flex-col gap-0.5 animate-scale-in context-dropdown"
+      className={`fixed z-[2000] ${storageFull ? "w-60" : "w-48"} bg-bg-main border border-border-main rounded-xl p-1.5 shadow-md flex flex-col gap-0.5 animate-scale-in context-dropdown`}
       style={{ top: style.top, left: style.left, visibility: style.visibility }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -93,7 +97,8 @@ export function CanvasContextMenu({
       {canCreateHere ? (
         <>
           <div className="my-0.5 border-t border-border-main" />
-          <button onClick={onCreateFolder} className={itemClass}>
+          {storageFull && <StorageFullHint />}
+          <button onClick={onCreateFolder} disabled={storageFull} className={`${itemClass} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main`}>
             <FolderPlus className="w-4 h-4" /> Create Folder
           </button>
           {canUploadFiles && onCreateOfficeFile && (

@@ -113,6 +113,8 @@ export interface StorageQuota {
   usedLabel: string;
   totalLabel: string;
   hasQuota: boolean;
+  // Exact byte comparison, not the rounded percentage.
+  isFull: boolean;
 }
 
 export const getStorageQuota = (
@@ -130,6 +132,7 @@ export const getStorageQuota = (
     usedLabel: formatSize(usedBytes),
     totalLabel: hasQuota ? formatSize(totalBytes) : "Unlimited",
     hasQuota,
+    isFull: hasQuota && usedBytes >= totalBytes,
   };
 };
 

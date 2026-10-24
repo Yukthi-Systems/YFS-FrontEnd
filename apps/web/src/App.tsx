@@ -417,11 +417,10 @@ function App() {
   // Falls back to the SSO login snapshot until GET /user/quota lands.
   const { quota } = useMyQuota();
   const storage = getStorageQuota(user?.quota_allocated, quota ? quota.used_storage_bytes / GB : user?.quota_utilized);
-  // The sidebar's refresh icon re-scans every file the user owns (same mutation as the Profile
-  // modal's "Recalculate"), so it's behind a confirm — a plain refetch of GET /user/quota just
-  // re-reads the same stored number and looked like it did nothing.
+  // Shared folders use their owner's quota, so only block creating in the user's own drive.
+  const storageBlocked = storage.isFull && !currentFolderPerms && nav.activeSidebarTab !== "shared";
+  // Same re-scan as the Profile modal's "Recalculate"; a plain refetch of GET /user/quota re-reads the stored number.
   const { refreshQuota, refreshing: refreshingQuota } = useRefreshUserQuota();
-  const [confirmRecalcQuota, setConfirmRecalcQuota] = useState(false);
 
   if (authLoading) {
     return (
@@ -483,12 +482,14 @@ function App() {
         onCreateOfficeFile={onCreateOfficeFile}
         onUploadFiles={(fl) => fileActions.handleUploadFiles(fl, nav.currentFolderId)}
         canCreateHere={canCreateHere}
+        storageFull={storageBlocked}
         isRootFolder={nav.currentFolderId === null}
         storagePercentage={storage.percent}
         storageUsedLabel={storage.usedLabel}
         storageTotalLabel={storage.totalLabel}
         storageFileCount={quota?.used_file_count}
-        onRefreshQuota={() => setConfirmRecalcQuota(true)}
+        onRefreshQuota={() => refreshQuota().catch(() => {})}
+        quotaFull={storage.isFull}
         refreshingQuota={refreshingQuota}
         user={user}
         onRequestLogout={fileActions.requestLogout}
@@ -498,8 +499,9 @@ function App() {
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden bg-bg-main">
         <TopBar
-          searchQuery={search.searchQuery}
-          onSearchChange={search.setSearchQuery}
+          // Search only covers locally loaded files, so it's hidden until there's a server-side search.
+          // searchQuery={search.searchQuery}
+          // onSearchChange={search.setSearchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           gridSize={gridSize}
@@ -706,6 +708,7 @@ function App() {
           y={menus.canvasContextMenu.y}
           canCreateHere={canCreateHere}
           canUploadFiles={nav.currentFolderId !== null}
+          storageFull={storageBlocked}
           onCreateFolder={() => {
             fileActions.openCreateFolderModal();
             menus.setCanvasContextMenu(null);
@@ -828,19 +831,6 @@ function App() {
         />
       )}
 
-      {confirmRecalcQuota && (
-        <ConfirmModal
-          title="Recalculate storage usage"
-          description="This re-scans every file you own, so it may take a moment. Recalculate now?"
-          confirmLabel="Recalculate"
-          destructive={false}
-          onCancel={() => setConfirmRecalcQuota(false)}
-          onConfirm={() => {
-            setConfirmRecalcQuota(false);
-            refreshQuota().catch(() => {});
-          }}
-        />
-      )}
 
       {viewerItem && (
         <ViewerModal

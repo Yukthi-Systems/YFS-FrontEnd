@@ -38,6 +38,7 @@ import type { SidebarTab } from "../../types/file";
 import type { UserInfo } from "../../atoms/auth";
 import { UserMenu } from "./UserMenu";
 import { OfficeFileMenuItems } from "../files/OfficeFileMenuItems";
+import { StorageFullHint } from "../common/StorageFullHint";
 import type { OfficeKind } from "../../utils/officeTemplates";
 import { storageUsageColors } from "../../utils/format";
 
@@ -95,6 +96,8 @@ export function Sidebar({
   onCreateOfficeFile,
   onUploadFiles,
   canCreateHere = true,
+  storageFull = false,
+  quotaFull = false,
   isRootFolder = false,
   storagePercentage,
   storageUsedLabel,
@@ -117,6 +120,10 @@ export function Sidebar({
   onUploadFiles: (files: FileList) => void;
   // False inside a "Shared with me" folder the caller can't create in.
   canCreateHere?: boolean;
+  // Own storage is full; false inside shared folders, which use their owner's quota.
+  storageFull?: boolean;
+  // Own quota is full, wherever the user currently is; drives the hint under the Storage card.
+  quotaFull?: boolean;
   // My Drive root can't hold files directly — only folder uploads (they nest) are allowed here.
   isRootFolder?: boolean;
   storagePercentage: number;
@@ -221,17 +228,19 @@ export function Sidebar({
           </button>
           {newMenuOpen && (
             <div
-              className={`absolute z-50 w-48 bg-bg-main border border-border-main rounded-xl p-1.5 shadow-md flex flex-col gap-0.5 animate-scale-in ${
+              className={`absolute z-50 ${storageFull ? "w-60" : "w-48"} bg-bg-main border border-border-main rounded-xl p-1.5 shadow-md flex flex-col gap-0.5 animate-scale-in ${
                 collapsed ? "top-0 left-full ml-2" : "top-[calc(100%+8px)] left-0"
               }`}
             >
+              {canCreateHere && storageFull && <StorageFullHint />}
               {canCreateHere && (
                 <button
                   onClick={() => {
                     onCreateFolder();
                     setNewMenuOpen(false);
                   }}
-                  className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150"
+                  disabled={storageFull}
+                  className="flex items-center gap-2.5 px-3 py-2 border-none bg-transparent text-text-main rounded-lg text-[0.85rem] font-medium text-left cursor-pointer hover:bg-accent-bg hover:text-accent transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-main"
                 >
                   <FolderPlus className="w-4 h-4" /> Create Folder
                 </button>
@@ -406,6 +415,7 @@ export function Sidebar({
             </span>
           </div>
         )}
+        {!collapsed && quotaFull && <StorageFullHint />}
 
         <div className="border-t border-border-main pt-3 flex items-center gap-1">
           <UserMenu
