@@ -40,7 +40,7 @@ import { UserMenu } from "./UserMenu";
 import { OfficeFileMenuItems } from "../files/OfficeFileMenuItems";
 import { StorageFullHint } from "../common/StorageFullHint";
 import type { OfficeKind } from "../../utils/officeTemplates";
-import { storageUsageColors } from "../../utils/format";
+import { formatUsagePercent, storageUsageColors } from "../../utils/format";
 
 type NavItem = { tab: SidebarTab; label: string; icon: typeof Folder };
 
@@ -401,12 +401,12 @@ export function Sidebar({
                   </button>
                 )}
               </span>
-              <span className={storageUsageColors(storagePercentage).text}>{Math.round(storagePercentage)}% Used</span>
+              <span className={storageUsageColors(storagePercentage).text}>{formatUsagePercent(storagePercentage)} Used</span>
             </div>
             <div className="w-full h-1.5 bg-border-main rounded-full overflow-hidden mb-2.5">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${storageUsageColors(storagePercentage).bar}`}
-                style={{ width: `${storagePercentage}%` }}
+                style={{ width: `${Math.min(100, storagePercentage)}%` }}
               ></div>
             </div>
             <span className="text-text-main text-[11px]">

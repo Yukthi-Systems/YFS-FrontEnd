@@ -109,7 +109,7 @@ export const GB = 1024 * 1024 * 1024;
 export interface StorageQuota {
   usedBytes: number;
   totalBytes: number;
-  percent: number; // 0–100, clamped
+  percent: number; // real usage, can exceed 100 when over quota
   usedLabel: string;
   totalLabel: string;
   hasQuota: boolean;
@@ -124,7 +124,7 @@ export const getStorageQuota = (
   const totalBytes = Math.max(0, Number(quotaAllocatedGb) || 0) * GB;
   const usedBytes = Math.max(0, Number(quotaUtilizedGb) || 0) * GB;
   const hasQuota = totalBytes > 0;
-  const percent = hasQuota ? Math.min(100, Math.max(0, (usedBytes / totalBytes) * 100)) : 0;
+  const percent = hasQuota ? (usedBytes / totalBytes) * 100 : 0;
   return {
     usedBytes,
     totalBytes,
@@ -173,6 +173,10 @@ export const getCreatedByDisplay = (item: FileItem): { name?: string; email?: st
 };
 
 // Blue → yellow at 75% → red at 90%; text uses a darker yellow so it stays readable on light backgrounds.
+// Rounds down below 100 so "100%" only shows once the quota is actually used up.
+export const formatUsagePercent = (percent: number): string =>
+  `${percent < 100 ? Math.floor(percent) : Math.round(percent)}%`;
+
 export const storageUsageColors = (percent: number): { bar: string; text: string } => {
   if (percent >= 90) return { bar: "bg-red-500", text: "text-red-500" };
   if (percent >= 75) return { bar: "bg-yellow-400", text: "text-yellow-600 dark:text-yellow-400" };
