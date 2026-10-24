@@ -22,7 +22,7 @@ import { useToast } from "./atoms/toast";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { useUserSettings } from "./hooks/useUserSettings";
 import { UserSettingsBridge } from "./components/UserSettingsBridge";
-import { Trash2 } from "lucide-react";
+import { AlertCircle, Trash2 } from "lucide-react";
 import "./App.css";
 
 import type { FileItem } from "./types/file";
@@ -187,7 +187,8 @@ function App() {
       nav.switchTab("drive");
       return;
     }
-    if (tab === "shared" && !nav.currentFolderId) loadSharedFolders();
+    // Always re-fetch on navigation: the API is the source of truth, not what was listed earlier.
+    if (tab === "shared" && !nav.currentFolderId) loadSharedFolders({ force: true });
     else if (tab === "shared-out") loadSharedOut({ force: true });
     else if (tab === "shared-links") loadSharedLinks({ force: true });
     else if (tab === "trash") {
@@ -195,7 +196,7 @@ function App() {
       if (target) loadFolder(target, { force: true });
     } else if (restoringSharedRoute) {
       // The hydration effect loads this chain, then re-runs this effect for the leaf.
-    } else loadFolder(nav.currentFolderId);
+    } else loadFolder(nav.currentFolderId, { force: true });
   }, [
     isAuthenticated,
     nav.activeSidebarTab,
@@ -266,7 +267,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (remoteError) showToast(`File service unavailable — showing cached data. (${remoteError})`, "error");
+    if (remoteError) showToast(`Couldn't load files: ${remoteError}`, "error");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteError]);
 
@@ -589,7 +590,13 @@ function App() {
                   {isFolderLoading ? (
                     viewSkeleton
                   ) : listItems.length === 0 ? (
-                    nav.activeSidebarTab === "trash" && !nav.currentFolderId ? (
+                    isPaginatedTab && pagination.error ? (
+                      <EmptyState
+                        icon={<AlertCircle className="w-14 h-14 mb-4 opacity-60 text-red-500" />}
+                        title="Couldn't load this folder"
+                        description={pagination.error}
+                      />
+                    ) : nav.activeSidebarTab === "trash" && !nav.currentFolderId ? (
                       <EmptyState
                         icon={<Trash2 className="w-14 h-14 mb-4 opacity-50 text-neutral-400" />}
                         title="Trash is Empty"

@@ -49,7 +49,7 @@ import {
 } from "@yfs/service";
 import { sanitizeName, categorizeByName } from "../utils/fileType";
 import { isItemLocked, itemBusyReason, shortName } from "../utils/format";
-import { generateStorageKey, getBlob, putBlob } from "../services/blobStore";
+import { generateStorageKey, putBlob } from "../services/blobStore";
 import { queryClient, userQueryKey, USER_STALE_MS } from "../lib/queryClient";
 import { showToast } from "../atoms/toast";
 import {
@@ -72,7 +72,7 @@ import {
 
 const store = getDefaultStore();
 
-const STORAGE_KEY = "yfs_fs_cache";
+const LEGACY_CACHE_KEY = "yfs_fs_cache";
 const ROOT_KEY = "__root__";
 // Real root folder holding trashed items; created on first login.
 const TRASH_FOLDER_NAME = "Trash";
@@ -243,27 +243,27 @@ const fetchUserById = (userId: string) =>
     staleTime: USER_STALE_MS,
   });
 
-// Resolves creator names from creation_info.user_id, cached per user.
-const resolveCreatedByNames = async (items: FileItem[]): Promise<void> => {
+// Swaps in live creator names in the background (rows already show creation_info's label),
+// so a slow or failing user lookup never holds a listing back.
+const refreshCreatedByNames = (items: FileItem[], target: typeof filesAtom | typeof sharedOutAtom = filesAtom) => {
   const userIds = [...new Set(items.map(creatorIdOf).filter((id): id is string => !!id))];
-  if (userIds.length === 0) return;
-  await Promise.all(
-    userIds.map(async (userId) => {
-      try {
-        const user = await fetchUserById(userId);
+  for (const userId of userIds) {
+    fetchUserById(userId)
+      .then((user) => {
         if (!user) return;
         const displayName =
           typeof user.public_info?.display_name === "string" ? user.public_info.display_name.trim() : "";
         const name = displayName || user.email.split("@")[0];
-        for (const item of items) {
-          if (creatorIdOf(item) !== userId) continue;
-          item.createdBy = name;
-          item.createdByEmail = user.email;
-        }
-      } catch {
-      }
-    })
-  );
+        store.set(target, (prev) =>
+          prev.map((f) =>
+            creatorIdOf(f) === userId && (f.createdBy !== name || f.createdByEmail !== user.email)
+              ? { ...f, createdBy: name, createdByEmail: user.email }
+              : f
+          )
+        );
+      })
+      .catch(() => {});
+  }
 };
 
 // How long an unsynced optimistic folder survives a listing that doesn't include it.
@@ -355,6 +355,15 @@ const applySharedContext = (item: FileItem, shared: SharedSubtree | null): FileI
   return item;
 };
 
+// A failed listing must not leave the previous rows on screen as if they were still current.
+const dropListing = (key: string, parentId: string | null, message: string) => {
+  store.set(filesAtom, (prev) =>
+    prev.filter((f) => f.parentId !== parentId || pendingSyncIds.has(f.id) || (f.origin !== "server" && f.origin !== "shared"))
+  );
+  pageState.delete(key);
+  store.set(pageInfoAtom, (p) => ({ ...p, [key]: { hasMore: false, loading: false, loaded: true, error: message } }));
+};
+
 export const pageKeyFor = (parentId: string | null, shared?: boolean) => (shared ? SHARED_ROOT_ID : (parentId ?? ROOT_KEY));
 
 const setPageLoading = (key: string, loading: boolean, hasMore?: boolean, loaded?: boolean) =>
@@ -367,24 +376,15 @@ const setPageLoading = (key: string, loading: boolean, hasMore?: boolean, loaded
     },
   }));
 
-const saveCache = (updated: FileItem[]) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  } catch (err) {
-    console.error("Failed to cache filesystem", err);
-  }
-};
-
 const persist = (updated: FileItem[]) => {
   store.set(filesAtom, updated);
-  saveCache(updated);
 };
 
 // Best-guess MIME type; we only track a coarse category.
 export const fileTypeGuess = (item: FileItem): string => (item.type === "other" ? "application/octet-stream" : item.type);
 
 // Stamped into folder_info/file_info; drives the "Created by" column. user_name is a point-in-time
-// label so the column has something to show immediately, without waiting on resolveCreatedByNames'
+// label so the column has something to show immediately, without waiting on refreshCreatedByNames'
 // lookup; user_id stays the source of truth and is what that lookup re-resolves the live name from.
 export const buildCreationInfo = (): ResourceInfo => ({
   creation_info: {
@@ -491,22 +491,19 @@ const fetchFolderPage = async (parentId: string | null, mode: "initial" | "force
       if (inTrash) item.isDeleted = true;
       return applySharedContext(item, shared);
     });
-    await resolveCreatedByNames(mapped);
-    store.set(filesAtom, (prev) => {
-      const next = mergeServerListing(prev, parentId, mapped, mode);
-      saveCache(next);
-      return next;
-    });
+    store.set(filesAtom, (prev) => mergeServerListing(prev, parentId, mapped, mode));
     setPageLoading(key, false, hasMore);
+    refreshCreatedByNames(mapped);
   } catch (err) {
     if (err instanceof AuthUnavailableError) {
       setPageLoading(key, false);
       return;
     }
     console.warn("Failed to load folder from YFS-Main-API", err);
-    const message: string | null = err instanceof Error ? err.message : "Could not reach the file service";
+    const message = err instanceof Error ? err.message : "Could not reach the file service";
     store.set(remoteErrorAtom, message);
-    setPageLoading(key, false);
+    if (offset === 0) dropListing(key, parentId, message);
+    else setPageLoading(key, false);
   } finally {
     inFlightFolderPages.delete(key);
   }
@@ -579,7 +576,6 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
       }
       return item;
     });
-    await resolveCreatedByNames(mapped);
     store.set(filesAtom, (prev) => {
       const kept = mode === "force" ? prev.filter((f) => f.origin !== "shared") : prev;
       const mappedIds = new Set(mapped.map((m) => m.id));
@@ -589,19 +585,20 @@ const fetchSharedPage = async (mode: "initial" | "force" | "append") => {
       // added rows not already present, so a permission upgrade (or any other change) on an
       // already-cached shared item never showed up until something else forced a full reload.
       const next = [...kept.filter((f) => !mappedIds.has(f.id)), ...mapped];
-      saveCache(next);
       return next;
     });
     setPageLoading(key, false, hasMore);
+    refreshCreatedByNames(mapped);
   } catch (err) {
     if (err instanceof AuthUnavailableError) {
       setPageLoading(key, false);
       return;
     }
     console.warn("Failed to load shared folders from YFS-Main-API", err);
-    const message: string | null = err instanceof Error ? err.message : "Could not reach the file service";
+    const message = err instanceof Error ? err.message : "Could not reach the file service";
     store.set(remoteErrorAtom, message);
-    setPageLoading(key, false);
+    if (offset === 0) dropListing(key, SHARED_ROOT_ID, message);
+    else setPageLoading(key, false);
   } finally {
     inFlightShared = false;
   }
@@ -637,8 +634,8 @@ export const loadSharedOut = async (opts?: { force?: boolean }) => {
       item.owner = { name: "me", email: ownerEmail };
       return item;
     });
-    await resolveCreatedByNames(sharedOutItems);
     store.set(sharedOutAtom, sharedOutItems);
+    refreshCreatedByNames(sharedOutItems, sharedOutAtom);
     store.set(sharedOutLoadedAtom, true);
     store.set(remoteErrorAtom, null);
   } catch (err) {
@@ -741,29 +738,6 @@ export const setItemLocked = (id: string, isLocked: boolean) => {
 export const getDescendantIds = (id: string) => collectDescendantIds(store.get(filesAtom), id);
 
 // blob: URLs don't survive a reload, so rebuild them from IndexedDB.
-const hydrateBlobs = async (items: FileItem[]): Promise<FileItem[]> => {
-  const hydrateOne = async (storageKey: string | undefined): Promise<string | undefined> => {
-    if (!storageKey) return undefined;
-    try {
-      const blob = await getBlob(storageKey);
-      return blob ? URL.createObjectURL(blob) : undefined;
-    } catch (err) {
-      console.error("Failed to hydrate blob", err);
-      return undefined;
-    }
-  };
-
-  return Promise.all(
-    items.map(async (item) => {
-      const blobUrl = await hydrateOne(item.storageKey);
-      const versions = item.versions
-        ? await Promise.all(item.versions.map(async (v) => ({ ...v, blobUrl: await hydrateOne(v.storageKey) })))
-        : undefined;
-      return { ...item, blobUrl, versions };
-    })
-  );
-};
-
 const ensureTrashFolder = async (): Promise<string | null> => {
   const known = store
     .get(filesAtom)
@@ -801,12 +775,8 @@ const ensureTrashFolder = async (): Promise<string | null> => {
   if (!match) return null;
 
   const mapped = (listing ?? []).map((r) => mapResource(r, ownerEmail));
-  await resolveCreatedByNames(mapped);
-  store.set(filesAtom, (prev) => {
-    const next = mergeServerListing(prev, null, mapped, "initial");
-    saveCache(next);
-    return next;
-  });
+  store.set(filesAtom, (prev) => mergeServerListing(prev, null, mapped, "initial"));
+  refreshCreatedByNames(mapped);
   store.set(trashFolderIdAtom, match.resource_id);
   return match.resource_id;
 };
@@ -831,20 +801,12 @@ export const resetFileSystem = () => {
 
 // Boot on sign-in; `signal.cancelled` abandons a stale run.
 export const bootFileSystem = async (signal: { cancelled: boolean }) => {
-  store.set(isLoadingAtom, true);
-
-  let cached: FileItem[] = [];
+  // No synchronous atom writes here: Jotai 3 subscribes in useEffect, so components miss
+  // changes made earlier in the same commit (this left isLoadingAtom stuck true on screen).
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) cached = JSON.parse(stored);
-  } catch (err) {
-    console.error("Failed to read filesystem cache", err);
+    localStorage.removeItem(LEGACY_CACHE_KEY);
+  } catch {
   }
-
-  const hydrated = await hydrateBlobs(cached);
-  if (signal.cancelled) return;
-  store.set(filesAtom, hydrated);
-  store.set(isLoadingAtom, false);
 
   await loadFolder(null, { force: true });
   if (!signal.cancelled) await ensureTrashFolder();
@@ -889,7 +851,6 @@ export const createFolder = (
 
   store.set(filesAtom, (prev) => {
     const updated = [...prev, newFolder];
-    saveCache(updated);
     return updated;
   });
 
@@ -918,7 +879,6 @@ export const createFolder = (
         // Roll back (nothing retries local folders), then re-list in case the create actually landed.
         store.set(filesAtom, (prev) => {
           const updated = prev.filter((f) => f.id !== newFolder.id);
-          saveCache(updated);
           return updated;
         });
         loadFolder(parentId, { force: true }).catch(() => {});
@@ -998,12 +958,8 @@ export const ensureFolderPath = async (segments: string[], rootParentId: string 
     if (!match) return null;
 
     const mapped = listing.map((r) => applySharedContext(mapResource(r, ownerEmail), shared));
-    await resolveCreatedByNames(mapped);
-    store.set(filesAtom, (prev) => {
-      const next = mergeServerListing(prev, listParentId, mapped, "initial");
-      saveCache(next);
-      return next;
-    });
+    store.set(filesAtom, (prev) => mergeServerListing(prev, listParentId, mapped, "initial"));
+    refreshCreatedByNames(mapped);
     parentId = match.resource_id;
   }
 
@@ -1056,7 +1012,6 @@ export const addFile = (input: AddFileInput): FileItem => {
     }
 
     const updated = [...prev.filter((f) => !(!f.isFolder && f.parentId === newItem.parentId && f.name === safeName)), newItem];
-    saveCache(updated);
     return updated;
   });
 
@@ -1560,7 +1515,6 @@ export const updateFileContent = async (id: string, blob: Blob): Promise<void> =
         versions: snapshot ? [snapshot, ...priorVersions] : priorVersions,
       };
     });
-    saveCache(updated);
     return updated;
   });
 };
@@ -1593,7 +1547,6 @@ export const restoreVersion = (id: string, versionId: string) => {
         versions: [currentAsVersion, ...remaining],
       };
     });
-    saveCache(updated);
     return updated;
   });
 };
@@ -1601,7 +1554,6 @@ export const restoreVersion = (id: string, versionId: string) => {
 export const setShareSettings = (id: string, settings: ShareSettings) => {
   store.set(filesAtom, (prev) => {
     const updated = prev.map((f) => (f.id === id ? { ...f, share: settings } : f));
-    saveCache(updated);
     return updated;
   });
 };
@@ -1609,7 +1561,6 @@ export const setShareSettings = (id: string, settings: ShareSettings) => {
 export const clearShareSettings = (id: string) => {
   store.set(filesAtom, (prev) => {
     const updated = prev.map((f) => (f.id === id ? { ...f, share: undefined } : f));
-    saveCache(updated);
     return updated;
   });
 };

@@ -35,11 +35,14 @@ export interface PaginationInfo {
   hasMore: boolean;
   loading: boolean;
   loaded: boolean;
+  // Set when the last first-page load failed; the listing is empty rather than stale.
+  error?: string;
 }
 
 // Written by services/fileSystemStore.ts; read via hooks/useFileSystem.ts.
 export const filesAtom = atom<FileItem[]>([]);
-export const isLoadingAtom = atom<boolean>(true);
+// Only true while a reset is in progress; listing progress lives in pageInfoAtom.
+export const isLoadingAtom = atom<boolean>(false);
 // `null as T | null`, not `atom<T | null>(null)`: with strictNullChecks off the latter picks jotai's read-only overload.
 export const remoteErrorAtom = atom(null as string | null);
 export const pageInfoAtom = atom<Record<string, PaginationInfo>>({});
