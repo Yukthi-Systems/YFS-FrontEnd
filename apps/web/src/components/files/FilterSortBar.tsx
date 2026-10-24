@@ -119,6 +119,9 @@ export function FilterSortBar({
   onBatchDownload,
   downloadBlockedReason,
   changeBlockedReason,
+  canDownload = true,
+  canTrash = true,
+  canDelete = true,
 }: {
   breadcrumbSegments: BreadcrumbSegment[];
   onBreadcrumbNavigate: (index: number) => void;
@@ -138,6 +141,10 @@ export function FilterSortBar({
   // Set when nothing in the selection can be downloaded / changed; shown as the button tooltip.
   downloadBlockedReason?: string | null;
   changeBlockedReason?: string | null;
+  // Inside a shared folder, only what the share grants (same rules as ItemContextMenu).
+  canDownload?: boolean;
+  canTrash?: boolean;
+  canDelete?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3 flex-wrap pb-2" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
@@ -172,37 +179,46 @@ export function FilterSortBar({
             </div>
           ) : (
             <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={onBatchDownload}
-                disabled={!!downloadBlockedReason}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                title={downloadBlockedReason ?? "Download selected"}
-              >
-                <Download className="w-3.5 h-3.5 text-accent" />
-                <span className="max-[640px]:hidden">Download</span>
-              </button>
-              <button
-                type="button"
-                onClick={onBatchTrash}
-                disabled={!!changeBlockedReason}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                title={changeBlockedReason ?? "Move selected to trash"}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="max-[640px]:hidden">Move to Trash</span>
-              </button>
+              {!canDownload && !canTrash && !canDelete && (
+                <span className="px-2.5 py-1 text-xs text-text-main">View only</span>
+              )}
+              {canDownload && (
+                <button
+                  type="button"
+                  onClick={onBatchDownload}
+                  disabled={!!downloadBlockedReason}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-heading hover:text-accent hover:bg-accent-bg rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  title={downloadBlockedReason ?? "Download selected"}
+                >
+                  <Download className="w-3.5 h-3.5 text-accent" />
+                  <span className="max-[640px]:hidden">Download</span>
+                </button>
+              )}
+              {canTrash && (
+                <button
+                  type="button"
+                  onClick={onBatchTrash}
+                  disabled={!!changeBlockedReason}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  title={changeBlockedReason ?? "Move selected to trash"}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="max-[640px]:hidden">Move to Trash</span>
+                </button>
+              )}
               {/* Skips Trash entirely, same as ItemContextMenu's single-item version. */}
-              <button
-                type="button"
-                onClick={onBatchPermanentDelete}
-                disabled={!!changeBlockedReason}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                title={changeBlockedReason ?? "Permanently delete selected items"}
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                <span className="max-[640px]:hidden">Delete</span>
-              </button>
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={onBatchPermanentDelete}
+                  disabled={!!changeBlockedReason}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer border-none bg-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  title={changeBlockedReason ?? "Permanently delete selected items"}
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span className="max-[640px]:hidden">Delete</span>
+                </button>
+              )}
             </div>
           )}
         </SelectionPill>

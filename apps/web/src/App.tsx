@@ -295,8 +295,8 @@ function App() {
 
   const viewerSiblings = search.isSearching ? search.results.map((r) => r.item) : listItems;
 
-  // "Shared with me" is single-select only.
-  const multiSelect = nav.activeSidebarTab !== "shared";
+  // Only the "Shared with me" top-level list is single-select; folders inside it behave normally.
+  const multiSelect = !isSharedRoot;
   const selection = useFileSelection({ listItems, onOpenItem: (item) => handleItemDoubleClick(item), multiSelect });
   const checkedItems = files.filter((f) => selection.checkedItemIds.includes(f.id));
   // On touch, long-press means "select" (useFileSelection); ignore the browser's long-press context menu.
@@ -575,6 +575,9 @@ function App() {
                     onBatchRestore={() => fileActions.handleRestore(selection.checkedItemIds)}
                     onBatchPermanentDelete={() => fileActions.requestPermanentDelete(selection.checkedItemIds)}
                     onBatchDownload={() => fileActions.handleBatchDownload(selection.checkedItemIds)}
+                    canDownload={!currentFolderPerms || currentFolderPerms.can_download}
+                    canTrash={!currentFolderPerms}
+                    canDelete={!currentFolderPerms || currentFolderPerms.can_delete}
                     downloadBlockedReason={
                       checkedItems.length > 0 && !checkedItems.some(canDownloadItem)
                         ? "Selected files are still processing or failed"
