@@ -140,6 +140,22 @@ export function useDownload() {
     return true;
   };
 
+  // Like downloadFile, but never navigates or opens a tab, so several can run back to back.
+  const saveFile = async (item: FileItem): Promise<boolean> => {
+    if (item.isFolder) return false;
+    if (item.fileId && (item.origin === "server" || item.origin === "shared")) {
+      const session = await requestSession(buildRequest(item, await resolveLatestVersion(item)));
+      // Inline-forced types would just display in the iframe, so save their bytes instead.
+      if (INLINE_FORCED_TYPES.has(item.type)) saveBlob(await downloadClient.fetchBytes(session), item.name);
+      else saveFromUrl(session.url);
+      return true;
+    }
+    const blob = await fetchBlob(item);
+    if (!blob) return false;
+    saveBlob(blob, item.name);
+    return true;
+  };
+
   // Always fetches bytes into a blob so the saved name can include the version.
   const downloadFileVersion = async (item: FileItem, version: number): Promise<boolean> => {
     if (item.isFolder || !item.fileId || (item.origin !== "server" && item.origin !== "shared")) return false;
@@ -158,7 +174,7 @@ export function useDownload() {
     return downloadClient.fetchHeader(session, length);
   };
 
-  return { fetchBlob, downloadFile, downloadFileVersion, getStreamUrl, peekFileHeader };
+  return { fetchBlob, downloadFile, saveFile, downloadFileVersion, getStreamUrl, peekFileHeader };
 }
 
 // Media streams straight from the session URL (inline, ?token=), no CORS needed.

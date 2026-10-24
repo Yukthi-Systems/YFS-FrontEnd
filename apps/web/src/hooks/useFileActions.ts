@@ -79,7 +79,7 @@ export function useFileActions({
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveCopyState, setMoveCopyState] = useState<MoveCopyState | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
-  const { fetchBlob, downloadFile } = useDownload();
+  const { fetchBlob, downloadFile, saveFile } = useDownload();
   const { startFolderArchive } = useFolderArchive();
 
   const openCreateFolderModal = () => setActiveModal("createFolder");
@@ -349,12 +349,32 @@ export function useFileActions({
       return;
     }
 
-    try {
-      showToast(`Zipping ${items.length} items…`, "info");
-      const { skipped } = await downloadAsZip(items, files, "Download", fetchBlob);
-      if (skipped > 0) showToast(`${skipped} item${skipped > 1 ? "s" : ""} had no content to include`, "error");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Download failed", "error");
+    // The API archives one folder per request, so each server folder gets its own archive and each
+    // file downloads on its own; a browser-side zip would only contain what this tab has loaded.
+    const serverFolders = items.filter(canArchiveOnServer);
+    const localFolders = items.filter((f) => f.isFolder && !canArchiveOnServer(f));
+    const fileItems = items.filter((f) => !f.isFolder);
+    showToast(`Downloading ${plural(items.length, "item")}…`, "info");
+
+    for (const folder of serverFolders) await startFolderArchive(folder, "zip");
+
+    let failed = 0;
+    for (const file of fileItems) {
+      try {
+        if (!(await saveFile(file))) failed++;
+      } catch {
+        failed++;
+      }
+    }
+    if (failed > 0) showToast(`Couldn't download ${plural(failed, "file")}`, "error");
+
+    if (localFolders.length > 0) {
+      try {
+        const { skipped } = await downloadAsZip(localFolders, files, "Download", fetchBlob);
+        if (skipped > 0) showToast(`${plural(skipped, "item")} had no content to include`, "error");
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Download failed", "error");
+      }
     }
   };
 
