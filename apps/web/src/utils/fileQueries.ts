@@ -28,6 +28,18 @@ interface FilterSortParams {
   trashFolderId?: string | null;
 }
 
+// Sorts in place and returns the same array.
+export function sortItems(items: FileItem[], sortField: SortField, sortOrder: SortOrder): FileItem[] {
+  return items.sort((a, b) => {
+    let comparison = 0;
+    if (sortField === "name") comparison = a.name.localeCompare(b.name);
+    else if (sortField === "modifiedAt") comparison = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();
+    else if (sortField === "size") comparison = a.size - b.size;
+
+    return sortOrder === "asc" ? comparison : -comparison;
+  });
+}
+
 export function getFilteredSortedItems(files: FileItem[], params: FilterSortParams): FileItem[] {
   const { activeSidebarTab, currentFolderId, searchQuery, typeFilter, sortField, sortOrder, trashFolderId } = params;
   let result = [...files];
@@ -64,14 +76,7 @@ export function getFilteredSortedItems(files: FileItem[], params: FilterSortPara
     result = result.filter((f) => f.type === typeFilter);
   }
 
-  result.sort((a, b) => {
-    let comparison = 0;
-    if (sortField === "name") comparison = a.name.localeCompare(b.name);
-    else if (sortField === "modifiedAt") comparison = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();
-    else if (sortField === "size") comparison = a.size - b.size;
-
-    return sortOrder === "asc" ? comparison : -comparison;
-  });
+  sortItems(result, sortField, sortOrder);
 
   if (activeSidebarTab === "recent" && searchQuery.trim() === "") {
     result = result.slice(0, 15);

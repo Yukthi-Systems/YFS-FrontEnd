@@ -27,7 +27,7 @@ import "./App.css";
 
 import type { FileItem } from "./types/file";
 import type { ExternalShare } from "@yfs/service";
-import { getFilteredSortedItems, getItemPath } from "./utils/fileQueries";
+import { getFilteredSortedItems, getItemPath, sortItems } from "./utils/fileQueries";
 import { canDownloadItem, itemBusyReason } from "./utils/format";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useSsoAutoLogin } from "./hooks/useSsoAutoLogin";
@@ -274,7 +274,7 @@ function App() {
   // Search results render separately (SearchResultsList).
   const listItems =
     nav.activeSidebarTab === "shared-out"
-      ? [...sharedOut].sort((a, b) => a.name.localeCompare(b.name))
+      ? sortItems([...sharedOut], sortField, sortOrder)
       : getFilteredSortedItems(files, {
           activeSidebarTab: nav.activeSidebarTab,
           currentFolderId: nav.currentFolderId,
